@@ -967,7 +967,7 @@ inline int writeNonLocalStateReport( const IngestResult& ing, const Graph& g, in
     };
 
     std::fputs( kNonLocalStateLegend, stdout );
-    rw::emitTo( stdout, "<nonlocal_state cells=\"{}\" functions=\"{}\"{}{}", scan.cells.size(), total, disclosure,
+    rw::emitTo( stdout, "<nonlocal_state cells=\"{}\" functions=\"{}\"{}{}", scan.cells.size(), total, rw::cstr( disclosure ),
                  rw::graphCountFloorAttrXml( g ).c_str()  );   // M15: gauge + marker
     if( !scan.unanalyzedLangs.empty() )
     {

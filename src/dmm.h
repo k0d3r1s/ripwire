@@ -384,7 +384,7 @@ inline void printScoreAttr( const char* name, bool available, double score )
     {
         rw::formatTo( value, sizeof value, "{:.3f}", score );
     }
-    rw::emitTo( stdout, " {}=\"{}\"", name, value );
+    rw::emitTo( stdout, " {}=\"{}\"", name, rw::cstr( value ) );
 }
 
 // Emit the report. Returns the process exit code — always 0. This is a MEASUREMENT, not a gate: it has no

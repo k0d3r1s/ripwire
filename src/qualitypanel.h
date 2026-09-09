@@ -678,7 +678,7 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
         rw::emitTo( stdout, " findings_capped=\"1\" floor_rules=\"{}\"{}", std::string( escapeXml( std::string_view( floorRules ), escFloor ) ).c_str(),
                      kGraphCountFloorAttrXml  );   // H8: a floored family floors the root's counts
     }
-    rw::emitTo( stdout, " shown=\"{}\" capped=\"{}\"{}{}{}>", shown, shown < total ? "1" : "0", paging,
+    rw::emitTo( stdout, " shown=\"{}\" capped=\"{}\"{}{}{}>", shown, shown < total ? "1" : "0", rw::cstr( paging ),
                  qpRootAttr.c_str(), gitstamp::atAttr( root ).c_str() );
 
     // TWO scratch buffers, not one reused twice in the same call: escapeXml returns a VIEW into its `out`, so a

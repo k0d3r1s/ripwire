@@ -392,7 +392,7 @@ inline int writeNamingConsistencyReport( const IngestResult& ing, int pageLimit,
     // R-E fix (2026-08-19): the shared root-relative clause, emitted exactly when root= is (graphlegend.h).
     std::fputs( rw::rootRelPathsLegend( !rootAttr.empty() ), stdout );
     rw::emitTo( stdout, "<naming-consistency groups=\"{}\" candidates=\"{}\" decided=\"{}\" flagged=\"{}\"{}{}>",
-                 scan.groups.size(), scan.symbols.size(), decidedCount, total, disclosure, rootAttr.c_str() );
+                 scan.groups.size(), scan.symbols.size(), decidedCount, total, rw::cstr( disclosure ), rootAttr.c_str() );
 
     for( const ConventionGroup& g : scan.groups )
     {

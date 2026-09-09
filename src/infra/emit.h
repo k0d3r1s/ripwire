@@ -126,6 +126,17 @@ template<class S> inline void emitRaw( std::FILE* stream, const S& text )
     std::fputs( text, stream );
 }
 
+// ── cstr — a fixed char[] holds a C STRING, and `{}` must be told so ─────────────────────────────────
+// printf's %s on a `char buf[N]` always meant ONE thing: the bytes up to the first NUL. The array itself
+// is a different object, and what `{}` means for a char[N] argument has not been uniform across library
+// versions — an implementation that formats the ARRAY emits the trailing NUL and whatever uninitialised
+// bytes follow it, which in this tool lands inside an XML attribute and produces a document that does not
+// parse. The buffers here are routinely written short and reused, so that difference is not theoretical.
+//
+// Decaying explicitly removes the question on every implementation, and says at the call site which of the
+// two readings was meant. Pass a fixed buffer as rw::cstr( buf ), never bare.
+inline const char* cstr( const char* p ) noexcept { return p; }
+
 // ── formatTo — snprintf's SHAPE, kept ────────────────────────────────────────────────────────────────
 // std::snprintf's other half of this tree renders into a CALLER-OWNED char buffer rather than a stream,
 // so emitTo is the wrong tool for it: routing those sites through std::format and a std::string would

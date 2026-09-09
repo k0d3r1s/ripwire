@@ -601,7 +601,7 @@ inline constexpr long kPageValueMax = 1000000000;
 // `got` is a view because the --path arm's value is a slice of argv, not a NUL-terminated tail.
 inline void refuseFlagValue( const char* flag, const char* wanted, std::string_view got, const char* example ) noexcept
 {
-    rw::emitTo( stderr, "ripwire: {} needs {} — got '{}', e.g. {}\n", flag, wanted, std::string_view( got.data(), got.size() ), example );
+    rw::emitTo( stderr, "ripwire: {} needs {} — got '{}', e.g. {}\n", rw::cstr( flag ), wanted, std::string_view( got.data(), got.size() ), rw::cstr( example ) );
 }
 
 // Parse ONE paging value and, on refusal, print the reason itself. Returns false ⇔ the caller must set
@@ -620,7 +620,7 @@ inline bool refusePageValue( const char* flag, const char* s, bool isZeroAllowed
     // the two paging arms stay one line each, and printed through the shared refusal above so a change to
     // the sentence reaches every value-taking flag at once.
     char example[64] = {};
-    rw::formatTo( example, sizeof( example ), "{}=100", flag );
+    rw::formatTo( example, sizeof( example ), "{}=100", rw::cstr( flag ) );
 
     if( !isDigit || end == s || *end != '\0' || v < least )
     {
@@ -629,7 +629,7 @@ inline bool refusePageValue( const char* flag, const char* s, bool isZeroAllowed
     }
     if( v > kPageValueMax )
     {
-        rw::emitTo( stderr, "ripwire: {}={} is out of range (the maximum is {}) — e.g. {}=100\n", flag, s, kPageValueMax, flag );
+        rw::emitTo( stderr, "ripwire: {}={} is out of range (the maximum is {}) — e.g. {}=100\n", rw::cstr( flag ), s, kPageValueMax, rw::cstr( flag ) );
         return false;
     }
     out = int( v );
@@ -657,7 +657,7 @@ inline bool refusePageValue( const char* flag, const char* s, bool isZeroAllowed
 inline void refuseEmptyValue( std::string_view flag, const char* needs, const char* example ) noexcept
 {
     const std::string_view bare = flag.substr( 0, flag.size() - 1 );
-    rw::emitTo( stderr, "ripwire: {}= is empty — it needs {}, e.g. {}\n", std::string_view( bare.data(), bare.size() ), needs, example );
+    rw::emitTo( stderr, "ripwire: {}= is empty — it needs {}, e.g. {}\n", std::string_view( bare.data(), bare.size() ), needs, rw::cstr( example ) );
 }
 
 // parse a NUL-terminated "...=<u64>" value tail with the same reject rules as parsePosInt: empty /

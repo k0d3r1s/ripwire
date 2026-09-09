@@ -2482,11 +2482,11 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             {
                 const std::uint32_t in = ( id < fanIn->size() ) ? (*fanIn)[id] : 0u;
                 rw::formatTo( attr, sizeof( attr ), " in=\"{}\" out=\"{}\" cx=\"{}\" ccx=\"{}\"{}{}{}{}",
-                               in, out, s.cx, s.ccx, ( in >= 8 ? " role=\"hub\"" : "" ), qbuf, ambs, kbuf );
+                               in, out, s.cx, s.ccx, ( in >= 8 ? " role=\"hub\"" : "" ), rw::cstr( qbuf ), rw::cstr( ambs ), rw::cstr( kbuf ) );
             }
             else
             {
-                rw::formatTo( attr, sizeof( attr ), "{}{}", ambs, kbuf );
+                rw::formatTo( attr, sizeof( attr ), "{}{}", rw::cstr( ambs ), rw::cstr( kbuf ) );
             }
             w.write( attr );
             // Essential complexity (model.h Symbol::ev), --metrics only. Emitted iff ev >= 2: ev >= 1 for any
@@ -3235,11 +3235,11 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
         {
             rw::formatTo( inAttr, sizeof( inAttr ), " in=\"{}\"", ( *facts.fanIn )[ id ] );
         }
-        rw::formatTo( tail, sizeof( tail ), " cx=\"{}\" ccx=\"{}\"{}{}{}{}>", s.cx, s.ccx, inAttr, facts.lens, facts.pure, rankAttr );
+        rw::formatTo( tail, sizeof( tail ), " cx=\"{}\" ccx=\"{}\"{}{}{}{}>", s.cx, s.ccx, rw::cstr( inAttr ), facts.lens, facts.pure, rw::cstr( rankAttr ) );
     }
     else
     {
-        rw::formatTo( tail, sizeof( tail ), "{}{}{}>", facts.lens, facts.pure, rankAttr );
+        rw::formatTo( tail, sizeof( tail ), "{}{}{}>", facts.lens, facts.pure, rw::cstr( rankAttr ) );
     }
     head += tail;
     // P3 (L7, nextverb.h): the TOP-ranked row hands the agent the body to read — --expand=FILE:NAME, the

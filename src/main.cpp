@@ -418,7 +418,7 @@ std::pair<std::string, bool> resolveRemoteRoot( const std::string& urlOrPath, bo
     char line[ 4096 ];
     while( std::fgets( line, sizeof( line ), pipe ) )
     {
-        rw::emitTo( stderr, "  {}", line ); // surface git's own diagnostics
+        rw::emitTo( stderr, "  {}", rw::cstr( line ) ); // surface git's own diagnostics
     }
     const int rc = pclose( pipe );
     if( rc != 0 || !( fs::exists( fs::path( cacheDir ) / ".git", ec ) && !ec ) )

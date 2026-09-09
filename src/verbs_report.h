@@ -855,11 +855,11 @@ int emitClonesReport( const rw::Config& cfg, const rw::IngestResult& ing )
         const std::string idiomAttr = cloneIdiomAttrs( isType3 ? vx3[ flat - cg.size() ] : vx[ flat ] );
         if( isType3 )
         {
-            rw::emitTo( stdout, "<group type=\"3\" gid=\"{}\" tokens=\"{}\" n=\"{}\" similarity=\"{:.2f}\"{}{}>", gid, gp.tokens, gp.members.size(), gp.similarity, exemptAttr, idiomAttr.c_str() );
+            rw::emitTo( stdout, "<group type=\"3\" gid=\"{}\" tokens=\"{}\" n=\"{}\" similarity=\"{:.2f}\"{}{}>", gid, gp.tokens, gp.members.size(), gp.similarity, rw::cstr( exemptAttr ), idiomAttr.c_str() );
         }
         else
         {
-            rw::emitTo( stdout, "<group type=\"{}\" gid=\"{}\" tokens=\"{}\" n=\"{}\"{}{}>", gp.type, gid, gp.tokens, gp.members.size(), exemptAttr, idiomAttr.c_str() );
+            rw::emitTo( stdout, "<group type=\"{}\" gid=\"{}\" tokens=\"{}\" n=\"{}\"{}{}>", gp.type, gid, gp.tokens, gp.members.size(), rw::cstr( exemptAttr ), idiomAttr.c_str() );
         }
         for( NodeId id : gp.members )
         {
@@ -1338,7 +1338,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             // verb already calls, placed LAST on the element to match --hotspots' existing attribute order.
             rw::emitTo( stdout, "<cochange of=\"{}\" commits=\"{}\" window=\"{}\" sub_windows=\"{}\"{} partners=\"{}\"{}{}{}>",
                          ex( mvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[fid], mvRootPrefix ) : std::string_view( ing.files[fid] ) ).c_str(),
-                         commits, coWindowLabel.c_str(), subWindows, pminrec, ps.size(),
+                         commits, coWindowLabel.c_str(), subWindows, rw::cstr( pminrec ), ps.size(),
                          pageDisclosure( pab, sizeof( pab ), ppw.end - ppw.begin, ps.size(), ppw.end,
                                          cfg.pageLimit, cfg.pageOffset, true ),
                          mvRootAttr.c_str(),                // R-E fix: root= before at= — at= stays LAST (r26)

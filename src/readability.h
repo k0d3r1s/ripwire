@@ -263,7 +263,7 @@ inline int writeReadabilityReport( const IngestResult& ing, int pageLimit, int p
     std::fputs( kReadabilityLegend, stdout );
     // R-E fix (2026-08-19): the shared root-relative clause, emitted exactly when root= is (graphlegend.h).
     std::fputs( rw::rootRelPathsLegend( !rootAttr.empty() ), stdout );
-    rw::emitTo( stdout, "<readability functions=\"{}\"{}", total, disclosure );
+    rw::emitTo( stdout, "<readability functions=\"{}\"{}", total, rw::cstr( disclosure ) );
     if( scan.unreadableFileCount != 0 )
     {
         rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount );

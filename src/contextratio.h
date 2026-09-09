@@ -547,7 +547,7 @@ inline int writeContextRatioReport( const IngestResult& ing, int pageLimit, int 
                  " shown_syms=\"{}\" syms_capped=\"{}\" shown_files=\"{}\" files_capped=\"{}\"{}{}{}>",
                  total, scan.files.size(), unsigned( kDefsPerNameCap ), kBytesPerTokenBody,
                  shown, shown < total ? "1" : "0",
-                 fileShown, fileShown < scan.files.size() ? "1" : "0", paging, defsCappedAttr.c_str(), rootAttr.c_str() );
+                 fileShown, fileShown < scan.files.size() ? "1" : "0", rw::cstr( paging ), defsCappedAttr.c_str(), rootAttr.c_str() );
 
     // TWO scratch buffers, not one reused twice in the same call: escapeXml returns a VIEW into its `out`,
     // so a second call with the same buffer invalidates the first view (readability.h carries the same note).

@@ -2682,7 +2682,7 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
                       jsonEscape( sym.name ).c_str(),
                       jsonEscape( tag ).c_str(),
                       jsonEscape( lang ).c_str(),
-                      rankBuf,
+                      rw::cstr( rankBuf ),
                       unsigned( fileIdOf[k] == kNoNode ? 0 : fileIdOf[k] ),
                       comm,
                       unsigned( sym.cx ),

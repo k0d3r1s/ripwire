@@ -880,11 +880,11 @@ inline void name_and_loc( const Row& r, char* nameBuf, std::size_t nameSz,
     trim_pretty( r.site->pretty, fn, sizeof( fn ) );
     if( r.site->description )
     {
-        rw::formatTo( nameBuf, nameSz, "{} [{}]", fn, r.site->description );
+        rw::formatTo( nameBuf, nameSz, "{} [{}]", rw::cstr( fn ), r.site->description );
     }
     else
     {
-        rw::formatTo( nameBuf, nameSz, "{}", fn );
+        rw::formatTo( nameBuf, nameSz, "{}", rw::cstr( fn ) );
     }
     rw::formatTo( locBuf, locSz, "{}:{}", r.site->file, r.site->line );
 }
@@ -931,7 +931,7 @@ inline void print_tree_node( const ThreadSnap& s, const std::vector<std::vector<
     const int pad = depth * 2;
     // %*s -> {:{}}: std::format takes the VALUE first and the width as the following argument, where
     // printf takes the width first. Proven byte-identical across pad 0..16.
-    rw::formatTo( indented, sizeof( indented ), "{:{}}{}{}", "", pad, nameBuf,
+    rw::formatTo( indented, sizeof( indented ), "{:{}}{}{}", "", pad, rw::cstr( nameBuf ),
                   multiParent ? " *" : "" );
 
     // Percentage is share of the thread's top-level time (a fixed, bounded denominator),

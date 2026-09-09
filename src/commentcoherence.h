@@ -336,7 +336,7 @@ inline int writeCommentCoherenceReport( const IngestResult& ing, int pageLimit, 
     pageDisclosure( disclosure, sizeof disclosure, shown, total, page.end, pageLimit, pageOffset, true );
 
     std::fputs( kCommentCoherenceLegend, stdout );
-    rw::emitTo( stdout, "<comment_coherence documented=\"{}\" no_comment=\"{}\"{}", total, scan.noCommentCount, disclosure );
+    rw::emitTo( stdout, "<comment_coherence documented=\"{}\" no_comment=\"{}\"{}", total, scan.noCommentCount, rw::cstr( disclosure ) );
     if( scan.unreadableFileCount != 0 )
     {
         rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount );
