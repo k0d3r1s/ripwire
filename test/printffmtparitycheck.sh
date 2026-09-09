@@ -68,58 +68,109 @@ hashfile(){
 }
 
 # ── the verb corpus ──────────────────────────────────────────────────────────────────────────────────
-# label -> (needsCorpus 0|1, argv...). needsCorpus=1 verbs get "$CORPUS --no-cache" prepended; 0 verbs
-# (--version/--help) are global and take no positional path at all.
-LABELS="flagless lint lint_sarif lint_select lint_naming lint_catalog match pattern callers impact clones help"
+# Each label names a verb invocation. `argvFor` fills the global ARGV array — an ARRAY, not a
+# word-split string, because a fence that cannot express an argument containing a space cannot cover
+# --pattern/--exemplar/--pack-task, and the previous string form needed a hand-written special case per
+# such label (it carried two: match and pattern). Widening the fence is the whole point of the corpus,
+# so the corpus must not be the thing that resists widening.
+#
+# WIDENED 2026-09-09 (12 -> 27 labels) for the printf-family -> std::print conversion. The rule the
+# widening follows: a verb may be converted only if a label covers it, so the labels come FIRST and the
+# conversion follows them. Coverage added, by the file whose call sites it fences:
+#   src/verbs_navigate.h (113 sites)  expand callees around uses path connect  (+ callers/impact, held)
+#   src/verbs_grep.h      (41 sites)  grep                                     (+ match/pattern, held)
+#   src/serialize.h       (84 sites)  pack_signatures pack_task                (+ flagless, held)
+#   src/htmlexport.h      (53 sites)  html
+#   src/verbs_report.h   (147 sites)  arch seams skipped                       (+ clones, held)
+#   src/verbs_quality.h   (67 sites)  test_gate
+#   src/recall.h/exemplar/lego/notes  recall exemplar lego notes
+#   src/cli.h            (101 sites)  bad_flag — the refusal path, which is a STDERR fence: cli.h's
+#                                     diagnostics are printf sites too and no other label reaches them
+#
+# `arch` earns its place twice over: its output carries the only FLOATS in the fenced corpus
+# (propagation_cost="0.375", I=/A=/D="0.00"), and float rendering is precisely the trap this gate's
+# header warns about — %g is 6 significant digits, {} is shortest-roundtrip. It reads
+# test/parity_arch_rules.txt, which sits OUTSIDE test/fixture on purpose (a file inside the crawl root
+# would move every other label's hash) and is written to produce one real violation, so the label
+# fences the violation-row emitter and the exit-2 path rather than only the <metrics> block.
+#
+# STILL EXCLUDED, and each for a reason that has been tested rather than assumed — see the git-sensitivity
+# and dirty-tree probes recorded in the lane report: --for/--hotspots/--owners (git history: churn and
+# blame move when the commit carrying the manifest is made, so the pin is red on the commit that sets
+# it), --doctor (documented VOLATILE fields), --quality-delta (state-writing), --version (+dirty stamp).
+# --pack-task is INCLUDED but routes through --for's ranker; it was probed across a commit before being
+# admitted, and if it ever flakes it is the first label to suspect and drop.
+LABELS="flagless lint lint_sarif lint_select lint_naming lint_catalog match pattern callers impact clones help \
+expand callees around uses path connect grep pack_signatures pack_task html arch seams skipped test_gate recall exemplar lego notes bad_flag"
 
-argsFor(){
+# needsCorpus: 1 = prepend "test/fixture --no-cache"; 0 = a global verb that takes no positional path.
+needsCorpusFor(){
     case "$1" in
-        flagless)    echo "1|";;
-        lint)        echo "1|--lint";;
-        lint_sarif)  echo "1|--lint --sarif";;
-        lint_select) echo "1|--lint --lint-select=cache";;
-        lint_naming) echo "1|--lint --naming-locals";;
-        lint_catalog) echo "1|--lint-catalog";;
-        match)       echo "1|--match=(function_definition) @m";;
-        pattern)     echo "1|--pattern=distance(\$A, \$B)";;
-        callers)     echo "1|--callers=distance";;
-        impact)      echo "1|--impact=perimeter";;
-        clones)      echo "1|--clones";;
-        help)        echo "0|--help";;
+        help|bad_flag) return 1;;
+        *)             return 0;;
     esac
 }
 
+argvFor(){
+    case "$1" in
+        flagless)        ARGV=();;
+        lint)            ARGV=( --lint );;
+        lint_sarif)      ARGV=( --lint --sarif );;
+        lint_select)     ARGV=( --lint --lint-select=cache );;
+        lint_naming)     ARGV=( --lint --naming-locals );;
+        lint_catalog)    ARGV=( --lint-catalog );;
+        match)           ARGV=( '--match=(function_definition) @m' );;
+        pattern)         ARGV=( '--pattern=distance($A, $B)' );;
+        callers)         ARGV=( --callers=distance );;
+        impact)          ARGV=( --impact=perimeter );;
+        clones)          ARGV=( --clones );;
+        help)            ARGV=( --help );;
+        expand)          ARGV=( --expand=distance );;
+        callees)         ARGV=( --callees=distance );;
+        around)          ARGV=( --around=distance );;
+        uses)            ARGV=( --uses=distance );;
+        path)            ARGV=( --path=distance,perimeter );;
+        connect)         ARGV=( --connect=distance,perimeter );;
+        grep)            ARGV=( --grep=distance );;
+        pack_signatures) ARGV=( --pack-signatures );;
+        pack_task)       ARGV=( '--pack-task=compute the distance between points' );;
+        html)            ARGV=( --html );;
+        arch)            ARGV=( --arch=test/parity_arch_rules.txt );;
+        seams)           ARGV=( --seams );;
+        skipped)         ARGV=( --skipped );;
+        test_gate)       ARGV=( --test-gate );;
+        recall)          ARGV=( --recall=geometry );;
+        exemplar)        ARGV=( '--exemplar=compute a distance' );;
+        lego)            ARGV=( --lego=Point );;
+        notes)           ARGV=( --notes );;
+        # the refusal path: an unknown flag must keep emitting the same stderr bytes and the same rc.
+        bad_flag)        ARGV=( --no-such-flag-parity-probe );;
+        *)               echo "printffmtparitycheck: unknown label '$1'" >&2; exit 2;;
+    esac
+}
+
+# ${ARGV[@]+"${ARGV[@]}"}, not "${ARGV[@]}": under `set -u`, bash 3.2 — which is what macOS ships and
+# therefore what every developer here runs — treats "${A[@]}" on an EMPTY array as an unbound variable and
+# aborts. The `flagless` label is exactly that empty array. bash 5 on the CI legs does NOT abort, so the
+# naive spelling yields a gate that is green in CI and broken on the machine doing the conversion; caught
+# here by running the widened corpus against the UNCHANGED manifest, where flagless turned rc=0 into rc=1.
 runVerb(){
     # $1 = label, writes stdout to $TMP/out, stderr to $TMP/err, returns the process rc via $?
-    local spec needsCorpus argLine
-    spec="$( argsFor "$1" )"
-    needsCorpus="${spec%%|*}"
-    argLine="${spec#*|}"
-    # word-split argLine deliberately (each verb's args are simple flags/values, none containing IFS
-    # whitespace inside a single token except --match=/--pattern= which quote-embed a literal space in
-    # the query text — handled by the explicit array below for those two labels only).
-    if [ "$1" = "match" ]; then
-        set -- "--match=(function_definition) @m"
-    elif [ "$1" = "pattern" ]; then
-        set -- "--pattern=distance(\$A, \$B)"
-    else
-        # shellcheck disable=SC2206
-        set -- $argLine
-    fi
-    if [ "$needsCorpus" = "1" ]; then
+    argvFor "$1"
+    if needsCorpusFor "$1"; then
         # RELATIVE corpus path, run from $ROOT, and the reason is the whole reason this manifest is
         # portable: ripwire ECHOES the root it was given (root="..."), and the length of that string
         # also moves est_tokens. An absolute path therefore bakes the checkout's own location into
         # every hash, so a manifest pinned in one directory can never pass in another — not in CI, not
         # in a second worktree, not in a fresh clone. Measured: the same binary on the same corpus gave
         # est_tokens=909 under .../ripwire-wt-integrate and 935 under a /private/tmp clone.
-        ( cd "$ROOT" && "$BIN" test/fixture --no-cache "$@" ) >"$TMP/out" 2>"$TMP/err"
+        # test/parity_arch_rules.txt is likewise repo-relative, for the same portability reason.
+        ( cd "$ROOT" && "$BIN" test/fixture --no-cache ${ARGV[@]+"${ARGV[@]}"} ) >"$TMP/out" 2>"$TMP/err"
     else
-        ( cd "$ROOT" && "$BIN" "$@" ) >"$TMP/out" 2>"$TMP/err"
+        ( cd "$ROOT" && "$BIN" ${ARGV[@]+"${ARGV[@]}"} ) >"$TMP/out" 2>"$TMP/err"
     fi
     return $?
 }
-
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
     : >"$MANIFEST"
     for label in $LABELS; do
