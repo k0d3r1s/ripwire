@@ -298,6 +298,27 @@ already knew about the others, several while fixing one. So the rule is mechanic
 
 ### Output: `std::print`, feature-tested and disclosed — never a new printf-family site
 
+- **Pick the primitive by what you actually have.** All three live in `src/infra/emit.h`; a same-shaped
+  wrapper such as `lintPrintOut` / `lintPrintErr` in `src/verbs_lint.h` is fine too.
+
+  | You have | Use |
+  | --- | --- |
+  | A format string **with arguments**, going to a stream | `rw::emitTo( stream, "…{}…", args )` |
+  | **Literal text, no arguments** | `rw::emitRaw( stream, "…" )` |
+  | A **caller-owned char buffer** | `rw::formatTo( buf, cap, "…{}…", args )` |
+
+  `emitRaw` is not a stylistic alternative to `emitTo`: `std::format_string` is **consteval**, so literal
+  text routed through `emitTo` pays compile-time format parsing for formatting that never happens — and
+  the `--help` table, one 114,985-character literal, does not compile at all that way ("call to consteval
+  function … is not a constant expression"). 353 sites in this tree pass a string and no arguments.
+  `formatTo` exists for the same reason in the other direction: `std::format` into a `std::string` puts an
+  allocation on `serialize.h`'s per-symbol path, which is a G2 regression, so buffer-targeted sites keep
+  their stack buffer via `std::format_to_n`.
+- **`rw::formatTo` reproduces `snprintf`'s contract exactly — do not hand-roll it with `format_to_n`.**
+  `snprintf( p, S, … )` writes at most `S-1` characters **plus a NUL**; `std::format_to_n( p, S, … )` writes
+  up to `S` and terminates nothing. Substituting one for the other buys a byte of buffer and drops the
+  terminator. Measured 2026-09-09: that substitution made a symbol row emit `amp="1"` where every previous
+  build truncated it away, with the whole parity fence green — the fixture never reaches the buffer.
 - **Emit through `rw::emitTo` (`src/infra/emit.h`)**, or a same-shaped wrapper such as `lintPrintOut` /
   `lintPrintErr` in `src/verbs_lint.h`. That header is the ONE place the emitter is chosen: `std::print`
   where the standard library defines `__cpp_lib_print`, `std::format` rendered and written with
@@ -318,10 +339,32 @@ already knew about the others, several while fixing one. So the rule is mechanic
   and the stream. The trap it exists for is float rendering — `%g` prints six significant digits, `{}`
   prints the shortest round-trip (`0.3` versus `0.30000000000000004`) — so a per-specifier swap is never
   mechanical. Every emitted byte feeds G4, the determinism gate, and the stored captures.
+- **The specifier mapping is measured. Use the measured one; do not extend it from memory.** 218 checks
+  against printf on this toolchain found exactly ONE unsafe mapping, the bare `%g`/`%f` above:
+
+  ```
+  %s %u %d %zu %zd %lu %ld %llu %lld %i  ->  {}          %10s -> {:>10}   %-11s -> {:<11}
+  %.*s (precision, pointer)              ->  {} with std::string_view( ptr, len )
+  %016llx -> {:016x}   %llx -> {:x}   %llX -> {:X}   %o -> {:o}   %.9s -> {:.9}
+  %.3f -> {:.3f}       %6.1f -> {:6.1f}   %.6g -> {:.6g}          (explicit precision ONLY)
+  ```
+- **A green fence is not coverage, and the fence cannot cover everything.** Two facts to hold together.
+  First: `printffmtparitycheck` proves nothing about a verb it has no label for — add the label and pin it
+  BEFORE converting, and note that pinning refuses any verb whose output embeds the git stamp (`at="<sha>"`),
+  because such a verb's bytes move on the very commit that carries the pin. Second: even a covered verb
+  reaches only the branches the fixture reaches — a coverage build measured 25% of one batch's call sites
+  ever executed. For anything unfenceable or under-covered, **differential-test**: build the base commit
+  into a scratch worktree and diff both binaries' bytes over `src/`, `test/`, `docs/` and the repo root,
+  normalising only the stamp. A toy fixture cannot reach a truncation branch; a real tree does it by
+  accident, which is how the `format_to_n` byte above was caught.
 - **`std::print` throws on a failed write where `fputs` returns EOF.** `emitTo` catches that one
   `std::system_error` so both arms keep the contract every emitting site always had — a failed write is
   silent — rather than a `std::terminate` the fallback arm could never produce (§3 "Self-check, don't
   throw": a recoverable runtime error is a degrade, never a throw that escapes).
+- **`%%` and braces invert in OPPOSITE directions when you convert.** A printf format spells a literal
+  percent `%%`; text handed to `emitRaw` is no longer a format, so `%%` there prints TWO characters and must
+  collapse to one `%`. Braces are the mirror image: `emitTo` needs `{{`/`}}` for a literal brace where
+  `emitRaw` needs a bare `{`/`}`. JSON emitters are where the brace half bites.
 - **Until a string is converted it is a printf FORMAT, not text.** The `--help` table in `src/cli.h` is one:
   a literal `%` in a help line is a conversion (`% /`, `% o` and `% c` all parse), and the generated
   `docs/COMMANDS.md` then carries garbage where the number was. Write `%%` there, and treat the regeneration
