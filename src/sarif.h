@@ -178,7 +178,7 @@ inline void writeSarifRuleDecl( std::FILE* out, const SarifRuleDecl& r )
     }
     rw::emitTo( out, "\"properties\":{{\"builtin\":{},\"capped\":{},\"applicable\":{}}}}}",
                   r.isUserRule ? "false" : "true", r.capped ? "true" : "false",
-                  r.applicable ? "true" : "false"  );
+                  r.applicable ? "true" : "false" );
 }
 
 // One entry of runs[0].results. `rootPrefix` is rootPrefixOf(root), hoisted by the caller so the whole
@@ -187,11 +187,11 @@ inline void writeSarifResult( std::FILE* out, const SarifFinding& f, std::string
 {
     std::fputs( "{\"ruleId\":", out );
     jsonQuoted( out, f.rule );
-    rw::emitTo( out, ",\"level\":\"{}\",\"message\":{{\"text\":", sarifLevel( f.sev )  );
+    rw::emitTo( out, ",\"level\":\"{}\",\"message\":{{\"text\":", sarifLevel( f.sev ) );
     jsonQuoted( out, f.text );
     std::fputs( "},\"locations\":[{\"physicalLocation\":{\"artifactLocation\":{\"uri\":", out );
     jsonQuoted( out, rootRelativeUri( f.file, rootPrefix ) );
-    rw::emitTo( out, "}},\"region\":{{\"startLine\":{}}}}}}}]", f.line  );
+    rw::emitTo( out, "}},\"region\":{{\"startLine\":{}}}}}}}]", f.line );
     std::fputs( ",\"properties\":{\"enclosingSymbol\":", out );
     jsonQuoted( out, f.enclosing );
     std::fputs( ",\"sev\":", out );
@@ -203,7 +203,7 @@ inline void writeSarifResult( std::FILE* out, const SarifFinding& f, std::string
 // selection, so a consumer can never read "no selection" as "a selection that kept everything".
 inline void writeSarifRunProperties( std::FILE* out, const SarifRunProperties& props )
 {
-    rw::emitTo( out, "\"properties\":{{\"findingsCapped\":{}", props.anyRuleCapped ? "true" : "false"  );
+    rw::emitTo( out, "\"properties\":{{\"findingsCapped\":{}", props.anyRuleCapped ? "true" : "false" );
     if( props.selectionActive )
     {
         std::fputs( ",\"selected\":", out );

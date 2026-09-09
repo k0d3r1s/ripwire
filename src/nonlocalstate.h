@@ -971,21 +971,21 @@ inline int writeNonLocalStateReport( const IngestResult& ing, const Graph& g, in
                  rw::graphCountFloorAttrXml( g ).c_str()  );   // M15: gauge + marker
     if( !scan.unanalyzedLangs.empty() )
     {
-        rw::emitTo( stdout, " unanalyzed_langs=\"{}\" unanalyzed_files=\"{}\"", scan.unanalyzedLangs.c_str(), scan.unanalyzedFileCount  );
+        rw::emitTo( stdout, " unanalyzed_langs=\"{}\" unanalyzed_files=\"{}\"", scan.unanalyzedLangs.c_str(), scan.unanalyzedFileCount );
     }
     if( scan.undecidedDeclCount != 0 )
     {
-        rw::emitTo( stdout, " undecided_decls=\"{}\"", scan.undecidedDeclCount  );
+        rw::emitTo( stdout, " undecided_decls=\"{}\"", scan.undecidedDeclCount );
     }
     if( scan.cellsCapped )
     {
-        rw::emitRaw( stdout, " cells_capped=\"1\""  );
+        rw::emitRaw( stdout, " cells_capped=\"1\"" );
     }
     if( scan.declsCapped )
     {
-        rw::emitRaw( stdout, " decls_capped=\"1\""  );
+        rw::emitRaw( stdout, " decls_capped=\"1\"" );
     }
-    rw::emitTo( stdout, "{}>", rootAttr.c_str()  );
+    rw::emitTo( stdout, "{}>", rootAttr.c_str() );
 
     // Separate scratch buffers per concurrently-live view: escapeXml returns a VIEW into its `out`, so
     // reusing one buffer for two live strings invalidates the first (see readability.h's note).
@@ -1000,12 +1000,12 @@ inline int writeNonLocalStateReport( const IngestResult& ing, const Graph& g, in
 
         rw::emitTo( stdout, "<fn p=\"{}:{}\" n=\"{}\" writes=\"{}\" reads=\"{}\" direct_writes=\"{}\" direct_reads=\"{}\" cells_total=\"{}\"",
                      path.c_str(), s.line, name.c_str(),
-                     row.writeCount, row.readCount, row.directWriteCount, row.directReadCount, row.cells.size()  );
+                     row.writeCount, row.readCount, row.directWriteCount, row.directReadCount, row.cells.size() );
         if( cellsShown != row.cells.size() )
         {
-            rw::emitTo( stdout, " cells_shown=\"{}\" cells_capped=\"1\"", cellsShown  );
+            rw::emitTo( stdout, " cells_shown=\"{}\" cells_capped=\"1\"", cellsShown );
         }
-        rw::emitRaw( stdout, ">"  );
+        rw::emitRaw( stdout, ">" );
 
         for( std::size_t k = 0; k < cellsShown; ++k )
         {
@@ -1014,25 +1014,25 @@ inline int writeNonLocalStateReport( const IngestResult& ing, const Graph& g, in
             const std::string cellName( escapeXml( cell.name, escC ) );
             const std::string cellPath( escapeXml( pathRel( cell.fileId ), escD ) );
             const char*       dir = rc.read && rc.write ? "rw" : ( rc.write ? "w" : "r" );
-            rw::emitTo( stdout, "<cell n=\"{}\" p=\"{}:{}\" dir=\"{}\"", cellName.c_str(), cellPath.c_str(), cell.line, dir  );
+            rw::emitTo( stdout, "<cell n=\"{}\" p=\"{}:{}\" dir=\"{}\"", cellName.c_str(), cellPath.c_str(), cell.line, dir );
             if( rc.direct )
             {
                 std::vector<char>  escSite;
                 const std::string  sitePath( escapeXml( pathRel( rc.siteFile ), escSite ) );
                 const char*        atDir = rc.directRead && rc.directWrite ? "rw" : ( rc.directWrite ? "w" : "r" );
-                rw::emitTo( stdout, " at=\"{}:{}\" at_dir=\"{}\"", sitePath.c_str(), rc.siteLine, atDir  );
+                rw::emitTo( stdout, " at=\"{}:{}\" at_dir=\"{}\"", sitePath.c_str(), rc.siteLine, atDir );
             }
             else
             {
                 std::vector<char> escVia;
                 const std::string via( escapeXml( ing.symbols[rc.via].name, escVia ) );
-                rw::emitTo( stdout, " via=\"{}\"", via.c_str()  );
+                rw::emitTo( stdout, " via=\"{}\"", via.c_str() );
             }
-            rw::emitRaw( stdout, "/>"  );
+            rw::emitRaw( stdout, "/>" );
         }
-        rw::emitRaw( stdout, "</fn>"  );
+        rw::emitRaw( stdout, "</fn>" );
     }
-    rw::emitRaw( stdout, "</nonlocal_state>"  );
+    rw::emitRaw( stdout, "</nonlocal_state>" );
     return 0;
 }
 

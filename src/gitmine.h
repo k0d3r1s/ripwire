@@ -1006,7 +1006,7 @@ inline void noteGitJoinDegradeOnce( std::atomic<bool>& hasReported, const std::s
     {
         return;
     }
-    rw::emitTo( stderr, "ripwire: {}\n", humanSentence.c_str()  );
+    rw::emitTo( stderr, "ripwire: {}\n", humanSentence.c_str() );
     DEGRADED_PATH_ALERT( "gitmine: a git-history path join was left unmade — see the stderr line naming the state and the path" );
 }
 

@@ -1757,7 +1757,7 @@ inline HashMap<std::string, FileFacts> loadCache( const std::string& path, std::
         if( frame.reason != CacheReject::Absent )
         {
             rw::emitTo( stderr, "ripwire: cache {}: {} — not used; this run parses from source and rewrites it\n",
-                          path.c_str(), cacheRejectName( frame.reason )  );
+                          path.c_str(), cacheRejectName( frame.reason ) );
         }
         return out;
     }
@@ -2309,7 +2309,7 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
     {
         std::remove( tmp.c_str() );   // never rename a short/torn write over a good cache
         DEGRADED_PATH_ALERT( "ingest: saveCache write failed (short write or fclose error) — old cache preserved" );
-        rw::emitTo( stderr, "ripwire: cache {}: write failed (short write; disk full?) — old cache kept, this run was parsed from source\n", path.c_str()  );
+        rw::emitTo( stderr, "ripwire: cache {}: write failed (short write; disk full?) — old cache kept, this run was parsed from source\n", path.c_str() );
         return;
     }
     if( std::rename( tmp.c_str(), path.c_str() ) != 0 )
@@ -2317,7 +2317,7 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
         std::remove( tmp.c_str() );   // clean up on failure
         DEGRADED_PATH_ALERT( "ingest: saveCache rename(tmp -> cache) failed — old cache preserved" );
         rw::emitTo( stderr, "ripwire: cache {}: cannot replace ({}) — old cache kept, this run was parsed from source\n",
-                      path.c_str(), std::strerror( errno )  );
+                      path.c_str(), std::strerror( errno ) );
         return;
     }
 

@@ -427,7 +427,7 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
             if( le->lang == Lang::Json && jsonNestsTooDeep( bytes ) )
             {
                 rw::emitTo( stderr, "[ripwire] {}: json nesting > {} levels — treated as data, not config (skipped)\n",
-                              path.c_str(), kMaxJsonNestDepth  );
+                              path.c_str(), kMaxJsonNestDepth );
                 continue;
             }
 
@@ -439,7 +439,7 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
             if( le->lang == Lang::Yaml && yamlNestsTooDeep( bytes ) )
             {
                 rw::emitTo( stderr, "[ripwire] {}: yaml nesting > {} levels — treated as data, not config (skipped)\n",
-                              path.c_str(), kMaxYamlNestDepth  );
+                              path.c_str(), kMaxYamlNestDepth );
                 continue;
             }
 
@@ -453,7 +453,7 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
                 if( mdNestsTooDeep( bytes ) )
                 {
                     rw::emitTo( stderr, "[ripwire] {}: markdown blockquote/list nesting > {} levels — treated as data, not a doc (skipped)\n",
-                                  path.c_str(), kMaxMdBlockDepth  );
+                                  path.c_str(), kMaxMdBlockDepth );
                     continue;
                 }
                 if( !prepareParserFor( pg.p, *le ) )
@@ -786,7 +786,7 @@ inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::st
             const std::size_t reparsed = reparsedCount.load( std::memory_order_relaxed );
             rw::emitTo( stderr, "ripwire: cache-stats reparsed={} reused={} files={} cached_records={} blob_entries={}\n",
                           reparsed, ( nfiles >= reparsed ? nfiles - reparsed : std::size_t( 0 ) ), nfiles,
-                          cacheStats.recordsRead, cacheStats.blobEntries  );
+                          cacheStats.recordsRead, cacheStats.blobEntries );
         }
 
         // Win 2: rewrite cache only when at least one file changed (dirty flag set by workers above).

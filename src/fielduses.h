@@ -147,14 +147,14 @@ inline std::optional<int> memberUsesArm( const IngestResult& ing, const Graph& g
     }
     if( const std::string refusal = memberOwnerRefusal( ing, fields, sym, "--uses=" ); !refusal.empty() )
     {
-        rw::emitTo( stderr, "ripwire: --uses={} refused: {}\n", std::string( sym ).c_str(), refusal.c_str()  );
+        rw::emitTo( stderr, "ripwire: --uses={} refused: {}\n", std::string( sym ).c_str(), refusal.c_str() );
         return 1;
     }
     // `Owner.field` on a type whose language extracts no fields refuses BY LANGUAGE NAME — the generic
     // not-found would read as a typo, and an empty answer as "no uses".
     if( const std::string unserved = memberSelectorUnservedRefusal( ing, sym ); !unserved.empty() )
     {
-        rw::emitTo( stderr, "ripwire: --uses {}\n", unserved.c_str()  );
+        rw::emitTo( stderr, "ripwire: --uses {}\n", unserved.c_str() );
         return 1;
     }
     return std::nullopt;

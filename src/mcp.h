@@ -981,7 +981,7 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                 char buf[ 96 ];
                 rw::formatTo( buf, sizeof( buf ), "[index: files={} symbols={} hash={:08x}]",
                                 mix.ing.files.size(), mix.ing.symbols.size(),
-                                (unsigned)( mix.contentHash & 0xFFFFFFFFu )  );
+                                (unsigned)( mix.contentHash & 0xFFFFFFFFu ) );
                 return buf;
             };
 
@@ -1993,7 +1993,7 @@ inline int runMcp( int topK, bool stable = false, bool noRedact = false,
                                       std::chrono::steady_clock::now() - t0 ).count();
             const unsigned rebuilt = ( mcpRebuildCounter().load( std::memory_order_relaxed ) != rebuildAtStart ) ? 1u : 0u;
             rw::emitTo( stderr, "ripwire-timing verb={} wall_ms={:.3f} rebuilt={}\n",
-                          r.timingVerb.c_str(), wallMs, rebuilt  );
+                          r.timingVerb.c_str(), wallMs, rebuilt );
             std::fflush( stderr );
         }
     }

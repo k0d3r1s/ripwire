@@ -304,7 +304,7 @@ inline const char* pageDisclosure( char* buf, std::size_t bufCap, std::size_t ro
     }
     if( v.floor && written > 0 && written < bufCap )
     {
-        rw::formatTo( buf + written, bufCap - written, "{}", syn.floor  );
+        rw::formatTo( buf + written, bufCap - written, "{}", syn.floor );
     }
     return buf;
 }

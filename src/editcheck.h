@@ -681,14 +681,14 @@ inline std::string editCheckBundleText( const IngestResult& ing, const Graph& g,
     // map's `overloads=` convention) precisely because the sibling it is read against, --callers, always emits
     // it — an attribute a reader has never seen present cannot warn them.
     char defsAttr[ 32 ];
-    rw::formatTo( defsAttr, sizeof( defsAttr ), " defs=\"{}\"", overloadNodes.size()  );
+    rw::formatTo( defsAttr, sizeof( defsAttr ), " defs=\"{}\"", overloadNodes.size() );
     out += defsAttr;
     if( std::string_view( verdict.status ) == "contract-change" )
     {
         char cc[ 192 ];
         rw::formatTo( cc, sizeof( cc ), " params_was=\"{}\" params_now=\"{}\" public_was=\"{}\" public_now=\"{}\" defs_was=\"{}\" defs_now=\"{}\"",
                        contract.wasParams, contract.nowParams, contract.wasPublic ? 1 : 0, contract.nowPublic ? 1 : 0,
-                       contract.wasDefs, contract.nowDefs  );
+                       contract.wasDefs, contract.nowDefs );
         out += cc;
         // change= sits AFTER the was/now group, never between its members: those four attributes are read as
         // two adjacent pairs (here and in the gate), and an attribute inserted mid-group breaks that silently.
@@ -699,7 +699,7 @@ inline std::string editCheckBundleText( const IngestResult& ing, const Graph& g,
     // additive-overload shape the legend names, and "zero rows carry incompatible=" was previously an ABSENCE
     // the reader had to notice rather than a number they could read. (Counted above — the headline needs it.)
     char callersOpen[ 64 ];
-    rw::formatTo( callersOpen, sizeof( callersOpen ), " callers=\"{}\" incompatible=\"{}\"", callerIds.size(), incompatibleCount  );
+    rw::formatTo( callersOpen, sizeof( callersOpen ), " callers=\"{}\" incompatible=\"{}\"", callerIds.size(), incompatibleCount );
     out += callersOpen;
     // r26-stamp Task A: the HEAD baseline this contract compares against is only meaningful pinned to a
     // commit (+dirty state) — omitted entirely on a non-git root. Appended LAST (after every pre-existing

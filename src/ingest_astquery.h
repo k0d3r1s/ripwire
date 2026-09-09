@@ -1412,7 +1412,7 @@ inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now,
     const std::string                 blobPath = spanTierMemoPath( diskPath );
     char                              suffix[ 64 ];
     // 4 B literal + %d at 11 + 1 B + %llu at 20 = 36 B worst case into 64 — see test/fixedbufsweep.sh's census
-    rw::formatTo( suffix, sizeof( suffix ), ".tmp{}-{}", int( ::getpid() ), static_cast<unsigned long long>( tempSeq.fetch_add( 1, std::memory_order_relaxed ) )  );
+    rw::formatTo( suffix, sizeof( suffix ), ".tmp{}-{}", int( ::getpid() ), static_cast<unsigned long long>( tempSeq.fetch_add( 1, std::memory_order_relaxed ) ) );
     const std::string tempPath = blobPath + suffix;
     {
         std::ofstream out( tempPath, std::ios::binary | std::ios::trunc );

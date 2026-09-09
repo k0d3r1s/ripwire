@@ -792,7 +792,7 @@ inline void writeAbiCaveats( std::FILE* out, const char* tag, const std::vector<
 {
     for( const layout::Caveat& c : cs )
     {
-        rw::emitTo( out, "<{} k=\"{}\" d=\"{}\"/>", tag, ex( c.kind ).c_str(), ex( c.detail ).c_str()  );
+        rw::emitTo( out, "<{} k=\"{}\" d=\"{}\"/>", tag, ex( c.kind ).c_str(), ex( c.detail ).c_str() );
     }
 }
 
@@ -807,20 +807,20 @@ inline void writeAbiStruct( std::FILE* out, const StructRow& s, const XmlEscaper
     // as ref_size="0" and read as "an empty struct" — a plausible-looking wrong number of exactly the kind
     // the honesty contract exists to prevent). Omitted rather than printed as a misleading 0.
     rw::emitTo( out, "<struct n=\"{}\" p=\"{}\" l=\"{}\" kind=\"{}\" head_size=\"{}\"",
-                  ex( s.name ).c_str(), ex( rp ).c_str(), s.headLine, s.kind, s.headSize  );
+                  ex( s.name ).c_str(), ex( rp ).c_str(), s.headLine, s.kind, s.headSize );
     if( s.refSized )
     {
         rw::emitTo( out, " ref_size=\"{}\" size_differs=\"{}\" size_delta=\"{}\"",
-                      s.refSize, s.sizeDiffers ? 1 : 0, s.sizeDelta  );
+                      s.refSize, s.sizeDiffers ? 1 : 0, s.sizeDelta );
     }
-    rw::emitRaw( out, ">"  );
+    rw::emitRaw( out, ">" );
     for( const layout::FieldDiff& f : s.fields )
     {
-        rw::emitTo( out, "<d n=\"{}\" a=\"{}\" b=\"{}\"/>", ex( f.name ).c_str(), ex( f.inA ).c_str(), ex( f.inB ).c_str()  );
+        rw::emitTo( out, "<d n=\"{}\" a=\"{}\" b=\"{}\"/>", ex( f.name ).c_str(), ex( f.inA ).c_str(), ex( f.inB ).c_str() );
     }
     writeAbiCaveats( out, "head_caveat", s.headCaveats, ex );
     writeAbiCaveats( out, "ref_caveat",  s.refCaveats,  ex );
-    rw::emitRaw( out, "</struct>"  );
+    rw::emitRaw( out, "</struct>" );
 }
 
 // Every kind with a non-zero tally, as attributes, in kKindPolicy order (a fixed order = a deterministic
@@ -831,7 +831,7 @@ inline void writeKindAttrs( std::FILE* out, const KindCounts& k )
     {
         if( k.n[i] )
         {
-            rw::emitTo( out, " {}=\"{}\"", kKindPolicy[i].tag, k.n[i]  );
+            rw::emitTo( out, " {}=\"{}\"", kKindPolicy[i].tag, k.n[i] );
         }
     }
 }
@@ -863,9 +863,9 @@ inline void writeAbiRef( std::FILE* out, const RefRow& r, const XmlEscaper& ex, 
     // the kinds this view excludes; <more structs="N"/> below already states the same fact as a count.
     rw::emitTo( out, "<ref name=\"{}\" tip=\"{:.9}\" date=\"{}\" rows=\"{}\" shown=\"{}\" capped=\"{}\" excluded=\"{}\" head_only=\"{}\"",
                   ex( r.ref.name ).c_str(), r.ref.tip.c_str(), ex( r.ref.date ).c_str(),
-                  r.structs.size(), shownCount, unsigned( shownCount < eligible ), r.counts.excluded(), r.headOnly  );
+                  r.structs.size(), shownCount, unsigned( shownCount < eligible ), r.counts.excluded(), r.headOnly );
     writeKindAttrs( out, r.counts );
-    rw::emitRaw( out, ">"  );
+    rw::emitRaw( out, ">" );
 
     std::size_t shown = 0;
     for( const StructRow& s : r.structs )
@@ -882,9 +882,9 @@ inline void writeAbiRef( std::FILE* out, const RefRow& r, const XmlEscaper& ex, 
     }
     if( eligible > shownCount )
     {
-        rw::emitTo( out, "<more structs=\"{}\"/>", eligible - shownCount  );
+        rw::emitTo( out, "<more structs=\"{}\"/>", eligible - shownCount );
     }
-    rw::emitRaw( out, "</ref>"  );
+    rw::emitRaw( out, "</ref>" );
 }
 
 // `rootArg` — R-E (2026-08-17 harvest), same single-root-only root argument serialize() takes; --abi is
@@ -948,7 +948,7 @@ inline void writeAbiCheck( std::FILE* out, const AbiResult& res, std::size_t max
                        "the live line changes S's mirror in another is a merge hazard only layout(S) on the "
                        "merged result can see. Single-root; read-only (cat-file/diff/merge-base only). at= is the git "
                        "commit these numbers were computed at; a trailing +shallow means the clone's history is truncated (a depth-limited clone: churn counts only the commits present), and a trailing +dirty means the working tree differed from "
-                       "that commit (head= is the same commit, bare sha, kept for compatibility). -->"  );
+                       "that commit (head= is the same commit, bare sha, kept for compatibility). -->" );
     // M10: head= stays a bare 9-hex sha (gitstampcheck.sh's existing arm pins that spelling); at= is the new
     // attribute, carrying the dirty bit this document never disclosed before.
     const std::string atAttrStr = res.atStamp.empty() ? std::string() : ( " at=\"" + res.atStamp + "\"" );
@@ -957,10 +957,10 @@ inline void writeAbiCheck( std::FILE* out, const AbiResult& res, std::size_t max
                        " unrelated=\"{}\" broken_refs=\"{}\" quiet=\"{}\" excluded_refs=\"{}\"{}",
                   res.headSha.c_str(), ex( res.headRef ).c_str(), res.refsScanned, res.candidates, res.compared,
                   res.distinctBlobs, res.counts.total(), shownRows, unsigned( droppedRows > 0 ), droppedRows, res.counts.excluded(),
-                  res.headOnly, res.unmodelable, res.unrelated, brokenRefs, res.quietRefs, excludedRefs, atAttrStr.c_str()  );
+                  res.headOnly, res.unmodelable, res.unrelated, brokenRefs, res.quietRefs, excludedRefs, atAttrStr.c_str() );
     writeKindAttrs( out, res.counts );
-    if( !rootArg.empty() ) { rw::emitTo( out, " root=\"{}\"", ex( rootArg ).c_str()  ); }
-    rw::emitRaw( out, ">"  );
+    if( !rootArg.empty() ) { rw::emitTo( out, " root=\"{}\"", ex( rootArg ).c_str() ); }
+    rw::emitRaw( out, ">" );
     for( const RefRow& r : res.refs )
     {
         if( eligibleRows( r, listAll ) > 0 )
@@ -968,7 +968,7 @@ inline void writeAbiCheck( std::FILE* out, const AbiResult& res, std::size_t max
             writeAbiRef( out, r, ex, maxStructs, listAll, rootPrefix );
         }
     }
-    rw::emitRaw( out, "</abi>"  );
+    rw::emitRaw( out, "</abi>" );
 }
 
 }}   // namespace rw::abicheck

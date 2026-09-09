@@ -80,7 +80,7 @@ inline DegradedTextHit degradedTextHit( const IngestResult& ing, std::string_vie
                 DegradedTextHit hit;
                 hit.found     = true;
                 hit.fileIndex = fileIndex;
-                rw::formatTo( hit.errRatio, sizeof( hit.errRatio ), "{:.3f}", double( h.errBytes ) / double( h.fileBytes )  );
+                rw::formatTo( hit.errRatio, sizeof( hit.errRatio ), "{:.3f}", double( h.errBytes ) / double( h.fileBytes ) );
                 return hit;
             }
         }

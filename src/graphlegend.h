@@ -76,11 +76,11 @@ inline std::string graphGaugeAttrXml( const std::vector<std::uint32_t>& ambOut, 
     char buf[160];
     if( unindexedFiles > 0 )
     {
-        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\" graph_unindexed=\"{}\"", amb, unresolved, unindexedFiles  );
+        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\" graph_unindexed=\"{}\"", amb, unresolved, unindexedFiles );
     }
     else
     {
-        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\"", amb, unresolved  );
+        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\"", amb, unresolved );
     }
     return buf;
 }
@@ -91,11 +91,11 @@ inline std::string graphGaugeAttrJson( const std::vector<std::uint32_t>& ambOut,
     char buf[160];
     if( unindexedFiles > 0 )
     {
-        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{},\"graph_unindexed\":{}", amb, unresolved, unindexedFiles  );
+        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{},\"graph_unindexed\":{}", amb, unresolved, unindexedFiles );
     }
     else
     {
-        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{}", amb, unresolved  );
+        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{}", amb, unresolved );
     }
     return buf;
 }
@@ -171,8 +171,8 @@ inline std::string graphUnindexedTextClause( std::size_t unindexedFiles )
     }
     char buf[256]; // literal ~180 B + one %zu at 20 digits = ~198 B worst case; snprintf truncates regardless
     rw::formatTo( buf, sizeof( buf ),
-                   "; graph_unindexed={} is a third gauge — files no grammar in this build could read at all (the map header's unindexed=), whose calls produce no reference and so raise neither gauge above",
-                   unindexedFiles  );
+                  "; graph_unindexed={} is a third gauge — files no grammar in this build could read at all (the map header's unindexed=), whose calls produce no reference and so raise neither gauge above",
+                  unindexedFiles );
     return buf;
 }
 

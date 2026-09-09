@@ -144,7 +144,7 @@ rw::LensRanking computeLensRanking( const MainDispatch& d, std::string_view task
             char nb[ 220 ];
             rw::formatTo( nb, sizeof( nb ), " [mention anchor: {} file{} + {} symbols named in the task, score lifted to within 5% of the top score; "
                            "mention_anchored= on the root repeats this total]",
-                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount  );
+                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount );
             out.mentionNote  = nb;
             out.anchorLifts  = mentionInfo.fileCount + mentionInfo.symbolCount;   // §A4f: the count the candidates root emits
         }
@@ -218,7 +218,7 @@ rw::LensRanking computeLensRanking( const MainDispatch& d, std::string_view task
         {
             char nb[ 200 ];
             rw::formatTo( nb, sizeof( nb ), " [cochange boost: promoted {} symbols in {} files that historically change with the top seeds (last {} commits)]",
-                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow  );
+                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow );
             out.boostNote = nb;
         }
     }
@@ -235,7 +235,7 @@ rw::LensRanking computeLensRanking( const MainDispatch& d, std::string_view task
             char nb[ 220 ];
             rw::formatTo( nb, sizeof( nb ), " [doc mentions: {} doc{} discussing {} top-ranked symbol{} surfaced; doc_mentions= on the root repeats the doc count]",
                            docMentionInfo.docCount, docMentionInfo.docCount == 1 ? "" : "s",
-                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s"  );
+                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s" );
             out.docMentionNote  = nb;
             out.docMentionCount = docMentionInfo.docCount;   // §L10b: machine form for the doc_mentions= root attribute
         }
@@ -267,22 +267,22 @@ inline void emitCandidates( std::FILE* out, const rw::IngestResult& ing, const s
         if( !ac.hitCeiling && ac.cliffRank < ac.kept )
         {
             rw::formatTo( nb, sizeof( nb ), "<!-- adaptive: kept {} of {} - sharp cliff at rank {} ({}% drop), clamped up to the floor of {} -->",
-                           ac.kept, topK, ac.cliffRank, ac.dropPct, ac.kept  );
+                           ac.kept, topK, ac.cliffRank, ac.dropPct, ac.kept );
         }
         else if( !ac.hitCeiling )
         {
             rw::formatTo( nb, sizeof( nb ), "<!-- adaptive: kept {} of {} - cliff at rank {}, {}% drop -->",
-                           ac.kept, topK, ac.cliffRank, ac.dropPct  );
+                           ac.kept, topK, ac.cliffRank, ac.dropPct );
         }
         else if( ac.positiveHits <= ac.kept )
         {
             rw::formatTo( nb, sizeof( nb ), "<!-- adaptive: kept {} of {} - only {} symbols matched this query (sharp query, short tail) -->",
-                           ac.kept, topK, ac.positiveHits  );
+                           ac.kept, topK, ac.positiveHits );
         }
         else
         {
             rw::formatTo( nb, sizeof( nb ), "<!-- adaptive: kept {} of {} - no relevance cliff (broad query saturates the score); capped at the ceiling -->",
-                           ac.kept, topK  );
+                           ac.kept, topK );
         }
         std::fputs( nb, out );
         capN = int( ac.kept );
@@ -980,7 +980,7 @@ inline int emitForLensJson( std::FILE* out, const std::string& header, const For
     std::fwrite( droppedPositiveStanza.data(), 1, droppedPositiveStanza.size(), out );   // A2
     std::fwrite( budgetStanza.data(), 1, budgetStanza.size(), out );                     // R1: beside the label it is compared against
     std::fwrite( overCeiling.data(), 1, overCeiling.size(), out );
-    rw::emitTo( out, ",\"capped\":{},\"est_tokens\":{},\"sigs\":", sigsCapped ? "true" : "false", estTokens  );
+    rw::emitTo( out, ",\"capped\":{},\"est_tokens\":{},\"sigs\":", sigsCapped ? "true" : "false", estTokens );
     std::fwrite( sigsJson.data(), 1, sigsJson.size(), out );
     std::fputs( "}", out );
     return 0;
@@ -1608,22 +1608,22 @@ std::optional<int> runForLens( const MainDispatch& d )
             if( !ac.hitCeiling && ac.cliffRank < ac.kept )
             {
                 rw::formatTo( nb, sizeof( nb ), " [adaptive: kept {} of {} - sharp cliff at rank {} ({}% drop), clamped up to the floor of {}]",
-                               ac.kept, ceil, ac.cliffRank, ac.dropPct, ac.kept  );
+                               ac.kept, ceil, ac.cliffRank, ac.dropPct, ac.kept );
             }
             else if( !ac.hitCeiling )
             {
                 rw::formatTo( nb, sizeof( nb ), " [adaptive: kept {} of {} - cliff at rank {}, {}% drop]",
-                               ac.kept, ceil, ac.cliffRank, ac.dropPct  );
+                               ac.kept, ceil, ac.cliffRank, ac.dropPct );
             }
             else if( ac.positiveHits <= ac.kept )
             {
                 rw::formatTo( nb, sizeof( nb ), " [adaptive: kept {} of {} - only {} symbols matched this query (sharp query, short tail)]",
-                               ac.kept, ceil, ac.positiveHits  );
+                               ac.kept, ceil, ac.positiveHits );
             }
             else
             {
                 rw::formatTo( nb, sizeof( nb ), " [adaptive: kept {} of {} - no relevance cliff (broad query saturates the score); capped at the ceiling]",
-                               ac.kept, ceil  );
+                               ac.kept, ceil );
             }
             adaptiveNote = nb;
         }
@@ -1811,7 +1811,7 @@ std::optional<int> runForLens( const MainDispatch& d )
             // runPackTask) already uses, rather than silently dropping the flag's effect with no tell at all.
             if( cfg.withGraph )
             {
-                rw::emitRaw( stderr, "ripwire: --with-graph is not applied under --json (the mermaid graph block is XML-only for now) — emitted without it\n"  );
+                rw::emitRaw( stderr, "ripwire: --with-graph is not applied under --json (the mermaid graph block is XML-only for now) — emitted without it\n" );
             }
 
             std::size_t legoTotal = 0;
@@ -2092,7 +2092,7 @@ std::optional<int> runForLens( const MainDispatch& d )
         if( forDroppedPositive > 0 )
         {
             char nb[ 40 ];
-            rw::formatTo( nb, sizeof( nb ), " dropped_positive=\"{}\"", forDroppedPositive  );
+            rw::formatTo( nb, sizeof( nb ), " dropped_positive=\"{}\"", forDroppedPositive );
             droppedPositiveNote = nb;
         }
         const std::size_t droppedPositiveSpliceReserve = droppedPositiveNote.size();
@@ -2487,7 +2487,7 @@ std::optional<int> runForLens( const MainDispatch& d )
             rw::emitChargedSection( stdout, graphSection, [ & ]{ packGraphBlock( stdout, ing, lensRank, g.outOff, g.outTargets ); } );
         }
 
-        rw::emitRaw( stdout, "</ctx>"  );
+        rw::emitRaw( stdout, "</ctx>" );
         reportRedactions( stderr, redactCounts );
         return 0;
     }
@@ -2522,7 +2522,7 @@ std::optional<int> runTargetedViews( const MainDispatch& d )
             // §B4.2: one shared refusal — a non-defining `file:name` says WHICH files define the type and
             // hands back a runnable retry; a genuinely unknown name still gets the near-miss it always had.
             rw::emitTo( stderr, "{}\n", selectorNotFoundMessage( ing, "ripwire: --lego type not found: ",
-                                                                   cfg.legoType, "--lego=" ).c_str()  );
+                                                                   cfg.legoType, "--lego=" ).c_str() );
             return 1;
         }
         const std::vector<char> legoImpure = computeImpure( ing, g );
@@ -2530,10 +2530,10 @@ std::optional<int> runTargetedViews( const MainDispatch& d )
         // R-E fix (2026-08-19): the document root DISCLOSES the root its p= are now relative to. The first
         // R-E landing made packLego's p= root-relative and left the root undisclosed, so a --lego bundle
         // carried relative paths against a root the reader could not name — the honesty rule this tool sells.
-        rw::emitTo( stdout, "{}{}", rw::ctxRootOpen( {}, {}, tvRootArg ).c_str(), rw::kLegoLegend  );   // H5: --lego had no legend at all
+        rw::emitTo( stdout, "{}{}", rw::ctxRootOpen( {}, {}, tvRootArg ).c_str(), rw::kLegoLegend );   // H5: --lego had no legend at all
         packLego( stdout, ing, g.implementors, flat, 1, d.redactPtr, &legoImpure, focus, /*withPaths=*/true, tvRootArg,
                   rw::graphCountFloorAttrXml( g ) );   // M15: gauge + marker on the targeted root
-        rw::emitRaw( stdout, "</ctx>"  );
+        rw::emitRaw( stdout, "</ctx>" );
         reportRedactions( stderr, d.redactCounts );      // W3-N1: a contract <m> sig is a redacting seam — disclose the tally
         return 0;
     }
@@ -2558,7 +2558,7 @@ std::optional<int> runTargetedViews( const MainDispatch& d )
             }
             else
             {
-                rw::emitTo( stderr, "ripwire: --exemplar: no {} in the corpus to exemplify\n", symTag( pick.targetKind )  );
+                rw::emitTo( stderr, "ripwire: --exemplar: no {} in the corpus to exemplify\n", symTag( pick.targetKind ) );
             }
             return 1;   // no-candidate case degrades cleanly (clear message, nonzero exit, no crash)
         }
@@ -2596,7 +2596,7 @@ std::optional<int> runTargetedViews( const MainDispatch& d )
                      "child; both disclose truncation the house way: total= is how many qualified, shown= how "
                      "many are printed, capped=1 when the two differ (calls omits shown= and capped= when its "
                      "list is complete). Copy its shape, not its text. -->",
-                     ex( reqNote ).c_str(), kindNote.c_str(), symTag( pick.targetKind ), rw::kExemplarSelectionRule  );
+                     ex( reqNote ).c_str(), kindNote.c_str(), symTag( pick.targetKind ), rw::kExemplarSelectionRule );
         // R-E fix (2026-08-19): root= — same reason as --lego above. p= went root-relative in the first R-E
         // landing with no attribute naming the root, on the one verb whose whole job is "open this file".
         const std::string exemplarRootAttr = tvSingleRoot ? ( " root=\"" + ex( tvRootArg ) + "\"" ) : std::string();
@@ -2605,11 +2605,11 @@ std::optional<int> runTargetedViews( const MainDispatch& d )
                      ex( tvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ wsym.fileId ], tvRootPrefix ) : std::string_view( ing.files[ wsym.fileId ] ) ).c_str(), wsym.line,
                      fin( pick.winner ), wsym.ccx, exemplarRootAttr.c_str(), ts( pick.winner ) ? " tested=\"1\"" : "",
                      pick.lowConfidence ? " low_confidence=\"1\"" : "",
-                     pick.overCcxBar    ? " over_ccx_bar=\"1\"" : ""  );
+                     pick.overCcxBar    ? " over_ccx_bar=\"1\"" : "" );
         packBodies( stdout, ing, { pick.winner }, cfg.packBudgetBytes, g.outOff, g.outTargets, cfg.compress, redactPtr,
                    /*ranges=*/nullptr, /*noteIndex=*/nullptr, /*outEmitted=*/nullptr, /*truncateOversizedFirst=*/true,
                    /*withFileContext=*/false, tvRootArg );
-        rw::emitRaw( stdout, "</exemplar>"  );
+        rw::emitRaw( stdout, "</exemplar>" );
         reportRedactions( stderr, redactCounts );
         return 0;
     }
@@ -2686,7 +2686,7 @@ std::optional<int> runPackTask( const MainDispatch& d )
     }
     if( cfg.packTask.empty() )   // refuse loudly without a task string (never fall through to the default map)
     {
-        rw::emitRaw( stderr, "ripwire: --pack-task: a task string is required — e.g. --pack-task=\"add retry to the http client\"\n"  );
+        rw::emitRaw( stderr, "ripwire: --pack-task: a task string is required — e.g. --pack-task=\"add retry to the http client\"\n" );
         return 1;
     }
     const std::string task( cfg.packTask );
@@ -2728,7 +2728,7 @@ std::optional<int> runPackTask( const MainDispatch& d )
         // whole run over — the bundles themselves are unaffected).
         if( cfg.withGraph )
         {
-            rw::emitRaw( stderr, "ripwire: --with-graph is not applied in --partition mode (N+1 bundles, no single graph) — bundles emitted without it\n"  );
+            rw::emitRaw( stderr, "ripwire: --with-graph is not applied in --partition mode (N+1 bundles, no single graph) — bundles emitted without it\n" );
         }
         if( cfg.json )
         {
@@ -2755,7 +2755,7 @@ std::optional<int> runPackTask( const MainDispatch& d )
         // the flag's effect with no tell at all.
         if( cfg.withGraph )
         {
-            rw::emitRaw( stderr, "ripwire: --with-graph is not applied under --json (the mermaid graph block is XML-only for now) — emitted without it\n"  );
+            rw::emitRaw( stderr, "ripwire: --with-graph is not applied under --json (the mermaid graph block is XML-only for now) — emitted without it\n" );
         }
         std::string js;
         packTaskBundleText( ing, g, task, lr, in, &js );
@@ -2788,7 +2788,7 @@ std::optional<int> runPackTask( const MainDispatch& d )
     {
         std::fwrite( bundle.data(), 1, bundle.size() - 6, stdout );
         rw::emitChargedSection( stdout, graphSection, [ & ]{ packGraphBlock( stdout, ing, lr.rank, g.outOff, g.outTargets ); } );
-        rw::emitRaw( stdout, "</ctx>"  );
+        rw::emitRaw( stdout, "</ctx>" );
     }
     else
     {

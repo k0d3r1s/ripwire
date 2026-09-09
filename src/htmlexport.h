@@ -2251,25 +2251,25 @@ inline HtmlProvenance htmlProvenanceFor( const std::string& root, bool multiRoot
 
 inline void writeAppearancePayload( std::FILE* out, const std::vector<std::uint32_t>& fileList, const HtmlColorExtras& color )
 {
-    rw::emitRaw( out, "const FCHURN = ["  );
+    rw::emitRaw( out, "const FCHURN = [" );
     for( std::size_t i = 0; i < fileList.size(); ++i )
     {
         const std::uint32_t fc = ( color.fileChurn && fileList[i] < color.fileChurn->size() ) ? ( *color.fileChurn )[ fileList[i] ] : 0u;
-        rw::emitTo( out, "{}{}", i ? "," : "", fc  );
+        rw::emitTo( out, "{}{}", i ? "," : "", fc );
     }
-    rw::emitRaw( out, "];\n"  );
+    rw::emitRaw( out, "];\n" );
     // whether git evidence existed — 0 ⇒ churn mode discloses "unavailable" instead of lying zeros
-    rw::emitTo( out, "const CHURN_OK = {};\n", color.churnEvidence ? 1 : 0  );
-    rw::emitTo( out, "const AT = \"{}\";\n", jsonEscape( color.atStamp ).c_str()  );
-    rw::emitTo( out, "const ROOT_NAME = \"{}\";\n", jsonEscape( color.rootName ).c_str()  );
-    rw::emitTo( out, "const VERSION = \"{}\";\n", jsonEscape( color.version ).c_str()  );
+    rw::emitTo( out, "const CHURN_OK = {};\n", color.churnEvidence ? 1 : 0 );
+    rw::emitTo( out, "const AT = \"{}\";\n", jsonEscape( color.atStamp ).c_str() );
+    rw::emitTo( out, "const ROOT_NAME = \"{}\";\n", jsonEscape( color.rootName ).c_str() );
+    rw::emitTo( out, "const VERSION = \"{}\";\n", jsonEscape( color.version ).c_str() );
     // the WINDOW those commit counts were mined over. The legend used to print a bare "0 1-2 3-9 10-29 30+"
     // with no unit and no horizon, so "3-9" could be read as three commits ever; it is three commits inside
     // this window. Passed in by the caller rather than spelled in the JS, because the JS cannot know what
     // main.cpp handed mineChurnPerFile — a hardcoded string here is a claim the page cannot back.
-    rw::emitTo( out, "const CHURN_WINDOW = \"{}\";\n", jsonEscape( color.churnWindow ).c_str()  );
+    rw::emitTo( out, "const CHURN_WINDOW = \"{}\";\n", jsonEscape( color.churnWindow ).c_str() );
     // the baked initial colour mode (--color-by=MODE); the in-page selector switches live from here
-    rw::emitTo( out, "const COLOR_MODE = \"{}\";\n", colorByLabel( color.initialMode )  );
+    rw::emitTo( out, "const COLOR_MODE = \"{}\";\n", colorByLabel( color.initialMode ) );
     // the ranker whose scores the `rank` field carries — the provenance caption's second fact
     // Read from kRankByNames INLINE rather than through an accessor of its own. A second four-line
     // "clamp the enumerator, fall back to entry 0" function beside colorByLabel is a duplicate of it, and
@@ -2278,29 +2278,29 @@ inline void writeAppearancePayload( std::FILE* out, const std::vector<std::uint3
     // has exactly one consumer, so it does not need a function; colorByLabel, which is the shared
     // accessor for a mode the selector also switches, keeps its own.
     const std::size_t rankIdx = std::size_t( color.ranker );
-    rw::emitTo( out, "const RANKER = \"{}\";\n", rankIdx < kRankByNameCount ? kRankByNames[ rankIdx ] : kRankByNames[0]  );
+    rw::emitTo( out, "const RANKER = \"{}\";\n", rankIdx < kRankByNameCount ? kRankByNames[ rankIdx ] : kRankByNames[0] );
     // the LANG palette the page's swatches AND its legend are both built from: langTag(L) -> hex, in
     // enumerator order. It belongs in this function and not one of its own: this IS the colour payload,
     // and a separate emitter beside it was a fifth copy of the same comma-separated JSON loop.
     // Deterministic by construction — a constexpr array walked in index order.
-    rw::emitRaw( out, "const LANG_COLORS = {"  );
+    rw::emitRaw( out, "const LANG_COLORS = {" );
     for( std::size_t i = 0; i < kLangColorCount; ++i )
     {
-        rw::emitTo( out, "{}\"{}\":\"{}\"", i ? "," : "", langTag( Lang( i ) ), kLangColors[i]  );
+        rw::emitTo( out, "{}\"{}\":\"{}\"", i ? "," : "", langTag( Lang( i ) ), kLangColors[i] );
     }
-    rw::emitRaw( out, "};\n"  );
+    rw::emitRaw( out, "};\n" );
     // ...and the SHAPE roster the page's node marks AND the caption's shape key are both built from. It
     // rides in this function rather than one of its own for the reason the LANG palette does: this IS
     // the appearance payload, and a separate emitter beside it would be another copy of the same
     // comma-separated JSON loop. Deterministic by construction — a constexpr array walked in index
     // order, keyed by the same symTag the NODES records' `type` field carries, so the JS looks a node's
     // shape up by the string it already has.
-    rw::emitRaw( out, "const SYM_SHAPES = {"  );
+    rw::emitRaw( out, "const SYM_SHAPES = {" );
     for( std::size_t i = 0; i < kSymShapeCount; ++i )
     {
-        rw::emitTo( out, "{}\"{}\":\"{}\"", i ? "," : "", symTag( SymKind( i ) ), kSymShapes[i]  );
+        rw::emitTo( out, "{}\"{}\":\"{}\"", i ? "," : "", symTag( SymKind( i ) ), kSymShapes[i] );
     }
-    rw::emitRaw( out, "};\n"  );
+    rw::emitRaw( out, "};\n" );
 }
 
 // The EDGE payload: the LINKS records. Its own function for the reason writeAppearancePayload and
@@ -2327,14 +2327,14 @@ inline void writeEdgePayload( std::FILE* out, const std::vector<HtmlEdge>& edges
     //
     // It cannot catch a change to which edges are SELECTED, and it should not: that is meant to change
     // the picture. It catches every REORDERING of the same set, which is not.
-    rw::emitRaw( out, "const LINKS = [\n"  );
+    rw::emitRaw( out, "const LINKS = [\n" );
     for( std::size_t k = 0; k < edges.size(); ++k )
     {
         VERIFY( k == 0 || edges[k - 1].s < edges[k].s || ( edges[k - 1].s == edges[k].s && edges[k - 1].t < edges[k].t ) );
         rw::emitTo( out, "  {{\"s\":{},\"t\":{}{}{}\n", unsigned( edges[k].s ), unsigned( edges[k].t ),
-                      edges[k].amb ? ",\"a\":1}" : "}", ( k + 1 < edges.size() ) ? "," : ""  );
+                      edges[k].amb ? ",\"a\":1}" : "}", ( k + 1 < edges.size() ) ? "," : "" );
     }
-    rw::emitRaw( out, "];\n"  );
+    rw::emitRaw( out, "];\n" );
 }
 
 // The document SHELL — <head>, the whole stylesheet, and the chrome (#bar, #prov, #hits, #crumb,
@@ -2446,7 +2446,7 @@ inline void writeDocumentShell( std::FILE* out, const std::string& pageTitle )
         "<div id=\"cards\"></div>\n"
         "<canvas id=\"c\"></canvas>\n"
         "<script>\n"
-        , pageTitle.c_str(), pageTitle.c_str()  );
+        , pageTitle.c_str(), pageTitle.c_str() );
 }
 
 // writeHtml — emit a self-contained HTML wiki document to `out`.
@@ -2465,7 +2465,7 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
     {
         // empty graph: still emit a valid document
         rw::emitRaw( out, "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>ripwire graph</title></head>"
-                           "<body><p>No symbols found.</p></body></html>\n"  );
+                           "<body><p>No symbols found.</p></body></html>\n" );
         return;
     }
 
@@ -2663,7 +2663,7 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
     // node's community didn't survive the ≥2-member filter (a singleton — still shown, just moduleless).
     // `cx` (cyclomatic) and `ts` (tested 0/1) feed the --color-by cx/tested modes; churn stays out of
     // the per-node record because it is file-granularity — one FCHURN array keyed by `file` instead.
-    rw::emitRaw( out, "const NODES = [\n"  );
+    rw::emitRaw( out, "const NODES = [\n" );
     for( NodeId k = 0; k < cap; ++k )
     {
         const Symbol&  sym  = ing.symbols[ order[k] ];
@@ -2675,7 +2675,7 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
         const unsigned ts   = ( color.tested && order[k] < color.tested->size() && ( *color.tested )[ order[k] ] ) ? 1u : 0u;
 
         char rankBuf[ 24 ];
-        rw::formatTo( rankBuf, sizeof( rankBuf ), "{:.4f}", double( r )  );
+        rw::formatTo( rankBuf, sizeof( rankBuf ), "{:.4f}", double( r ) );
 
         rw::emitTo( out, "  {{\"id\":{},\"label\":\"{}\",\"type\":\"{}\",\"lang\":\"{}\",\"rank\":{},\"file\":{},\"comm\":{},\"cx\":{},\"ts\":{}}}",
                       unsigned( k ),
@@ -2686,14 +2686,14 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
                       unsigned( fileIdOf[k] == kNoNode ? 0 : fileIdOf[k] ),
                       comm,
                       unsigned( sym.cx ),
-                      ts  );
+                      ts );
         if( k + 1 < cap )
         {
-            rw::emitRaw( out, ","  );
+            rw::emitRaw( out, "," );
         }
-        rw::emitRaw( out, "\n"  );
+        rw::emitRaw( out, "\n" );
     }
-    rw::emitRaw( out, "];\n"  );
+    rw::emitRaw( out, "];\n" );
 
     // R-R: the corpus root, stated ONCE — the page's own envelope anchor, so a reader can still resolve
     // the relative FILES[] entries below back to a checkout. Empty on a multi-root run, where each path
@@ -2717,23 +2717,23 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
     // no-op — its own guard is on a leading `users`/`home`/`root` segment, which is exactly what is
     // gone by then. test/htmlrendercheck.sh (P1) greps the emitted page; (P2) is its mutation control.
     const std::string htmlRootLabel = stripHomePair( htmlRootPrefix );
-    rw::emitTo( out, "const ROOT = \"{}\";\n", jsonEscape( htmlRootLabel ).c_str()  );
+    rw::emitTo( out, "const ROOT = \"{}\";\n", jsonEscape( htmlRootLabel ).c_str() );
 
     // emit FILES array — one path string per distinct selected-symbol file, first-seen order (R-R: each
     // relative to ROOT above, so the page no longer repeats the checkout prefix once per file)
-    rw::emitRaw( out, "const FILES = [\n"  );
+    rw::emitRaw( out, "const FILES = [\n" );
     for( std::size_t i = 0; i < fileList.size(); ++i )
     {
         const std::string_view hp = rootArg.empty() ? std::string_view( ing.files[ fileList[i] ] )
                                                     : rw::sarif::rootRelativeUri( ing.files[ fileList[i] ], htmlRootPrefix );
-        rw::emitTo( out, "  \"{}\"", jsonEscape( std::string( hp ) ).c_str()  );
+        rw::emitTo( out, "  \"{}\"", jsonEscape( std::string( hp ) ).c_str() );
         if( i + 1 < fileList.size() )
         {
-            rw::emitRaw( out, ","  );
+            rw::emitRaw( out, "," );
         }
-        rw::emitRaw( out, "\n"  );
+        rw::emitRaw( out, "\n" );
     }
-    rw::emitRaw( out, "];\n"  );
+    rw::emitRaw( out, "];\n" );
 
     // the appearance payload: per-FILES-index churn, its evidence flag, the baked initial colour mode,
     // the language palette, and the SymKind→shape roster
@@ -2748,12 +2748,12 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
     // the selection (the effective one, after --max-tokens/adaptive have cut it — the number that explains
     // the map you are looking at, not the number that was typed).
     rw::emitTo( out, "const TOPK = {};\nconst NODE_TOTAL = {};\nconst EDGE_TOTAL = {};\nconst SYM_TOTAL = {};\n",
-                  cap, cap, edges.size(), S  );
+                  cap, cap, edges.size(), S );
 
     // emit MODULES array — the Overview cards, sorted (member count desc, commId asc). `members` and
     // `top` are selected-array (NODES) indices; `neigh` is the sorted, deduped list of OTHER display
     // module ids this module shares a selected LINKS edge with (Module view's "cross-links").
-    rw::emitRaw( out, "const MODULES = [\n"  );
+    rw::emitRaw( out, "const MODULES = [\n" );
     for( std::size_t disp = 0; disp < modOrder.size(); ++disp )
     {
         const ModuleCard& m = modules[ modOrder[disp] ];
@@ -2778,59 +2778,59 @@ inline void writeHtml( std::FILE* out, const IngestResult& ing, const std::vecto
         neigh.erase( std::unique( neigh.begin(), neigh.end() ), neigh.end() );
 
         rw::emitTo( out, "  {{\"id\":{},\"name\":\"{}\",\"symCount\":{},\"fileCount\":{},\"files\":[",
-                      disp, jsonEscape( m.name ).c_str(), m.members.size(), m.files.size()  );
+                      disp, jsonEscape( m.name ).c_str(), m.members.size(), m.files.size() );
         for( std::size_t i = 0; i < m.files.size(); ++i )
         {
-            rw::emitTo( out, "{}", unsigned( m.files[i] )  );
+            rw::emitTo( out, "{}", unsigned( m.files[i] ) );
             if( i + 1 < m.files.size() )
             {
-                rw::emitRaw( out, ","  );
+                rw::emitRaw( out, "," );
             }
         }
-        rw::emitRaw( out, "],\"members\":["  );
+        rw::emitRaw( out, "],\"members\":[" );
         for( std::size_t i = 0; i < m.members.size(); ++i )
         {
-            rw::emitTo( out, "{}", unsigned( m.members[i] )  );
+            rw::emitTo( out, "{}", unsigned( m.members[i] ) );
             if( i + 1 < m.members.size() )
             {
-                rw::emitRaw( out, ","  );
+                rw::emitRaw( out, "," );
             }
         }
-        rw::emitRaw( out, "],\"top\":["  );
+        rw::emitRaw( out, "],\"top\":[" );
         for( std::size_t i = 0; i < m.top.size(); ++i )
         {
-            rw::emitTo( out, "{}", unsigned( m.top[i] )  );
+            rw::emitTo( out, "{}", unsigned( m.top[i] ) );
             if( i + 1 < m.top.size() )
             {
-                rw::emitRaw( out, ","  );
+                rw::emitRaw( out, "," );
             }
         }
-        rw::emitTo( out, "],\"inCross\":{},\"outCross\":{},\"neigh\":[", m.inCross, m.outCross  );
+        rw::emitTo( out, "],\"inCross\":{},\"outCross\":{},\"neigh\":[", m.inCross, m.outCross );
         for( std::size_t i = 0; i < neigh.size(); ++i )
         {
-            rw::emitTo( out, "{}", neigh[i]  );
+            rw::emitTo( out, "{}", neigh[i] );
             if( i + 1 < neigh.size() )
             {
-                rw::emitRaw( out, ","  );
+                rw::emitRaw( out, "," );
             }
         }
-        rw::emitRaw( out, "]}"  );
+        rw::emitRaw( out, "]}" );
         if( disp + 1 < modOrder.size() )
         {
-            rw::emitRaw( out, ","  );
+            rw::emitRaw( out, "," );
         }
-        rw::emitRaw( out, "\n"  );
+        rw::emitRaw( out, "\n" );
     }
-    rw::emitRaw( out, "];\n"  );
+    rw::emitRaw( out, "];\n" );
 
     // inline the JS sim + wiki router
-    rw::emitTo( out, "{}{}{}{}{}{}", kScriptColour, kScriptSim, kScriptMarks, kScriptDraw, kScriptViews, kScriptRouter  );
+    rw::emitTo( out, "{}{}{}{}{}{}", kScriptColour, kScriptSim, kScriptMarks, kScriptDraw, kScriptViews, kScriptRouter );
 
     rw::emitRaw( out,
         "</script>\n"
         "</body>\n"
         "</html>\n"
-     );
+ );
 }
 
 }   // namespace rw

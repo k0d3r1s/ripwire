@@ -41,7 +41,7 @@ inline std::string docTextViaBridgeCache( const std::string& path, const std::st
         {
             char blobName[ 64 ];
             rw::formatTo( blobName, sizeof( blobName ), "ripwire-docmd-{:016x}.bin",
-                           static_cast<unsigned long long>( fnv1a64( docBytes ) )  );
+                           static_cast<unsigned long long>( fnv1a64( docBytes ) ) );
             bridgeBlobPath = quality::resolveCacheBlobPath( quality::cacheDirLadder(), blobName );
             docparse::detail::readWholeFile( bridgeBlobPath, text );   // miss ⇒ text stays empty
         }

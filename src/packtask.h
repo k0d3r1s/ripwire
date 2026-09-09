@@ -287,7 +287,7 @@ inline PackTaskSection packTaskListSection( std::string_view tag, std::string_vi
     }
     char open[ 160 ];
     rw::formatTo( open, sizeof( open ), "<{}{} shown=\"{}\" total=\"{}\" capped=\"{}\">", std::string_view( tag.data(), tag.size() ), std::string_view( extraAttr.data(), extraAttr.size() ), out.kept, entries.size(),
-                   out.kept < entries.size() ? 1 : 0  );
+                   out.kept < entries.size() ? 1 : 0 );
     out.xml = open;
     for( std::size_t i = 0; i < out.kept; ++i )
     {
@@ -767,7 +767,7 @@ inline RankingSection renderRankingWithFar( const IngestResult& ing, const Ranki
     }
 
     const std::vector<std::string> farRows = renderNameOnlyRows( ing, *ri.d2plusIds, ex, ri.in->rootArg );
-    char farAttr[ 32 ];  rw::formatTo( farAttr, sizeof( farAttr ), " of_top=\"{}\"", ri.topRanked->size()  );
+    char farAttr[ 32 ];  rw::formatTo( farAttr, sizeof( farAttr ), " of_top=\"{}\"", ri.topRanked->size() );
     const std::size_t     sigsLeftover = ri.sigsBudget > out.sigsStr.size() ? ri.sigsBudget - out.sigsStr.size() : 0;
     const PackTaskSection far          = packTaskListSection( "far", farAttr, farRows, sigsLeftover, kPackTaskWrapReserve );
     out.farTotal = farRows.size();
@@ -958,7 +958,7 @@ inline std::string restatePackTaskBodiesWrapper( const IngestResult& ing, const 
     // bundle would silently claim uncompressed bodies (test/forcompresscheck.sh arm 5).
     char open[ 112 ];
     rw::formatTo( open, sizeof( open ), "<bodies shown=\"{}\" total=\"{}\" capped=\"1\"{}>", emitted.kept.size(), bodyIds.size(),
-                   compress ? " compress=\"1\"" : ""  );
+                   compress ? " compress=\"1\"" : "" );
     std::string out = open;
     out += bodiesXml.substr( openEnd + 1, bodiesXml.size() - 9 - ( openEnd + 1 ) );
     out += markers;
@@ -1242,7 +1242,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
     const D1Rows d1Rendered = renderD1CallerRows( ing, d1, ex, in.redact, in.rootArg );
     const std::vector<std::string>& callerRows = d1Rendered.xml;
     const std::vector<std::string>& d1SigRaw   = d1Rendered.rawSig;   // unescaped — the L2 --json tail reuses these verbatim
-    char callersAttr[ 32 ];  rw::formatTo( callersAttr, sizeof( callersAttr ), " of_top=\"{}\"", bodiesTotal  );
+    char callersAttr[ 32 ];  rw::formatTo( callersAttr, sizeof( callersAttr ), " of_top=\"{}\"", bodiesTotal );
     std::size_t       callersBudget = sectionBudget( kPackTaskQuotaCallersPct, carry );
     PackTaskSection   callers       = packTaskListSection( "callers", callersAttr, callerRows, callersBudget, kPackTaskWrapReserveWide );
     const std::size_t callersTotal  = callerRows.size();
@@ -1412,7 +1412,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         // (it cannot call packBodies again either) — so it is safe to emit unconditionally here.
         char tag[ 112 ];
         rw::formatTo( tag, sizeof( tag ), "<bodies shown=\"0\" total=\"{}\" capped=\"{}\"{}></bodies>",
-                       bodyIds.size(), bodyIds.empty() ? 0 : 1, in.compress ? " compress=\"1\"" : ""  );
+                       bodyIds.size(), bodyIds.empty() ? 0 : 1, in.compress ? " compress=\"1\"" : "" );
         bodiesStr = tag;
         // bodiesKept stays 0 (its declared default) — matches shown="0" exactly.
     }
@@ -1560,7 +1560,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         j += "]";
 
         const std::size_t notesShown = std::min( notesKept, noteEntriesData.size() );
-        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"notes_total\":{},\"notes_kept\":{},\"notes\":[", notesTotal, notesShown  );  j += b; }
+        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"notes_total\":{},\"notes_kept\":{},\"notes\":[", notesTotal, notesShown );  j += b; }
         for( std::size_t i = 0; i < notesShown; ++i )
         {
             j += ( i == 0 ? "" : "," );
@@ -1575,7 +1575,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         j += "]";
 
         const std::size_t testsShown = std::min( testsKept, testFiles.size() );
-        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"tests_total\":{},\"tests_kept\":{},\"tests_to_run\":[", testsTotal, testsShown  );  j += b; }
+        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"tests_total\":{},\"tests_kept\":{},\"tests_to_run\":[", testsTotal, testsShown );  j += b; }
         // §A9.5: the JSON sibling of the XML run= above — situ's tests_to_run already carries it, and one
         // computation path must not serialize two different obligations.
         const rw::TestRunnerIndex jsonRunners( ing );
@@ -1638,7 +1638,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
     std::string droppedPositiveAttr;
     if( rankOut.droppedPositive > 0 )
     {
-        char b[ 96 ];  rw::formatTo( b, sizeof( b ), " dropped_positive=\"{}\"", rankOut.droppedPositive  );
+        char b[ 96 ];  rw::formatTo( b, sizeof( b ), " dropped_positive=\"{}\"", rankOut.droppedPositive );
         droppedPositiveAttr = b;
     }
 

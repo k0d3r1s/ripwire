@@ -517,7 +517,7 @@ std::optional<int> runArchViews( const MainDispatch& d )
             const std::string et  = std::string( rw::escapeXml( ing.files[ v.to ], ae ) );
             const std::string etl = std::string( rw::escapeXml( v.toLayer, ae ) );
             rw::emitTo( stdout, "<v from=\"{}\" fromLayer=\"{}\" to=\"{}\" toLayer=\"{}\"{}/>",
-                         ef.c_str(), efl.c_str(), et.c_str(), etl.c_str(), showBaselined ? " baselined=\"1\"" : ""  );
+                         ef.c_str(), efl.c_str(), et.c_str(), etl.c_str(), showBaselined ? " baselined=\"1\"" : "" );
         };
         const auto emitMetrics = [ & ]()
         {
@@ -554,16 +554,16 @@ std::optional<int> runArchViews( const MainDispatch& d )
                 }
             }
             rw::emitTo( stdout, "<metrics modules=\"{}\" typed_modules=\"{}\" zone_pain=\"{}\" zone_useless=\"{}\" zone_ok=\"{}\" zone_na=\"{}\" propagation_cost=\"{:.3f}\" note=\"Martin Ca/Ce/I/A/D + zone (main-sequence heuristic, no independent outcome-based validation — folklore, not proof) + reachability — directory-level estimate from name-based deps; zone_na = types=0 modules excluded from zone_pain/zone_useless (no meaningful abstractness score); zone_ok = typed modules in neither corner (the main-sequence middle); zone_pain+zone_useless+zone_ok+zone_na = modules, the full partition; propagation_cost = density of the file-dep transitive closure (MacCormack, validated coupling form) — fraction of files reachable from an average file\">",
-                         mods.size(), mods.size() - zoneNa, zonePain, zoneUseless, zoneOk, zoneNa, propCost  );
+                         mods.size(), mods.size() - zoneNa, zonePain, zoneUseless, zoneOk, zoneNa, propCost );
             for( const ModuleMetric& mm : mods )
             {
                 const std::string ep = std::string( rw::escapeXml( mm.path, ae ) );
                 rw::emitTo( stdout, "<m path=\"{}\" ca=\"{}\" ce=\"{}\" types=\"{}\" abstract=\"{}\" I=\"{:.2f}\" A=\"{:.2f}\" D=\"{:.2f}\" zone=\"{}\" reachable=\"{}\"{}{}/>",
                              ep.c_str(), mm.ca, mm.ce, mm.totalTypes, mm.abstractTypes,
                              mm.instability, mm.abstractness, mm.distance, mm.zone, mm.reachable ? 1 : 0,
-                             mm.isolated ? " isolated=\"1\"" : "", mm.isLeaf ? " leaf=\"1\"" : ""  );
+                             mm.isolated ? " isolated=\"1\"" : "", mm.isLeaf ? " leaf=\"1\"" : "" );
             }
-            rw::emitTo( stdout, "</metrics>"  );
+            rw::emitTo( stdout, "</metrics>" );
         };
 
         // The match domain, said ONCE and appended to all three emit paths (normal / baseline /
@@ -584,21 +584,21 @@ std::optional<int> runArchViews( const MainDispatch& d )
             }
             if( !archWriteBaseline( sidecarPath, hashes ) )
             {
-                rw::emitTo( stderr, "ripwire: --baseline cannot write sidecar: {}\n", sidecarPath.c_str()  );
+                rw::emitTo( stderr, "ripwire: --baseline cannot write sidecar: {}\n", sidecarPath.c_str() );
                 return 1;
             }
             rw::emitTo( stderr, "ripwire arch: baseline written ({} violation(s) accepted) → {}\n",
-                          viols.size(), sidecarPath.c_str()  );
+                          viols.size(), sidecarPath.c_str() );
             // Still emit the arch XML for reference (shows what was baselined), then exit 0.
-            rw::emitTo( stdout, "<!-- ripwire arch: baseline mode — all {} violation(s) accepted as baseline. exit=0.{} -->", viols.size(), kArchMatchDomain  );
+            rw::emitTo( stdout, "<!-- ripwire arch: baseline mode — all {} violation(s) accepted as baseline. exit=0.{} -->", viols.size(), kArchMatchDomain );
             rw::emitTo( stdout, "<arch layers=\"{}\" rules=\"{}\" pathRules=\"{}\" violations=\"{}\" baselined=\"{}\" new_violations=\"0\">",
-                         ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), viols.size()  );
+                         ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), viols.size() );
             for( const Viol& v : viols )
             {
                 emitViol( v, true );
             }
             emitMetrics();
-            rw::emitTo( stdout, "</arch>"  );
+            rw::emitTo( stdout, "</arch>" );
             return 0;
         }
 
@@ -612,20 +612,20 @@ std::optional<int> runArchViews( const MainDispatch& d )
             }
             if( !archWriteBaseline( sidecarPath, hashes ) )
             {
-                rw::emitTo( stderr, "ripwire: --baseline-update cannot write sidecar: {}\n", sidecarPath.c_str()  );
+                rw::emitTo( stderr, "ripwire: --baseline-update cannot write sidecar: {}\n", sidecarPath.c_str() );
                 return 1;
             }
             rw::emitTo( stderr, "ripwire arch: baseline updated ({} hash(es) total) → {}\n",
-                          hashes.size(), sidecarPath.c_str()  );
-            rw::emitTo( stdout, "<!-- ripwire arch: baseline-update mode — {} violation(s) merged into baseline. exit=0.{} -->", viols.size(), kArchMatchDomain  );
+                          hashes.size(), sidecarPath.c_str() );
+            rw::emitTo( stdout, "<!-- ripwire arch: baseline-update mode — {} violation(s) merged into baseline. exit=0.{} -->", viols.size(), kArchMatchDomain );
             rw::emitTo( stdout, "<arch layers=\"{}\" rules=\"{}\" pathRules=\"{}\" violations=\"{}\" baselined=\"{}\" new_violations=\"0\">",
-                         ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), hashes.size()  );
+                         ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), hashes.size() );
             for( const Viol& v : viols )
             {
                 emitViol( v, true );
             }
             emitMetrics();
-            rw::emitTo( stdout, "</arch>"  );
+            rw::emitTo( stdout, "</arch>" );
             return 0;
         }
 
@@ -655,18 +655,18 @@ std::optional<int> runArchViews( const MainDispatch& d )
         if( hasBaseline )
         {
             rw::emitTo( stderr, "ripwire arch: {} violation(s) total — {} suppressed (baseline) — {} new\n",
-                          viols.size(), basedViols.size(), newViols.size()  );
+                          viols.size(), basedViols.size(), newViols.size() );
         }
 
-        rw::emitTo( stdout, "<!-- ripwire arch: layering fitness function — edges that violate your declared rules (layer rules and regex path-rules). exit=2 if any NEW (un-baselined) violation. <metrics> = descriptive Martin Ca/Ce/I/A/D + reachability, never gates.{} -->", kArchMatchDomain  );
+        rw::emitTo( stdout, "<!-- ripwire arch: layering fitness function — edges that violate your declared rules (layer rules and regex path-rules). exit=2 if any NEW (un-baselined) violation. <metrics> = descriptive Martin Ca/Ce/I/A/D + reachability, never gates.{} -->", kArchMatchDomain );
         rw::emitTo( stdout, "<arch layers=\"{}\" rules=\"{}\" pathRules=\"{}\" violations=\"{}\" baselined=\"{}\" new_violations=\"{}\">",
-                     ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), basedViols.size(), newViols.size()  );
+                     ar.layerNames.size(), ar.rules.size(), ar.pathRules.size(), viols.size(), basedViols.size(), newViols.size() );
         for( const Viol& v : viols )
         {
             emitViol( v, hasBaseline && baseline.count( v.hash ) );
         }
         emitMetrics();
-        rw::emitTo( stdout, "</arch>"  );
+        rw::emitTo( stdout, "</arch>" );
         return newViols.empty() ? 0 : 2;
     }
     return std::nullopt;
@@ -692,7 +692,7 @@ std::string cloneUnpagedTotalAttr( bool clonePaging, std::size_t cloneTotal )
         return {};
     }
     char buf[ 32 ];
-    rw::formatTo( buf, sizeof( buf ), " total=\"{}\"", cloneTotal  );
+    rw::formatTo( buf, sizeof( buf ), " total=\"{}\"", cloneTotal );
     return buf;
 }
 
@@ -823,7 +823,7 @@ int emitClonesReport( const rw::Config& cfg, const rw::IngestResult& ing )
     // a paging artefact, not a measurement.
     const CloneGrouping grouping = groupClones( ing, cg, cg3 );
 
-    rw::emitTo( stdout, "<!-- ripwire clones: function bodies with similar normalized token streams (identifiers/literals normalized, so renamed copies match). type=2 exact/renamed (Type-1/2); type=3 gapped near-miss (an inserted/changed statement, similarity in [0.80,1.0)). Reuse don't reimplement; a fix to one likely belongs in all. groups= and type3= are the two GROUP-TYPE totals (each capped independently, so neither is the row count); total= is the true row total (groups + type3-group-count) and is ALWAYS present, paged or not; shown= is the number of group rows that follow this run. capped=\"1\" means rows were dropped. exempt= on a group ⇒ every member is on a path the quality-delta verb's duplication kind deliberately ignores (fixture dirs / shell test-runners repeat boilerplate by convention) — a fact here, never a gate there; exempt_groups= counts them over ALL groups. idiom= on a group names the RECOGNIZED SHAPE every one of its members classifies to, from a CLOSED set of three: threshold-ladder (a chain of if-compare-return and nothing else), switch-name-table (a switch whose every arm is a label plus a literal return), builder-chain (a param-struct initializer chain). demoted=\"1\" additionally means the quality-delta verb's duplication kind reports this group as minor rather than gating on it, which happens only when the WHOLE conjunction holds: every member the same recognized idiom, no two members sharing a single non-keyword identifier, no two members sharing an enclosing context (file plus scope), and the group under 80 normalized tokens. Five cross-domain bucketing ladders that share only the idiom are noise; two ladders over the same enum, or two in one namespace, are a copy. The idiom name is printed precisely so a human can overrule the demotion by reading the members: a demoted row is annotated, never removed. idiom_groups= and demoted_groups= count each of those over ALL groups. FLOOR on the classifier, since a silence here would read as coverage: the shape is read off the body's TOKEN stream and not a parse tree, so a macro-assembled body classifies as whatever its raw tokens spell; the table arm models case-labelled switches only; and builder-chain models the field-assignment spelling, not the fluent chained-call one. gid= on a row is its CLONE COMPONENT: the Type-3 pass reports PAIRS, so three functions that are all near-copies of each other arrive as three rows of two; rows sharing a gid are one cluster, and clone_groups= counts the clusters (union-find over the pair graph, over ALL detected rows, not just the shown ones). dup_pct=duplicated-LOC/total-LOC as a percentage, where duplicated-LOC sums, per cluster, every member's loc EXCEPT the largest member's (one instance is the code you keep, the rest is the redundancy — so a 3-clone cluster counts its lines TWICE) and total-LOC is every function/method body the detector considered; dup_loc= and total_loc= are those two operands. counts_floor=\"1\": the Type-3 pair list is capped upstream, so a dropped pair is a cluster left unmerged — clone_groups/dup_loc/dup_pct are floors, never totals. raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). -->{}", rw::rootRelPathsLegend( clnSingleRoot )  );
+    rw::emitTo( stdout, "<!-- ripwire clones: function bodies with similar normalized token streams (identifiers/literals normalized, so renamed copies match). type=2 exact/renamed (Type-1/2); type=3 gapped near-miss (an inserted/changed statement, similarity in [0.80,1.0)). Reuse don't reimplement; a fix to one likely belongs in all. groups= and type3= are the two GROUP-TYPE totals (each capped independently, so neither is the row count); total= is the true row total (groups + type3-group-count) and is ALWAYS present, paged or not; shown= is the number of group rows that follow this run. capped=\"1\" means rows were dropped. exempt= on a group ⇒ every member is on a path the quality-delta verb's duplication kind deliberately ignores (fixture dirs / shell test-runners repeat boilerplate by convention) — a fact here, never a gate there; exempt_groups= counts them over ALL groups. idiom= on a group names the RECOGNIZED SHAPE every one of its members classifies to, from a CLOSED set of three: threshold-ladder (a chain of if-compare-return and nothing else), switch-name-table (a switch whose every arm is a label plus a literal return), builder-chain (a param-struct initializer chain). demoted=\"1\" additionally means the quality-delta verb's duplication kind reports this group as minor rather than gating on it, which happens only when the WHOLE conjunction holds: every member the same recognized idiom, no two members sharing a single non-keyword identifier, no two members sharing an enclosing context (file plus scope), and the group under 80 normalized tokens. Five cross-domain bucketing ladders that share only the idiom are noise; two ladders over the same enum, or two in one namespace, are a copy. The idiom name is printed precisely so a human can overrule the demotion by reading the members: a demoted row is annotated, never removed. idiom_groups= and demoted_groups= count each of those over ALL groups. FLOOR on the classifier, since a silence here would read as coverage: the shape is read off the body's TOKEN stream and not a parse tree, so a macro-assembled body classifies as whatever its raw tokens spell; the table arm models case-labelled switches only; and builder-chain models the field-assignment spelling, not the fluent chained-call one. gid= on a row is its CLONE COMPONENT: the Type-3 pass reports PAIRS, so three functions that are all near-copies of each other arrive as three rows of two; rows sharing a gid are one cluster, and clone_groups= counts the clusters (union-find over the pair graph, over ALL detected rows, not just the shown ones). dup_pct=duplicated-LOC/total-LOC as a percentage, where duplicated-LOC sums, per cluster, every member's loc EXCEPT the largest member's (one instance is the code you keep, the rest is the redundancy — so a 3-clone cluster counts its lines TWICE) and total-LOC is every function/method body the detector considered; dup_loc= and total_loc= are those two operands. counts_floor=\"1\": the Type-3 pair list is capped upstream, so a dropped pair is a cluster left unmerged — clone_groups/dup_loc/dup_pct are floors, never totals. raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). -->{}", rw::rootRelPathsLegend( clnSingleRoot ) );
     rw::emitTo( stdout, "<clones groups=\"{}\" type3=\"{}\"{} exempt_groups=\"{}\" idiom_groups=\"{}\" demoted_groups=\"{}\" clone_groups=\"{}\" dup_loc=\"{}\" total_loc=\"{}\" dup_pct=\"{:.1f}\" counts_floor=\"1\"{}{}>",
                  cg.size(), cg3.size(),
                  // M2: pageDisclosure's paging half (which spells total= itself) now also rides on a CUT bare run,
@@ -837,7 +837,7 @@ int emitClonesReport( const rw::Config& cfg, const rw::IngestResult& ing )
                  cloneDuplicationPercent( grouping ),
                  pageDisclosure( cpab, sizeof( cpab ), clonePage.end - clonePage.begin, cloneTotal, clonePage.end,
                                  cfg.pageLimit, cfg.pageOffset, true ),
-                 clnRootAttr.c_str()  );
+                 clnRootAttr.c_str() );
     std::vector<char> esc;
     const auto        ex = [ & ]( std::string_view s ) -> std::string { return std::string( escapeXml( s, esc ) ); };
     for( std::size_t rowIndex = clonePage.begin; rowIndex < clonePage.end; ++rowIndex )
@@ -849,27 +849,27 @@ int emitClonesReport( const rw::Config& cfg, const rw::IngestResult& ing )
         char        exemptAttr[ 40 ] = "";
         if( exemptKind )
         {
-            rw::formatTo( exemptAttr, sizeof( exemptAttr ), " exempt=\"{}\"", exemptKind  );
+            rw::formatTo( exemptAttr, sizeof( exemptAttr ), " exempt=\"{}\"", exemptKind );
         }
         const unsigned gid = flat < grouping.gidOfGroup.size() ? grouping.gidOfGroup[ flat ] : 0u;
         const std::string idiomAttr = cloneIdiomAttrs( isType3 ? vx3[ flat - cg.size() ] : vx[ flat ] );
         if( isType3 )
         {
-            rw::emitTo( stdout, "<group type=\"3\" gid=\"{}\" tokens=\"{}\" n=\"{}\" similarity=\"{:.2f}\"{}{}>", gid, gp.tokens, gp.members.size(), gp.similarity, exemptAttr, idiomAttr.c_str()  );
+            rw::emitTo( stdout, "<group type=\"3\" gid=\"{}\" tokens=\"{}\" n=\"{}\" similarity=\"{:.2f}\"{}{}>", gid, gp.tokens, gp.members.size(), gp.similarity, exemptAttr, idiomAttr.c_str() );
         }
         else
         {
-            rw::emitTo( stdout, "<group type=\"{}\" gid=\"{}\" tokens=\"{}\" n=\"{}\"{}{}>", gp.type, gid, gp.tokens, gp.members.size(), exemptAttr, idiomAttr.c_str()  );
+            rw::emitTo( stdout, "<group type=\"{}\" gid=\"{}\" tokens=\"{}\" n=\"{}\"{}{}>", gp.type, gid, gp.tokens, gp.members.size(), exemptAttr, idiomAttr.c_str() );
         }
         for( NodeId id : gp.members )
         {
             const Symbol&           s  = ing.symbols[id];
             const std::string_view  rp = clnSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], clnRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-            rw::emitTo( stdout, "<f n=\"{}\" p=\"{}:{}\"/>", ex( s.name ).c_str(), ex( rp ).c_str(), s.line  );
+            rw::emitTo( stdout, "<f n=\"{}\" p=\"{}:{}\"/>", ex( s.name ).c_str(), ex( rp ).c_str(), s.line );
         }
-        rw::emitTo( stdout, "</group>"  );
+        rw::emitTo( stdout, "</group>" );
     }
-    rw::emitTo( stdout, "</clones>"  );
+    rw::emitTo( stdout, "</clones>" );
     return 0;
 }
 
@@ -960,7 +960,7 @@ inline const char* coMinRecurAttr( char* buf, std::size_t cap, int minRecur )
     buf[ 0 ] = '\0';
     if( minRecur > 0 )
     {
-        rw::formatTo( buf, cap, " min_recur=\"{}\"", minRecur  );
+        rw::formatTo( buf, cap, " min_recur=\"{}\"", minRecur );
     }
     return buf;
 }
@@ -985,7 +985,7 @@ inline void emitCochangePairs( const rw::IngestResult& ing, const rw::Config& cf
     // capped= reconcile pairs= against the rows that follow even with no --limit at all.
     const rw::PageWindow prpw = rw::pageWindow( prs.size(), rw::effectiveRowCap( cfg.pageLimit, cap ), cfg.pageOffset );
     char                 prab[ 192 ];
-    rw::emitTo( stdout, "{}{}{}", kCochangeRepoLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( coSingleRoot )  );   // sweep: ditto
+    rw::emitTo( stdout, "{}{}{}", kCochangeRepoLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( coSingleRoot ) );   // sweep: ditto
     rw::emitTo( stdout, "<cochange pairs=\"{}\" window=\"{}\" sub_windows=\"{}\"{}{}{}{}>", prs.size(), windowLabel.c_str(), subWindows, minRecAttr,
                  rw::pageDisclosure( prab, sizeof( prab ), prpw.end - prpw.begin, prs.size(), prpw.end,
                                      cfg.pageLimit, cfg.pageOffset, true ),
@@ -1009,9 +1009,9 @@ inline void emitCochangePairs( const rw::IngestResult& ing, const rw::Config& cf
         rw::emitTo( stdout, "<pair a=\"{}\" b=\"{}\" together=\"{}\" deg=\"{:.2f}\" conf_ab=\"{:.2f}\" conf_ba=\"{:.2f}\"{} recur=\"{}\"{}/>",
                      ex( ra ).c_str(), ex( rb ).c_str(),
                      pr.n, pr.deg, pr.confAb, pr.confBa, driverAttr, pr.recur,
-                     rw::coPairAttr( pr.depCapable, pr.surprising )  );
+                     rw::coPairAttr( pr.depCapable, pr.surprising ) );
     }
-    rw::emitTo( stdout, "</cochange>"  );
+    rw::emitTo( stdout, "</cochange>" );
 }
 
 // §CLIO — the --cochange-groups document, hoisted out of runMaintenanceViews for the reason the legends
@@ -1038,18 +1038,18 @@ inline void emitCochangeGroups( const rw::IngestResult& ing, const rw::Config& c
     {
         coveredTotal += g.members.size();
     }
-    rw::emitTo( stdout, "{}{}{}", kCochangeGroupLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( cgSingleRoot )  );
+    rw::emitTo( stdout, "{}{}{}", kCochangeGroupLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( cgSingleRoot ) );
     rw::emitTo( stdout, "<cochange groups=\"{}\" pairs_covered=\"{}\" cover=\"greedy\" window=\"{}\" sub_windows=\"{}\"{}{}{}{}>",
                  groups.size(), coveredTotal, windowLabel.c_str(), subWindows, minRecAttr,
                  rw::pageDisclosure( gab, sizeof( gab ), gpw.end - gpw.begin, groups.size(), gpw.end,
                                      cfg.pageLimit, cfg.pageOffset, true ),
                  cgRootAttr.c_str(),                        // R-E fix: root= before at= — at= stays LAST (r26)
-                 rw::gitstamp::atAttr( root ).c_str()  );
+                 rw::gitstamp::atAttr( root ).c_str() );
     for( std::size_t gi = gpw.begin; gi < gpw.end; ++gi )
     {
         const rw::CoGroup&     g  = groups[ gi ];
         const std::string_view rc = cgSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ g.core ], cgRootPrefix ) : std::string_view( ing.files[ g.core ] );
-        rw::emitTo( stdout, "<group core=\"{}\" partners=\"{}\">", ex( rc ).c_str(), g.members.size()  );
+        rw::emitTo( stdout, "<group core=\"{}\" partners=\"{}\">", ex( rc ).c_str(), g.members.size() );
         for( std::size_t vi : g.members )
         {
             const rw::CoViolation& v       = viol[ vi ];
@@ -1059,11 +1059,11 @@ inline void emitCochangeGroups( const rw::IngestResult& ing, const rw::Config& c
             const double            confCore = ( v.a == g.core ) ? v.confA : v.confB;
             const std::string_view  rp       = cgSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ partner ], cgRootPrefix ) : std::string_view( ing.files[ partner ] );
             rw::emitTo( stdout, "<f p=\"{}\" together=\"{}\" recur=\"{}\" conf_core=\"{:.2f}\"/>",
-                         ex( rp ).c_str(), v.together, v.recur, confCore  );
+                         ex( rp ).c_str(), v.together, v.recur, confCore );
         }
-        rw::emitTo( stdout, "</group>"  );
+        rw::emitTo( stdout, "</group>" );
     }
-    rw::emitTo( stdout, "</cochange>"  );
+    rw::emitTo( stdout, "</cochange>" );
 }
 
 std::optional<int> runMaintenanceViews( const MainDispatch& d )
@@ -1147,14 +1147,14 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             {
                 std::vector<char>  sinceEsc;
                 const std::string  windowLabel = std::string( escapeXml( std::string_view( cfg.since ), sinceEsc ) );
-                rw::emitTo( stdout, "<!-- ripwire hotspots: the since-window matched no commits — empty result, not an error (git history exists) -->"  );
+                rw::emitTo( stdout, "<!-- ripwire hotspots: the since-window matched no commits — empty result, not an error (git history exists) -->" );
                 // the same partition the main path emits, so a reader parsing one shape parses both:
                 // an empty window means every file is unranked for want of churn.
                 rw::emitTo( stdout, "<hotspots window=\"{}\" files=\"{}\" ranked=\"0\" unranked_no_churn=\"{}\" unranked_no_complexity=\"0\" commits=\"0\" shown=\"0\" capped=\"0\"{}></hotspots>",
-                             windowLabel.c_str(), ing.files.size(), ing.files.size(), gitstamp::atAttr( root ).c_str()  );
+                             windowLabel.c_str(), ing.files.size(), ing.files.size(), gitstamp::atAttr( root ).c_str() );
                 return 0;
             }
-            rw::emitTo( stderr, "ripwire --hotspots: git unavailable / no history (need a git repo)\n"  );
+            rw::emitTo( stderr, "ripwire --hotspots: git unavailable / no history (need a git repo)\n" );
             return 1;
         }
 
@@ -1228,7 +1228,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                      windowLabelInComment.c_str(), rw::kAtStampLegend, rw::rootRelPathsLegend( mvSingleRoot )  );   // sweep: at= was undefined on this screen
         if( multiRoot )
         { // §5 comparability caveat: churn scales (commit-count conventions) differ per repo
-            rw::emitTo( stdout, "<!-- multi-root workspace: churn is mined PER root — hotspot scores are comparable within a root, not across roots -->"  );
+            rw::emitTo( stdout, "<!-- multi-root workspace: churn is mined PER root — hotspot scores are comparable within a root, not across roots -->" );
         }
         // T2: --limit/--offset paginate the sorted `order`. When no --limit, the historic topN cap (40 or
         // --pack-top-n) still bounds the response; --limit overrides it. ranked= is the TRUE total either way.
@@ -1245,7 +1245,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                      pageDisclosure( pab, sizeof( pab ), pw.end - pw.begin, order.size(), pw.end,
                                      cfg.pageLimit, cfg.pageOffset, true ),
                      mvRootAttr.c_str(),                    // R-E fix: root= before at= — at= stays LAST (r26)
-                     gitstamp::atAttr( root ).c_str()  );
+                     gitstamp::atAttr( root ).c_str() );
         std::vector<char> esc;
         const auto        ex = [ & ]( std::string_view s ) -> std::string { return std::string( escapeXml( s, esc ) ); };
         for( std::size_t i = pw.begin; i < pw.end; ++i )
@@ -1260,9 +1260,9 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             const std::string_view  rp    = mvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[f], mvRootPrefix ) : std::string_view( ing.files[f] );
             rw::emitTo( stdout, "<f p=\"{}\" churn=\"{}\" ccx=\"{}\" score=\"{}\" top=\"{}\" top_ccx=\"{}\" top_l=\"{}\"/>",
                          ex( rp ).c_str(), churn[f], (unsigned long long)ccxSum[f],
-                         (unsigned long long)score( f ), ex( worst.name ).c_str(), worstCcx[f], worst.line  );
+                         (unsigned long long)score( f ), ex( worst.name ).c_str(), worstCcx[f], worst.line );
         }
-        rw::emitTo( stdout, "</hotspots>"  );
+        rw::emitTo( stdout, "</hotspots>" );
         return 0;
     }
 
@@ -1304,7 +1304,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                 // One suggester (didyoumean.h::nearestIndexedFileClause) now serves both.
                 rw::emitTo( stderr, "ripwire --cochange: file not found: {} — it takes ONE indexed file path, e.g. "
                                       "--cochange=src/graph.h{}\n", std::string_view( cfg.cochangeFile.data(), cfg.cochangeFile.size() ),
-                              rw::nearestIndexedFileClause( ing, cfg.cochangeFile ).c_str()  );
+                              rw::nearestIndexedFileClause( ing, cfg.cochangeFile ).c_str() );
                 return 1;
             }
             // multi-root §5: the probed file belongs to exactly ONE root — mine that repo only (co-change is
@@ -1331,7 +1331,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             char              pab[ 192 ];
             char              pminrec[ 40 ];
             coMinRecurAttr( pminrec, sizeof( pminrec ), cfg.cochangeRecur );
-            rw::emitTo( stdout, "{}{}{}", kCochangeFileLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( mvSingleRoot )  );   // sweep: at= was undefined on this screen
+            rw::emitTo( stdout, "{}{}{}", kCochangeFileLegend, rw::kAtStampLegend, rw::rootRelPathsLegend( mvSingleRoot ) );   // sweep: at= was undefined on this screen
             // §P8 vocabulary: at="<sha>[+dirty]" — cochange is a PURE git-history product (every number in
             // it is mined from `git log`), and it was one of the last two verbs of that kind emitting numbers
             // with no anchor to the HEAD that produced them. Same gitstamp::atAttr every other repo-reading
@@ -1342,7 +1342,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                          pageDisclosure( pab, sizeof( pab ), ppw.end - ppw.begin, ps.size(), ppw.end,
                                          cfg.pageLimit, cfg.pageOffset, true ),
                          mvRootAttr.c_str(),                // R-E fix: root= before at= — at= stays LAST (r26)
-                         gitstamp::atAttr( root ).c_str()  );
+                         gitstamp::atAttr( root ).c_str() );
             for( std::size_t partnerIndex = ppw.begin; partnerIndex < ppw.end; ++partnerIndex )
             {
                 const std::string_view rp = mvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ ps[ partnerIndex ].fileId ], mvRootPrefix )
@@ -1350,9 +1350,9 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                 rw::emitTo( stdout, "<f p=\"{}\" together=\"{}\" deg=\"{:.2f}\" conf_rev=\"{:.2f}\" recur=\"{}\"{}/>",
                              ex( rp ).c_str(), ps[ partnerIndex ].together,
                              ps[ partnerIndex ].deg, ps[ partnerIndex ].degRev, ps[ partnerIndex ].recur,
-                             coPairAttr( ps[ partnerIndex ] )  );
+                             coPairAttr( ps[ partnerIndex ] ) );
             }
-            rw::emitTo( stdout, "</cochange>"  );
+            rw::emitTo( stdout, "</cochange>" );
             return 0;
         }
 
@@ -1384,15 +1384,15 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             // HEAD probe distinguishes them → clean empty (pairs="0", commits="0", exit 0) vs error+exit 1.
             if( sinceScope.active && gitRepoHasHistory( root ) )
             {
-                rw::emitTo( stdout, "<!-- ripwire cochange: the since-window matched no commits — empty result, not an error (git history exists) -->"  );
+                rw::emitTo( stdout, "<!-- ripwire cochange: the since-window matched no commits — empty result, not an error (git history exists) -->" );
                 // The at= stamp belongs on the EMPTY result too — "no pairs at this HEAD" is itself a claim
                 // about a specific HEAD, and --hotspots' own zero-row path already stamps for that reason.
                 // sub_windows="0" is the literal truth on this path: no commit was mined, so no partition was
                 // made. Emitting the nominal 3 here would name a denominator that never existed.
-                rw::emitTo( stdout, "<cochange pairs=\"0\" commits=\"0\" window=\"{}\" sub_windows=\"0\" shown=\"0\" capped=\"0\"{}></cochange>", coWindowLabel.c_str(), gitstamp::atAttr( root ).c_str()  );
+                rw::emitTo( stdout, "<cochange pairs=\"0\" commits=\"0\" window=\"{}\" sub_windows=\"0\" shown=\"0\" capped=\"0\"{}></cochange>", coWindowLabel.c_str(), gitstamp::atAttr( root ).c_str() );
                 return 0;
             }
-            rw::emitTo( stderr, "ripwire --cochange: git unavailable / no history (need a git repo)\n"  );
+            rw::emitTo( stderr, "ripwire --cochange: git unavailable / no history (need a git repo)\n" );
             return 1;
         }
         // §CLIO: one cell per pair carrying BOTH the support count and the sub-window bitmask, rather than a
@@ -1511,7 +1511,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             if( defs.empty() )
             {
                 rw::emitTo( stderr, "{}\n", selectorNotFoundMessage( ing, "ripwire: --owners symbol not found: ",
-                                                                       cfg.ownersSym, "--owners=" ).c_str()  );
+                                                                       cfg.ownersSym, "--owners=" ).c_str() );
                 return 1;
             }
             // §B11.3's SHAPE, found by that item's sweep and closed here: this is a fold that reports a scalar.
@@ -1554,7 +1554,7 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
         }
         if( ownerships.empty() )
         {
-            rw::emitTo( stderr, "ripwire --owners: git unavailable / no history (need a git repo with commits)\n"  );
+            rw::emitTo( stderr, "ripwire --owners: git unavailable / no history (need a git repo with commits)\n" );
             return 1;
         }
 
@@ -1605,10 +1605,10 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
                                      cfg.pageLimit, cfg.pageOffset, false ),
                      owSymAttr.c_str(),
                      mvRootAttr.c_str(),                    // R-E fix: root= before at= — at= stays LAST (r26)
-                     gitstamp::atAttr( root ).c_str()  );
+                     gitstamp::atAttr( root ).c_str() );
         if( !detail && uniformCount > 0 )
         {
-            rw::emitTo( stdout, "<uniform authors=\"1\" bf=\"1\" share=\"1.00\" files=\"{}\"/>", uniformCount  );
+            rw::emitTo( stdout, "<uniform authors=\"1\" bf=\"1\" share=\"1.00\" files=\"{}\"/>", uniformCount );
         }
         std::vector<char> owEsc;
         for( std::size_t rowIndex = owpw.begin; rowIndex < owpw.end; ++rowIndex )
@@ -1619,11 +1619,11 @@ std::optional<int> runMaintenanceViews( const MainDispatch& d )
             // path and email are externally-controlled strings — escape both to keep output valid XML.
             const std::string_view rp = mvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ ow.fileId ], mvRootPrefix ) : std::string_view( ing.files[ ow.fileId ] );
             const auto ep = rw::escapeXml( rp, owEsc );
-            rw::emitTo( stdout, "<f p=\"{}\" authors=\"{}\" bf=\"{}\"", std::string_view( ep.data(), ep.size() ), ow.uniqueAuthors, int( ow.busFactor )  );
+            rw::emitTo( stdout, "<f p=\"{}\" authors=\"{}\" bf=\"{}\"", std::string_view( ep.data(), ep.size() ), ow.uniqueAuthors, int( ow.busFactor ) );
             const auto em = rw::escapeXml( top.email, owEsc );
-            rw::emitTo( stdout, " top=\"{}\" share=\"{:.2f}\"/>", std::string_view( em.data(), em.size() ), top.share  );
+            rw::emitTo( stdout, " top=\"{}\" share=\"{:.2f}\"/>", std::string_view( em.data(), em.size() ), top.share );
         }
-        rw::emitTo( stdout, "</owners>"  );
+        rw::emitTo( stdout, "</owners>" );
         return 0;
     }
     return std::nullopt;
@@ -1748,7 +1748,7 @@ void writeOversizeRows( rw::XmlWriter& w, std::vector<char>& esc, const std::vec
         const std::string_view rp = rootPrefix.empty() ? std::string_view( sk.path ) : rw::sarif::rootRelativeUri( sk.path, rootPrefix );
         w.write( "<f p=\"" );  w.write( rw::escapeXml( rp, esc ) );
         rw::formatTo( row, sizeof( row ), "\" why=\"oversize\" bytes=\"{}\" limit=\"{}\"/>",
-                       ( unsigned long long ) sk.sizeBytes, ( unsigned long long ) sk.limitBytes  );
+                       ( unsigned long long ) sk.sizeBytes, ( unsigned long long ) sk.limitBytes );
         w.write( row );
     }
 }
@@ -1777,7 +1777,7 @@ void writeDropRows( rw::XmlWriter& w, std::vector<char>& esc, const std::vector<
         char row[ 96 ];
         const std::string_view rp = rootPrefix.empty() ? std::string_view( sf.path ) : rw::sarif::rootRelativeUri( sf.path, rootPrefix );
         w.write( "<f p=\"" );  w.write( rw::escapeXml( rp, esc ) );
-        rw::formatTo( row, sizeof( row ), "\" why=\"{}\" bytes=\"{}\" ext=\"", why, ( unsigned long long ) sf.sizeBytes  );
+        rw::formatTo( row, sizeof( row ), "\" why=\"{}\" bytes=\"{}\" ext=\"", why, ( unsigned long long ) sf.sizeBytes );
         w.write( row );
         w.write( rw::escapeXml( sf.ext, esc ) );
         w.write( "\"/>" );
@@ -1792,7 +1792,7 @@ void writeUnindexedExtRows( rw::XmlWriter& w, std::vector<char>& esc, const std:
     {
         char row[ 64 ];
         w.write( "<e x=\"" );  w.write( rw::escapeXml( ue.ext, esc ) );
-        rw::formatTo( row, sizeof( row ), "\" files=\"{}\"/>", ( unsigned long long ) ue.files  );
+        rw::formatTo( row, sizeof( row ), "\" files=\"{}\"/>", ( unsigned long long ) ue.files );
         w.write( row );
     }
 }
@@ -1817,7 +1817,7 @@ void writeHealthRows( rw::XmlWriter& w, std::vector<char>& esc, const rw::Ingest
                        hr.degraded ? "degraded-parse" : "",
                        ( hr.degraded && hr.minified ) ? "," : "",
                        hr.minified ? "minified-suspect" : "",
-                       h.errNodes, errFrac, wsFrac, h.fileBytes  );
+                       h.errNodes, errFrac, wsFrac, h.fileBytes );
         w.write( row );
     }
 }
@@ -1898,7 +1898,7 @@ void writeLangRows( rw::XmlWriter& w, std::vector<char>& esc, const std::vector<
         char row[ 64 ];
         w.write( "<lang n=\"" );  w.write( rw::escapeXml( rw::langTag( lc.lang ), esc ) );
         rw::formatTo( row, sizeof( row ), "\" files=\"{}\" symbols=\"{}\"/>",
-                       ( unsigned long long ) lc.files, ( unsigned long long ) lc.symbols  );
+                       ( unsigned long long ) lc.files, ( unsigned long long ) lc.symbols );
         w.write( row );
     }
 }
@@ -1964,7 +1964,7 @@ std::optional<int> runSkipped( const MainDispatch& d )
                        ( unsigned long long ) cs.ignoredFiles, ( unsigned long long ) cs.ignoredDirs, ignoreModeLabel( cs.ignoreMode ),
                        health.degraded, health.minified, health.unmeasured,
                        effectiveMax, kMaxJsonConfigBytes, kMaxYamlConfigBytes,
-                       rowsCapped ? " rows_capped=\"1\"" : ""  );
+                       rowsCapped ? " rows_capped=\"1\"" : "" );
         w.write( hdr );
         // R-E: root= is unbounded (a deep absolute path), so it is NOT folded into the fixed `hdr` buffer
         // above (the V1-1 truncation class main.cpp's own history warns about) — written separately as the
@@ -2003,7 +2003,7 @@ std::optional<int> runLayout( const MainDispatch& d )
 
     if( cfg.layoutStruct.empty() )
     {
-        rw::emitTo( stderr, "ripwire: --layout needs a struct/class name (e.g. --layout=AudioUniforms, or --layout=file.h:Name)\n"  );
+        rw::emitTo( stderr, "ripwire: --layout needs a struct/class name (e.g. --layout=AudioUniforms, or --layout=file.h:Name)\n" );
         return 1;
     }
 
@@ -2057,7 +2057,7 @@ std::optional<int> runFieldAffinity( const MainDispatch& d )
     if( d.multiRoot )
     {
         rw::emitTo( stderr, "ripwire: --field-affinity is single-root only (the offset model reads on-disk paths, "
-                              "which a merged workspace relabels) — run it once per root\n"  );
+                              "which a merged workspace relabels) — run it once per root\n" );
         return 1;
     }
 
@@ -2204,7 +2204,7 @@ int emitCommunitiesReport( const rw::Config& cfg, const rw::IngestResult& ing, c
                  "shown=/capped= describe the member list printed here: this listing is fixed at the 5 top-ranked members and is NOT "
                  "widened by limit=/offset= (those page the MODULE rows). capped=1 means members were dropped; drill= names the verb "
                  "that pages the full member list of one module. raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). "
-                 "{}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cmSingleRoot )  );
+                 "{}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cmSingleRoot ) );
     // §P11.6 drill=: the id= values below were the only identifiers this tool emitted that no verb took
     // back. The follow-up verb is named ON THE ROOT ELEMENT rather than in the doc comment, because an XML
     // comment may not contain a double hyphen (G4) and its entity escapes are NOT expanded — a caller would
@@ -2232,9 +2232,9 @@ int emitCommunitiesReport( const rw::Config& cfg, const rw::IngestResult& ing, c
         {
             const Symbol&           s  = ing.symbols[ mem[i] ];
             const std::string_view  rp = cmSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], cmRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-            rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line  );
+            rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line );
         }
-        rw::emitTo( stdout, "</community>"  );
+        rw::emitTo( stdout, "</community>" );
     }
     std::vector<std::pair<std::uint64_t, std::uint32_t>> br( bridge.begin(), bridge.end() );
     std::sort( br.begin(), br.end(), []( const auto& a, const auto& b ) { return a.second != b.second ? a.second > b.second : a.first < b.first; } );
@@ -2244,9 +2244,9 @@ int emitCommunitiesReport( const rw::Config& cfg, const rw::IngestResult& ing, c
         const std::uint32_t a = std::uint32_t( br[i].first >> 32 );
         const std::uint32_t b = std::uint32_t( br[i].first & 0xffffffffu );
         rw::emitTo( stdout, "<bridge a=\"{}\" b=\"{}\" from_label=\"{}\" to_label=\"{}\" edges=\"{}\"/>", a, b,
-                     ex( presentation.label[a] ).c_str(), ex( presentation.label[b] ).c_str(), br[i].second  );
+                     ex( presentation.label[a] ).c_str(), ex( presentation.label[b] ).c_str(), br[i].second );
     }
-    rw::emitTo( stdout, "</communities>"  );
+    rw::emitTo( stdout, "</communities>" );
     return 0;
 }
 
@@ -2293,10 +2293,10 @@ int emitCommunityDrill( const rw::Config& cfg, const rw::IngestResult& ing, cons
     if( !numeric || parsed >= K )
     {
         if( K == 0 )
-        { rw::emitTo( stderr, "ripwire: --community: this corpus has no call-graph modules to drill into\n"  );  return 1; }
+        { rw::emitTo( stderr, "ripwire: --community: this corpus has no call-graph modules to drill into\n" );  return 1; }
         rw::emitTo( stderr, "ripwire: --community: '{}' is not a module id — valid ids are 0..{} (the id= values --communities "
                               "and --zoom print); nearest valid id: {}\n", std::string_view( cfg.communityId.data(), cfg.communityId.size() ), K - 1,
-                      numeric ? K - 1 : 0u  );
+                      numeric ? K - 1 : 0u );
         return 1;
     }
     const std::uint32_t want = std::uint32_t( parsed );
@@ -2362,7 +2362,7 @@ int emitCommunityDrill( const rw::Config& cfg, const rw::IngestResult& ing, cons
                  "other modules. size= is the module's TRUE member count; shown=/capped= are this page. partition= is the FULL label "
                  "space (every id 0..partition-1, incl. isolated singletons) — the range the id= argument ranges over; modules= counts "
                  "the NON-isolated communities (size>=2), the SAME predicate the communities-listing verb's modules= uses, so parent "
-                 "and child agree. {}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cdSingleRoot )  );
+                 "and child agree. {}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cdSingleRoot ) );
     rw::emitTo( stdout, "<community id=\"{}\" size=\"{}\" dir=\"{}\" label=\"{}\" bridges=\"{}\" shown_bridges=\"{}\" bridges_capped=\"{}\" partition=\"{}\" modules=\"{}\"{}{}{}>",
                  want, std::size_t( mem.size() ), ex( presentation.directory[ want ] ).c_str(), ex( presentation.label[ want ] ).c_str(),
                  peers.size(), shownBridges, unsigned( shownBridges < peers.size() ), K, modulesNonIsolated,
@@ -2374,13 +2374,13 @@ int emitCommunityDrill( const rw::Config& cfg, const rw::IngestResult& ing, cons
     {
         const Symbol&           s  = ing.symbols[ mem[i] ];
         const std::string_view  rp = cdSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], cdRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-        rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line  );
+        rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line );
     }
     for( std::size_t i = 0; i < shownBridges; ++i )
     {
-        rw::emitTo( stdout, "<bridge to=\"{}\" to_label=\"{}\" edges=\"{}\"/>", peers[i].first, ex( presentation.label[ peers[i].first ] ).c_str(), peers[i].second  );
+        rw::emitTo( stdout, "<bridge to=\"{}\" to_label=\"{}\" edges=\"{}\"/>", peers[i].first, ex( presentation.label[ peers[i].first ] ).c_str(), peers[i].second );
     }
-    rw::emitTo( stdout, "</community>"  );
+    rw::emitTo( stdout, "</community>" );
     return 0;
 }
 
@@ -2393,7 +2393,7 @@ std::optional<int> runCommunityDrill( const MainDispatch& d )
     if( d.cfg.communityId.empty() )
     {
         rw::emitTo( stderr, "ripwire: --community needs a module ID — take one from the id= values --communities "
-                              "or --zoom print, e.g. --community=12\n"  );
+                              "or --zoom print, e.g. --community=12\n" );
         return 1;
     }
     return emitCommunityDrill( d.cfg, d.ing, d.g );
@@ -2512,16 +2512,16 @@ std::optional<int> runZoom( const MainDispatch& d )
             // nodes inside; bridge edges connect top modules. Deterministic node ids = "L<level>_<gid>".
             // W2-F: mermaid has no attribute grammar — the note is emitted ONLY on the truncating exit, as a
             // mermaid COMMENT so the diagram still renders with the warning attached.
-            rw::emitTo( stdout, "{}", rw::renderDisclosure( prD, rw::DiscloseAs::MermaidNote ).c_str()  );
-            rw::emitTo( stdout, "%% ripwire --zoom --mermaid: nested module hierarchy (multi-level Louvain). subgraph = top module, inner node = sub-module (dir, symbol count); edge = cross-module call count. Render at mermaid.live.\n"  );
-            rw::emitTo( stdout, "flowchart TB\n"  );
+            rw::emitTo( stdout, "{}", rw::renderDisclosure( prD, rw::DiscloseAs::MermaidNote ).c_str() );
+            rw::emitTo( stdout, "%% ripwire --zoom --mermaid: nested module hierarchy (multi-level Louvain). subgraph = top module, inner node = sub-module (dir, symbol count); edge = cross-module call count. Render at mermaid.live.\n" );
+            rw::emitTo( stdout, "flowchart TB\n" );
             std::vector<char> esc;
             const auto ex = [ & ]( std::string_view s ) -> std::string { std::string r( s ); for( char& ch : r ) { if( ch == '"' ) { ch = '\''; } } return r; };
             const std::size_t maxTopShown = std::min<std::size_t>( 10, topOrder.size() );
             for( std::size_t ti = 0; ti < maxTopShown; ++ti )
             {
                 const std::uint32_t t = topOrder[ti];
-                rw::emitTo( stdout, "  subgraph sgL{}_{} [\"{}<br/>{}\"]\n", topL, t, ex( domDirOf( topL, t ) ).c_str(), std::size_t( members[topL][t].size() )  );
+                rw::emitTo( stdout, "  subgraph sgL{}_{} [\"{}<br/>{}\"]\n", topL, t, ex( domDirOf( topL, t ) ).c_str(), std::size_t( members[topL][t].size() ) );
                 if( topL >= 1 )
                 {
                     std::vector<std::uint32_t> kids = children[topL][t];
@@ -2530,7 +2530,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                     const std::size_t maxKids = std::min<std::size_t>( 8, kids.size() );
                     for( std::size_t ki = 0; ki < maxKids; ++ki )
                     {
-                        rw::emitTo( stdout, "    nL{}_{}[\"{}<br/>{}\"]\n", topL - 1, kids[ki], ex( domDirOf( topL - 1, kids[ki] ) ).c_str(), std::size_t( members[topL - 1][ kids[ki] ].size() )  );
+                        rw::emitTo( stdout, "    nL{}_{}[\"{}<br/>{}\"]\n", topL - 1, kids[ki], ex( domDirOf( topL - 1, kids[ki] ) ).c_str(), std::size_t( members[topL - 1][ kids[ki] ].size() ) );
                     }
                 }
                 else   // single-level (no coarsening happened): show the module's top symbols as inner nodes
@@ -2540,10 +2540,10 @@ std::optional<int> runZoom( const MainDispatch& d )
                     const std::size_t maxS = std::min<std::size_t>( 5, mem.size() );
                     for( std::size_t si = 0; si < maxS; ++si )
                     {
-                        rw::emitTo( stdout, "    sL{}_{}_{}[\"{}\"]\n", topL, t, si, ex( ing.symbols[ mem[si] ].name ).c_str()  );
+                        rw::emitTo( stdout, "    sL{}_{}_{}[\"{}\"]\n", topL, t, si, ex( ing.symbols[ mem[si] ].name ).c_str() );
                     }
                 }
-                rw::emitTo( stdout, "  end\n"  );
+                rw::emitTo( stdout, "  end\n" );
             }
             std::vector<char> shownTop( h.counts[topL], 0 );
             for( std::size_t ti = 0; ti < maxTopShown; ++ti )
@@ -2559,7 +2559,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                 {
                     continue;
                 }
-                rw::emitTo( stdout, "  sgL{}_{} -->|{}| sgL{}_{}\n", topL, a, w, topL, b  );
+                rw::emitTo( stdout, "  sgL{}_{} -->|{}| sgL{}_{}\n", topL, a, w, topL, b );
             }
             return 0;
         }
@@ -2591,7 +2591,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                      "levels_shown= is how many of the levels= this document prints from the top (default 2; the zoom-levels flag sets it, 0 = all): a module AT the cut "
                      "carries children= (its child modules, none printed) instead of nesting. The top-level module rows are a WINDOW (shown=/capped=/total=/next_offset=, "
                      "default 40 largest; limit=/offset= page it) and next= pastes the next page. {}{}-->",
-                     rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str()  );
+                     rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str() );
         // §P15/§P16: top_modules= is a real, deterministically-ordered row list (size desc, id asc — the same
         // rule --communities' module listing uses) that used to print EVERY top module unconditionally, so a
         // repo with hundreds of top modules had no way to page it. --limit/--offset now window it like --uses
@@ -2613,7 +2613,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                                        cfg.pageLimit, cfg.pageOffset, zoomCut )
                        + rw::renderDisclosure( prD, rw::DiscloseAs::XmlAttrs ) ).c_str(),
                      rw::graphCountFloorAttrXml( g ).c_str(),   // H5/M15: gauge + marker; isolated=/top_modules= partition the name-based CSR
-                     zoomNext.c_str()  );
+                     zoomNext.c_str() );
 
         // a stack-free recursion via an explicit lambda (std::function — not hot). Emits <module> elements
         // nested by level; the finest level emits <member> leaves.
@@ -2625,16 +2625,16 @@ std::optional<int> runZoom( const MainDispatch& d )
             // which rather than leaving a reader to infer it from an absent attribute.
             const std::size_t leafShown = ( l == 0 ) ? std::min<std::size_t>( 5, members[0][gid].size() ) : 0;
             const bool        atCut     = l > 0 && l == cutLevel;   // P4: printed, but its children are not
-            rw::emitTo( stdout, "<module level=\"{}\" id=\"{}\" size=\"{}\" dir=\"{}\"", l, gid, std::size_t( members[l][gid].size() ), ex( domDirOf( l, gid ) ).c_str()  );
+            rw::emitTo( stdout, "<module level=\"{}\" id=\"{}\" size=\"{}\" dir=\"{}\"", l, gid, std::size_t( members[l][gid].size() ), ex( domDirOf( l, gid ) ).c_str() );
             if( l == 0 )
             {
-                rw::emitTo( stdout, " shown=\"{}\" capped=\"{}\"", leafShown, unsigned( leafShown < members[0][gid].size() )  );
+                rw::emitTo( stdout, " shown=\"{}\" capped=\"{}\"", leafShown, unsigned( leafShown < members[0][gid].size() ) );
             }
             if( atCut )
             {
-                rw::emitTo( stdout, " children=\"{}\"", std::size_t( children[l][gid].size() )  );
+                rw::emitTo( stdout, " children=\"{}\"", std::size_t( children[l][gid].size() ) );
             }
-            rw::emitTo( stdout, ">"  );
+            rw::emitTo( stdout, ">" );
             if( atCut )
             {
                 // the depth ceiling: nothing below this row is printed (levels_shown= on the root says so)
@@ -2647,7 +2647,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                 for( std::size_t i = 0; i < topN; ++i )
                 {
                     const Symbol& s = ing.symbols[ mem[i] ];
-                    rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( ing.files[ s.fileId ] ).c_str(), s.line  );
+                    rw::emitTo( stdout, "<member t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( ing.files[ s.fileId ] ).c_str(), s.line );
                 }
             }
             else           // recurse into child modules (next-finer level), highest rank-mass first (V6)
@@ -2660,7 +2660,7 @@ std::optional<int> runZoom( const MainDispatch& d )
                     emit( l - 1, cg );
                 }
             }
-            rw::emitTo( stdout, "</module>"  );
+            rw::emitTo( stdout, "</module>" );
         };
         for( std::size_t ti = zoomPw.begin; ti < zoomPw.end; ++ti )
         {
@@ -2672,9 +2672,9 @@ std::optional<int> runZoom( const MainDispatch& d )
         const std::size_t topB = std::min<std::size_t>( 12, br.size() );
         for( std::size_t i = 0; i < topB; ++i )
         {
-            rw::emitTo( stdout, "<bridge a=\"{}\" b=\"{}\" edges=\"{}\"/>", std::uint32_t( br[i].first >> 32 ), std::uint32_t( br[i].first & 0xffffffffu ), br[i].second  );
+            rw::emitTo( stdout, "<bridge a=\"{}\" b=\"{}\" edges=\"{}\"/>", std::uint32_t( br[i].first >> 32 ), std::uint32_t( br[i].first & 0xffffffffu ), br[i].second );
         }
-        rw::emitTo( stdout, "</zoom>"  );
+        rw::emitTo( stdout, "</zoom>" );
         return 0;
     }
     return std::nullopt;
@@ -2792,7 +2792,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
         // situ.h's kTestGateLegend and flipimpact.h's writeFlipHeader). Each legend was locally honest,
         // which is precisely why a reader comparing two of the numbers is misled.
         rw::emitTo( stdout, "<!-- ripwire seams: cross-directory call edges NO test reaches (untested integration seams; a fact, not a mandate). module = parent dir; seam = caller-dir -> callee-dir, spelled from= and to=. Each seam pages its own edge rows with shown=/capped=; an edge names caller= at site p= calling callee= at site cp=. UNIT: untested= here counts cross-directory call EDGES. The test gate verb spells untested= over impacted SYMBOLS and the flip verb over the defs a gate lights, so the three numbers count three different things and must never be compared or summed across verbs. raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). {}{}-->{}",
-                     rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( stSingleRoot )  );
+                     rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( stSingleRoot ) );
         // P2.1: two nested caps, neither previously marked — at most 20 seam PAIRS, and at most 5 example
         // EDGES inside each. Each <seam> gains shown= alongside its true untested= count.
         //
@@ -2826,7 +2826,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
                        { return rank[a.u] != rank[b.u] ? rank[a.u] > rank[b.u] : a.u < b.u; } );
             const std::size_t topE = std::min<std::size_t>( 5, edges.size() );
             rw::emitTo( stdout, "<seam from=\"{}\" to=\"{}\" untested=\"{}\" shown=\"{}\" capped=\"{}\">",
-                         ex( dirName[cu] ).c_str(), ex( dirName[cv] ).c_str(), edges.size(), topE, topE < edges.size() ? 1 : 0  );
+                         ex( dirName[cu] ).c_str(), ex( dirName[cv] ).c_str(), edges.size(), topE, topE < edges.size() ? 1 : 0 );
             for( std::size_t i = 0; i < topE; ++i )
             {
                 const Symbol&           su  = ing.symbols[ edges[i].u ];
@@ -2835,11 +2835,11 @@ std::optional<int> runStructureText( const MainDispatch& d )
                 const std::string_view  rpv = stSingleRoot ? rw::sarif::rootRelativeUri( ing.files[sv.fileId], stRootPrefix ) : std::string_view( ing.files[sv.fileId] );
                 rw::emitTo( stdout, "<edge caller=\"{}\" p=\"{}:{}\" callee=\"{}\" cp=\"{}:{}\"/>",
                              ex( su.name ).c_str(), ex( rpu ).c_str(), su.line,
-                             ex( sv.name ).c_str(), ex( rpv ).c_str(), sv.line  );
+                             ex( sv.name ).c_str(), ex( rpv ).c_str(), sv.line );
             }
-            rw::emitTo( stdout, "</seam>"  );
+            rw::emitTo( stdout, "</seam>" );
         }
-        rw::emitTo( stdout, "</seams>"  );
+        rw::emitTo( stdout, "</seams>" );
         return 0;
     }
 
@@ -2909,8 +2909,8 @@ std::optional<int> runStructureText( const MainDispatch& d )
         };
 
         constexpr std::uint32_t minW = 3;                              // hide trivial edges for readability
-        rw::emitTo( stdout, "%% ripwire --mermaid: module (directory) dependency graph — node = dir (symbol count), edge = inter-module calls (>= {}). Render at mermaid.live.\n", minW  );
-        rw::emitTo( stdout, "flowchart LR\n"  );
+        rw::emitTo( stdout, "%% ripwire --mermaid: module (directory) dependency graph — node = dir (symbol count), edge = inter-module calls (>= {}). Render at mermaid.live.\n", minW );
+        rw::emitTo( stdout, "flowchart LR\n" );
         // group shown nodes by TOP-LEVEL directory component → mermaid subgraphs (visual subsystem clusters)
         HashMap<std::string, std::vector<std::uint32_t>> groups;
         std::vector<std::string>                         groupOrder;
@@ -2933,15 +2933,15 @@ std::optional<int> runStructureText( const MainDispatch& d )
             const bool wrap = gnodes.size() > 1;                       // wrap multi-node subsystems; lone dirs stay bare
             if( wrap )
             {
-                rw::emitTo( stdout, "  subgraph sg{} [\"{}\"]\n", gi, gname.c_str()  );
+                rw::emitTo( stdout, "  subgraph sg{} [\"{}\"]\n", gi, gname.c_str() );
             }
             for( std::uint32_t c : gnodes )
             {
-                rw::emitTo( stdout, "{}n{}[\"{}<br/>{}\"]\n", wrap ? "    " : "  ", c, label( c ).c_str(), sz[c]  );
+                rw::emitTo( stdout, "{}n{}[\"{}<br/>{}\"]\n", wrap ? "    " : "  ", c, label( c ).c_str(), sz[c] );
             }
             if( wrap )
             {
-                rw::emitTo( stdout, "  end\n"  );
+                rw::emitTo( stdout, "  end\n" );
             }
             ++gi;
         }
@@ -2954,7 +2954,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
             {
                 continue;
             }
-            rw::emitTo( stdout, "  n{} -->|{}| n{}\n", du, weight, dv  );
+            rw::emitTo( stdout, "  n{} -->|{}| n{}\n", du, weight, dv );
         }
         return 0;
     }
@@ -3009,11 +3009,11 @@ std::optional<int> runStructureText( const MainDispatch& d )
         // 5-backtick fence always safely embeds it whole (test/mdembedcheck.sh pins this). Every element below
         // is SYNTHESIZED (counts, sorted names, fixed section labels) — no verbatim file content is embedded,
         // which is what makes this an enforceable guarantee rather than an incidental one (contrast --recall).
-        rw::emitTo( stdout, "<!-- ripwire markdown: no run of 4-or-more backticks in this output — safe to embed inside a wider fence -->\n\n"  );
+        rw::emitTo( stdout, "<!-- ripwire markdown: no run of 4-or-more backticks in this output — safe to embed inside a wider fence -->\n\n" );
         // W2-F: markdown has no attribute grammar — the note is emitted ONLY on the truncating exit.
-        rw::emitTo( stdout, "{}", rw::renderDisclosure( prD, rw::DiscloseAs::MarkdownNote ).c_str()  );
+        rw::emitTo( stdout, "{}", rw::renderDisclosure( prD, rw::DiscloseAs::MarkdownNote ).c_str() );
         rw::emitTo( stdout, "# ripwire architecture report\n\n{} files · {} symbols · {} edges · {} modules ({} call-graph isolated)\n\n",
-                     F, N, std::uint32_t( g.outTargets.size() ), modules, isolates.total  );
+                     F, N, std::uint32_t( g.outTargets.size() ), modules, isolates.total );
         // R-E (2026-08-17 harvest): paths below are root-relative on a single-root run (same convention every
         // other verb's root= attribute states); this line is the markdown twin — the ONLY place the absolute
         // root is spelled, so it stays recoverable from the document per the honesty rule every other verb follows.
@@ -3022,7 +3022,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
             rw::emitTo( stdout, "Root: `{}`\n\n", std::string_view( cfg.roots[0].data(), cfg.roots[0].size() ) );
         }
         rw::emitTo( stdout, "Call-graph isolate provenance: {} declaration, {} header, {} source, {} document; {} connected Louvain singletons\n\n",
-                     isolates.declaration, isolates.header, isolates.source, isolates.document, isolates.connectedSingletons  );
+                     isolates.declaration, isolates.header, isolates.source, isolates.document, isolates.connectedSingletons );
 
         std::vector<std::uint32_t> ord( cm.count );
         for( std::uint32_t c = 0; c < cm.count; ++c )
@@ -3031,7 +3031,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
         }
         std::sort( ord.begin(), ord.end(), [ & ]( std::uint32_t a, std::uint32_t b ) { return members[a].size() != members[b].size() ? members[a].size() > members[b].size() : a < b; } );
         const std::uint32_t reportModules = std::min<std::uint32_t>( modules, 12 );
-        rw::emitTo( stdout, "## Modules (call-graph clusters; showing {} of {})\n", reportModules, modules  );
+        rw::emitTo( stdout, "## Modules (call-graph clusters; showing {} of {})\n", reportModules, modules );
         std::uint32_t shown = 0;
         // §P6.2: no separate "(lead: ...)" annotation — the label above IS the semantic anchor now (highest
         // fan-in non-accessor member), so a second "top PageRank member" field would just reintroduce the
@@ -3046,7 +3046,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
             {
                 break;
             }
-            rw::emitTo( stdout, "- **{}** — {} symbols\n", presentation.label[c].c_str(), std::size_t( members[c].size() )  );
+            rw::emitTo( stdout, "- **{}** — {} symbols\n", presentation.label[c].c_str(), std::size_t( members[c].size() ) );
         }
 
         std::vector<std::uint32_t> ford( F );
@@ -3057,7 +3057,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
         std::sort( ford.begin(), ford.end(), [ & ]( std::uint32_t a, std::uint32_t b ) { return afferent[a] != afferent[b] ? afferent[a] > afferent[b] : a < b; } );
         const std::size_t godFileCount = std::count_if( afferent.begin(), afferent.end(), []( std::uint32_t count ) { return count > 0; } );
         const std::size_t reportGodFiles = std::min<std::size_t>( godFileCount, 10 );
-        rw::emitTo( stdout, "\n## God files (most depended-on; showing {} of {})\n", reportGodFiles, godFileCount  );
+        rw::emitTo( stdout, "\n## God files (most depended-on; showing {} of {})\n", reportGodFiles, godFileCount );
         bool anyGod = false;
         for( std::uint32_t i = 0; i < F && i < 10; ++i )
         {
@@ -3067,30 +3067,30 @@ std::optional<int> runStructureText( const MainDispatch& d )
             }
             anyGod = true;
             const std::string_view rp = stSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ford[i]], stRootPrefix ) : std::string_view( ing.files[ford[i]] );
-            rw::emitTo( stdout, "- `{}` — {} dependents\n", std::string_view( rp.data(), rp.size() ), afferent[ford[i]]  );
+            rw::emitTo( stdout, "- `{}` — {} dependents\n", std::string_view( rp.data(), rp.size() ), afferent[ford[i]] );
         }
         if( !anyGod )
         {
-            rw::emitTo( stdout, "- (no include/import edges captured)\n"  );
+            rw::emitTo( stdout, "- (no include/import edges captured)\n" );
         }
 
         const std::size_t reportCycles = std::min<std::size_t>( cycles.size(), 6 );
-        rw::emitTo( stdout, "\n## Dependency cycles (showing {} of {})\n", reportCycles, cycles.size()  );
+        rw::emitTo( stdout, "\n## Dependency cycles (showing {} of {})\n", reportCycles, cycles.size() );
         if( cycles.empty() )
         {
-            rw::emitTo( stdout, "- none (acyclic)\n"  );
+            rw::emitTo( stdout, "- none (acyclic)\n" );
         }
         else
         {
             for( std::size_t i = 0; i < cycles.size() && i < 6; ++i )
             {
-                rw::emitTo( stdout, "- "  );
+                rw::emitTo( stdout, "- " );
                 for( std::size_t j = 0; j < cycles[i].size(); ++j )
                 {
                     const std::string_view rp = stSingleRoot ? rw::sarif::rootRelativeUri( ing.files[cycles[i][j]], stRootPrefix ) : std::string_view( ing.files[cycles[i][j]] );
                     rw::emitTo( stdout, "{}`{}`", j ? " ↔ " : "", std::string_view( rp.data(), rp.size() ) );
                 }
-                rw::emitTo( stdout, "\n"  );
+                rw::emitTo( stdout, "\n" );
             }
         }
 
@@ -3101,12 +3101,12 @@ std::optional<int> runStructureText( const MainDispatch& d )
         }
         std::sort( ts.begin(), ts.end(), [ & ]( NodeId a, NodeId b ) { return rank[a] != rank[b] ? rank[a] > rank[b] : a < b; } );
         const std::uint32_t reportTopSymbols = std::min<std::uint32_t>( N, 10 );
-        rw::emitTo( stdout, "\n## Top symbols (PageRank; showing {} of {})\n", reportTopSymbols, N  );
+        rw::emitTo( stdout, "\n## Top symbols (PageRank; showing {} of {})\n", reportTopSymbols, N );
         for( std::uint32_t i = 0; i < N && i < 10; ++i )
         {
             const Symbol&           s  = ing.symbols[ ts[i] ];
             const std::string_view  rp = stSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], stRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-            rw::emitTo( stdout, "- `{}` ({}:{})\n", s.name.c_str(), std::string_view( rp.data(), rp.size() ), s.line  );
+            rw::emitTo( stdout, "- `{}` ({}:{})\n", s.name.c_str(), std::string_view( rp.data(), rp.size() ), s.line );
         }
 
         HashMap<std::uint64_t, std::uint32_t> bridge;
@@ -3126,17 +3126,17 @@ std::optional<int> runStructureText( const MainDispatch& d )
         std::vector<std::pair<std::uint64_t, std::uint32_t>> br( bridge.begin(), bridge.end() );
         std::sort( br.begin(), br.end(), []( const auto& a, const auto& b ) { return a.second != b.second ? a.second > b.second : a.first < b.first; } );
         const std::size_t reportBridges = std::min<std::size_t>( br.size(), 8 );
-        rw::emitTo( stdout, "\n## Cross-module bridges (showing {} of {})\n", reportBridges, br.size()  );
+        rw::emitTo( stdout, "\n## Cross-module bridges (showing {} of {})\n", reportBridges, br.size() );
         if( br.empty() )
         {
-            rw::emitTo( stdout, "- (none)\n"  );
+            rw::emitTo( stdout, "- (none)\n" );
         }
         else
         {
             for( std::size_t i = 0; i < br.size() && i < 8; ++i )
             {
                 const std::uint32_t a = std::uint32_t( br[i].first >> 32 ), b = std::uint32_t( br[i].first & 0xffffffffu );
-                rw::emitTo( stdout, "- {} ↔ {} ({} edges)\n", presentation.label[a].c_str(), presentation.label[b].c_str(), br[i].second  );
+                rw::emitTo( stdout, "- {} ↔ {} ({} edges)\n", presentation.label[a].c_str(), presentation.label[b].c_str(), br[i].second );
             }
         }
         return 0;
@@ -3192,7 +3192,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
                      "The rows are a WINDOW even without explicit paging: the default prints the 80 files with the best-ranked symbols "
                      "(shown=/capped=/total=/has_more=/next_offset= disclose the cut) and next= pastes the next page; limit= raises it. "
                      "{}-->{}", rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(),
-                     rw::rootRelPathsLegend( trSingleRoot )  );
+                     rw::rootRelPathsLegend( trSingleRoot ) );
         // T2 + §P8 G1: --limit/--offset paginate over the (sorted) non-empty file set. files= stays the TRUE
         // total of INDEXED files (all of them, matching pre-T2) — deliberately NOT the paging total, because
         // the emitted rows are the non-empty subset `ford`, and total= must be the count a next_offset walks
@@ -3209,7 +3209,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
                      ( pageDisclosure( pab, sizeof( pab ), pw.end - pw.begin, ford.size(), pw.end,
                                        cfg.pageLimit, cfg.pageOffset, treeCut )
                        + rw::renderDisclosure( prD, rw::DiscloseAs::XmlAttrs ) ).c_str(),
-                     trRootAttr.c_str(), treeNext.c_str()  );
+                     trRootAttr.c_str(), treeNext.c_str() );
         std::vector<char> trEsc;
         for( std::size_t fi = pw.begin; fi < pw.end; ++fi )
         {
@@ -3219,7 +3219,7 @@ std::optional<int> runStructureText( const MainDispatch& d )
             // path and symbol names may contain & < > " — escape them to keep XML well-formed.
             const auto ep = rw::escapeXml( trSingleRoot ? rw::sarif::rootRelativeUri( ing.files[f], trRootPrefix )
                                                         : std::string_view( ing.files[f] ), trEsc );
-            rw::emitTo( stdout, "<file p=\"{}\" symbols=\"{}\">", std::string_view( ep.data(), ep.size() ), std::size_t( syms.size() )  );
+            rw::emitTo( stdout, "<file p=\"{}\" symbols=\"{}\">", std::string_view( ep.data(), ep.size() ), std::size_t( syms.size() ) );
             const std::size_t topN = std::min<std::size_t>( 3, syms.size() );
             for( std::size_t i = 0; i < topN; ++i )
             {
@@ -3227,9 +3227,9 @@ std::optional<int> runStructureText( const MainDispatch& d )
                 const auto en = rw::escapeXml( s.name, trEsc );
                 rw::emitTo( stdout, "<s t=\"{}\" n=\"{}\"/>", symTag( s.kind ), std::string_view( en.data(), en.size() ) );
             }
-            rw::emitTo( stdout, "</file>"  );
+            rw::emitTo( stdout, "</file>" );
         }
-        rw::emitTo( stdout, "</tree>"  );
+        rw::emitTo( stdout, "</tree>" );
         return 0;
     }
     return std::nullopt;

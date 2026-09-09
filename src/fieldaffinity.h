@@ -1053,7 +1053,7 @@ inline void writeFieldAffinity( std::FILE* out, const AffResult& res, std::strin
         "raw-pointer chase target). as_query_capped=1 means the classification hit its query budget, making every "
         "as_* count a floor. NEVER ranking-affecting yet: the required real-corpus, blind-reviewed "
         "precision floor has not run, so sepcost= is IDENTICAL with or without this disclosure. See "
-        "src/accessshape.h and docs/FIELDAFFINITY.md sec 8. -->"  );
+        "src/accessshape.h and docs/FIELDAFFINITY.md sec 8. -->" );
 
     rw::emitTo( out, "<fieldaffinity block=\"{}\" model=\"lp64-approx\" counts_floor=\"1\" weighting=\"fanin-floor\""
                        " aggregates=\"{}\" files=\"{}\" fns_scanned=\"{}\" accesses=\"{}\" amb_skipped=\"{}\""
@@ -1062,154 +1062,154 @@ inline void writeFieldAffinity( std::FILE* out, const AffResult& res, std::strin
                   kCacheBlockBytes, res.aggregates, res.filesScanned, res.fnsScanned, res.accesses,
                   res.ambSkipped, res.structsTotal, res.rows.size(),
                   ( res.structsTotal > res.rows.size() ) ? 1 : 0, res.findings, kMinCoAccessFns,
-                  res.asForLoops, res.asIndexLoops, res.asChaseLoops, res.asMixedLoops, res.asUnknownLoops  );
+                  res.asForLoops, res.asIndexLoops, res.asChaseLoops, res.asMixedLoops, res.asUnknownLoops );
     if( res.filtered )
     {
-        rw::emitTo( out, " sym=\"{}\"", ex( res.sym ).c_str()  );
+        rw::emitTo( out, " sym=\"{}\"", ex( res.sym ).c_str() );
     }
     if( res.aggsCapped > 0 )
     {
-        rw::emitTo( out, " aggs_capped=\"{}\"", res.aggsCapped  );
+        rw::emitTo( out, " aggs_capped=\"{}\"", res.aggsCapped );
     }
     if( res.asLoopsCapped > 0 )
     {
-        rw::emitTo( out, " as_loops_capped=\"{}\"", res.asLoopsCapped  );
+        rw::emitTo( out, " as_loops_capped=\"{}\"", res.asLoopsCapped );
     }
     if( res.asStemAmbiguous > 0 )
     {
-        rw::emitTo( out, " as_stem_ambiguous=\"{}\"", res.asStemAmbiguous  );
+        rw::emitTo( out, " as_stem_ambiguous=\"{}\"", res.asStemAmbiguous );
     }
     if( res.asStemUnowned > 0 )
     {
-        rw::emitTo( out, " as_stem_unowned=\"{}\"", res.asStemUnowned  );
+        rw::emitTo( out, " as_stem_unowned=\"{}\"", res.asStemUnowned );
     }
     if( res.asStemNonptr > 0 )
     {
-        rw::emitTo( out, " as_stem_nonptr=\"{}\"", res.asStemNonptr  );
+        rw::emitTo( out, " as_stem_nonptr=\"{}\"", res.asStemNonptr );
     }
     if( res.asQueryCapped )
     {
-        rw::emitRaw( out, " as_query_capped=\"1\""  );
+        rw::emitRaw( out, " as_query_capped=\"1\"" );
     }
     if( !res.asUncompiledQueries.empty() )
     {
-        rw::emitTo( out, " as_uncompiled=\"{}\"", res.asUncompiledQueries.size()  );
+        rw::emitTo( out, " as_uncompiled=\"{}\"", res.asUncompiledQueries.size() );
     }
-    rw::emitTo( out, "{}>", rootAttr.c_str()  );
+    rw::emitTo( out, "{}>", rootAttr.c_str() );
 
     for( const AffStruct& s : res.rows )
     {
         rw::emitTo( out, "<s n=\"{}\" p=\"{}\" l=\"{}\" agg=\"{}\" modeled=\"{}\" fields=\"{}\" touched=\"{}\""
                            " fns=\"{}\" pairs=\"{}\" sepcost=\"{:.2f}\" findings=\"{}\"",
                       ex( s.name ).c_str(), ex( pathRel( s.path ) ).c_str(), s.line, s.aggregate, s.modeled ? 1 : 0,
-                      s.declared, s.fieldsTotal, s.touchedFns, s.pairsTotal, s.sepCost, s.findings.size()  );
+                      s.declared, s.fieldsTotal, s.touchedFns, s.pairsTotal, s.sepCost, s.findings.size() );
         if( s.modeled )
         {
             rw::emitTo( out, " size=\"{}\" align=\"{}\" lines=\"{}\"",
-                          s.size, s.align, ( s.size + kCacheBlockBytes - 1 ) / kCacheBlockBytes  );
+                          s.size, s.align, ( s.size + kCacheBlockBytes - 1 ) / kCacheBlockBytes );
         }
         else if( !s.why.empty() )
         {
             // §L10: the legend explains the CLASS of refusal (bitfield/virtual/base-class/…); this names
             // the INSTANCE's own reason(s), same spelling --layout's own caveat rows already use.
-            rw::emitTo( out, " why=\"{}\"", ex( s.why ).c_str()  );
+            rw::emitTo( out, " why=\"{}\"", ex( s.why ).c_str() );
         }
-        rw::emitRaw( out, ">"  );
+        rw::emitRaw( out, ">" );
 
         for( const AffField& f : s.fields )
         {
-            rw::emitTo( out, "<f n=\"{}\" acc=\"{}\" fns=\"{}\"", ex( f.name ).c_str(), f.accesses, f.fns  );
+            rw::emitTo( out, "<f n=\"{}\" acc=\"{}\" fns=\"{}\"", ex( f.name ).c_str(), f.accesses, f.fns );
             if( f.sized )
             {
-                rw::emitTo( out, " sz=\"{}\"", f.size  );
+                rw::emitTo( out, " sz=\"{}\"", f.size );
             }
             if( f.placed )
             {
-                rw::emitTo( out, " off=\"{}\" ln=\"{}\"", f.offset, f.offset / kCacheBlockBytes  );
+                rw::emitTo( out, " off=\"{}\" ln=\"{}\"", f.offset, f.offset / kCacheBlockBytes );
             }
             else
             {
-                rw::emitRaw( out, " placed=\"0\""  );
+                rw::emitRaw( out, " placed=\"0\"" );
             }
             if( f.chaseLoops > 0 )
             {
-                rw::emitTo( out, " chase=\"1\" loops=\"{}\"", f.chaseLoops  );
+                rw::emitTo( out, " chase=\"1\" loops=\"{}\"", f.chaseLoops );
                 if( f.chaseConf != accessshape::ChaseConfidence::None )
                 {
-                    rw::emitTo( out, " shape_conf=\"{}\"", accessshape::confidenceName( f.chaseConf )  );
+                    rw::emitTo( out, " shape_conf=\"{}\"", accessshape::confidenceName( f.chaseConf ) );
                 }
             }
-            rw::emitRaw( out, "/>"  );
+            rw::emitRaw( out, "/>" );
         }
         for( const AffPair& p : s.pairs )
         {
             rw::emitTo( out, "<pair a=\"{}\" b=\"{}\" fns=\"{}\" w=\"{}\"",
                           ex( s.fields[ p.a ].name ).c_str(), ex( s.fields[ p.b ].name ).c_str(),
-                          p.fns, static_cast<unsigned long long>( p.weight )  );
+                          p.fns, static_cast<unsigned long long>( p.weight ) );
             if( p.measured )
             {
-                rw::emitTo( out, " dist=\"{}\" wt=\"{:.2f}\"", p.dist, p.wt  );
+                rw::emitTo( out, " dist=\"{}\" wt=\"{:.2f}\"", p.dist, p.wt );
             }
             else
             {
-                rw::emitRaw( out, " measured=\"0\""  );
+                rw::emitRaw( out, " measured=\"0\"" );
             }
-            rw::emitRaw( out, "/>"  );
+            rw::emitRaw( out, "/>" );
         }
         for( const AffFinding& f : s.findings )
         {
-            rw::emitTo( out, "<finding k=\"{}\" f=\"{}\"", f.kind, ex( f.a ).c_str()  );
+            rw::emitTo( out, "<finding k=\"{}\" f=\"{}\"", f.kind, ex( f.a ).c_str() );
             if( !f.b.empty() )
             {
-                rw::emitTo( out, " g=\"{}\" dist=\"{}\" wt=\"0.00\"", ex( f.b ).c_str(), f.dist  );
+                rw::emitTo( out, " g=\"{}\" dist=\"{}\" wt=\"0.00\"", ex( f.b ).c_str(), f.dist );
             }
             else
             {
                 rw::emitTo( out, " off=\"{}\" sz=\"{}\" crosses=\"{}\"",
-                              f.offset, f.size, ( f.offset + f.size - 1 ) / kCacheBlockBytes  );
+                              f.offset, f.size, ( f.offset + f.size - 1 ) / kCacheBlockBytes );
             }
-            rw::emitTo( out, " fns=\"{}\"", f.fns  );
+            rw::emitTo( out, " fns=\"{}\"", f.fns );
             if( f.weight > 0 )
             {
-                rw::emitTo( out, " w=\"{}\"", static_cast<unsigned long long>( f.weight )  );
+                rw::emitTo( out, " w=\"{}\"", static_cast<unsigned long long>( f.weight ) );
             }
-            rw::emitRaw( out, "/>"  );
+            rw::emitRaw( out, "/>" );
         }
         for( const AffFn& fn : s.fns )
         {
             rw::emitTo( out, "<fn n=\"{}\" p=\"{}\" l=\"{}\" fanin=\"{}\" touched=\"{}\" f=\"{}\"",
                           ex( fn.name ).c_str(), ex( pathRel( fn.path ) ).c_str(), fn.line, fn.fanIn, fn.touched,
-                          ex( fn.fields ).c_str()  );
+                          ex( fn.fields ).c_str() );
             if( !fn.profileScope.empty() )
             {
-                rw::emitTo( out, " scope=\"{}\"", ex( fn.profileScope ).c_str()  );
+                rw::emitTo( out, " scope=\"{}\"", ex( fn.profileScope ).c_str() );
             }
-            rw::emitRaw( out, "/>"  );
+            rw::emitRaw( out, "/>" );
         }
 
         // The static->PMC bridge. `scopes` is COMPUTED from the co-accessing functions' own
         // PROFILE_SCOPE_DESCRIBE text; zero of them is reported as such, never as silence, because "this
         // hypothesis has no instrumented witness yet" is the actionable half of the answer.
-        rw::emitTo( out, "<validate scopes=\"{}\"", s.scopes.size()  );
+        rw::emitTo( out, "<validate scopes=\"{}\"", s.scopes.size() );
         if( s.scopes.empty() )
         {
             rw::emitRaw( out, " status=\"uninstrumented\" hint=\"add PROFILE_SCOPE_DESCRIBE to a co-accessing "
-                               "function, rebuild with RIPWIRE_PROFILE=ON, and compare l1d-ms across the two layouts\""  );
+                               "function, rebuild with RIPWIRE_PROFILE=ON, and compare l1d-ms across the two layouts\"" );
         }
         else
         {
-            rw::emitRaw( out, " status=\"instrumented\" counter=\"l1d-cache-misses\""  );
+            rw::emitRaw( out, " status=\"instrumented\" counter=\"l1d-cache-misses\"" );
         }
-        rw::emitRaw( out, ">"  );
+        rw::emitRaw( out, ">" );
         for( const std::string& sc : s.scopes )
         {
-            rw::emitTo( out, "<scope n=\"{}\"/>", ex( sc ).c_str()  );
+            rw::emitTo( out, "<scope n=\"{}\"/>", ex( sc ).c_str() );
         }
-        rw::emitRaw( out, "</validate>"  );
+        rw::emitRaw( out, "</validate>" );
 
-        rw::emitRaw( out, "</s>"  );
+        rw::emitRaw( out, "</s>" );
     }
-    rw::emitRaw( out, "</fieldaffinity>"  );
+    rw::emitRaw( out, "</fieldaffinity>" );
 }
 
 }   // namespace fieldaffinity

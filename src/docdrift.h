@@ -2008,7 +2008,7 @@ inline void forEachIndexParallel( std::size_t count, const char* what, Work&& wo
         }
         catch( ... )
         {
-            rw::emitTo( stderr, "ripwire: doc-drift {} worker degraded (exception swallowed)\n", what  );
+            rw::emitTo( stderr, "ripwire: doc-drift {} worker degraded (exception swallowed)\n", what );
         }
     };
 
@@ -2343,7 +2343,7 @@ inline DriftResult computeDocDrift( const IngestResult& ing, const std::string& 
         {
             DEGRADED_PATH_ALERT( "doc-drift: cannot read a markdown file — its anchors are omitted" );
             ++res.docsUnread;   // 2026-09-06: the doc used to vanish from docs= with no trace a Release binary keeps
-            rw::emitTo( stderr, "ripwire: doc-drift: cannot read {} — its anchors are omitted (docs_unread= counts it)\n", scan.docRel[d].c_str()  );
+            rw::emitTo( stderr, "ripwire: doc-drift: cannot read {} — its anchors are omitted (docs_unread= counts it)\n", scan.docRel[d].c_str() );
             continue;
         }
         for( const Anchor& a : scan.perDoc[d] )
@@ -2482,36 +2482,36 @@ inline void writeTally( std::FILE* out, const char* tag, std::span<const Spec> t
     {
         if( counts[r] )
         {
-            rw::emitTo( out, "<{} r=\"{}\" n=\"{}\" note=\"{}\"/>", tag, table[r].tag, counts[r], ex( table[r].note ).c_str()  );
+            rw::emitTo( out, "<{} r=\"{}\" n=\"{}\" note=\"{}\"/>", tag, table[r].tag, counts[r], ex( table[r].note ).c_str() );
         }
     }
 }
 
 inline void writeAnchor( std::FILE* out, const Anchor& a, const XmlEscaper& ex )
 {
-    rw::emitTo( out, "<a k=\"{}\" l=\"{}\" c=\"{}\" why=\"{}\"", anchorKindTag( a.kind ), a.line, a.col, driftTag( a.why )  );
+    rw::emitTo( out, "<a k=\"{}\" l=\"{}\" c=\"{}\" why=\"{}\"", anchorKindTag( a.kind ), a.line, a.col, driftTag( a.why ) );
     if( a.rec != Record::Live )
     {
-        rw::emitTo( out, " kind=\"dated-record\" rec=\"{}\"", recordTag( a.rec )  );
+        rw::emitTo( out, " kind=\"dated-record\" rec=\"{}\"", recordTag( a.rec ) );
     }
-    rw::emitTo( out, " ref=\"{}\"", ex( a.ref ).c_str()  );
+    rw::emitTo( out, " ref=\"{}\"", ex( a.ref ).c_str() );
     if( !a.name.empty() && a.kind == AnchorKind::FileLine )
     {
-        rw::emitTo( out, " sym=\"{}\"", ex( a.name ).c_str()  );
+        rw::emitTo( out, " sym=\"{}\"", ex( a.name ).c_str() );
     }
     if( a.kind == AnchorKind::Const || a.kind == AnchorKind::Array )
     {
-        rw::emitTo( out, " want=\"{}\"", (unsigned long long)a.want  );
+        rw::emitTo( out, " want=\"{}\"", (unsigned long long)a.want );
     }
     if( !a.got.empty() )
     {
-        rw::emitTo( out, " got=\"{}\"", ex( a.got ).c_str()  );
+        rw::emitTo( out, " got=\"{}\"", ex( a.got ).c_str() );
     }
     if( !a.tgt.empty() )
     {
-        rw::emitTo( out, " tgt=\"{}\"", ex( a.tgt ).c_str()  );
+        rw::emitTo( out, " tgt=\"{}\"", ex( a.tgt ).c_str() );
     }
-    rw::emitRaw( out, "/>"  );
+    rw::emitRaw( out, "/>" );
 }
 
 // A weak-file-line DISCLOSURE row — never a verdict, so it carries none of writeAnchor's why=/k= vocabulary.
@@ -2521,7 +2521,7 @@ inline void writeAnchor( std::FILE* out, const Anchor& a, const XmlEscaper& ex )
 inline void writeWeakAnchor( std::FILE* out, const Anchor& a, const XmlEscaper& ex )
 {
     rw::emitTo( out, "<w l=\"{}\" c=\"{}\" ref=\"{}\" resolves-to=\"{}\"/>",
-                  a.line, a.col, ex( a.ref ).c_str(), ex( a.resolvesTo ).c_str()  );
+                  a.line, a.col, ex( a.ref ).c_str(), ex( a.resolvesTo ).c_str() );
 }
 
 // --doc-drift --gateability: turn "CI stays non-gating forever" into a finishable to-do list. Every doc
@@ -2570,14 +2570,14 @@ inline void writeGateability( std::FILE* out, const DriftResult& res, const XmlE
                        "drift= minus every live= listed: an UPPER BOUND on what full annotation could "
                        "remove, NOT a mandate to date every doc — a doc that is genuinely a live/current "
                        "reference (not a snapshot-in-time record) would have real rot HIDDEN, not honestly "
-                       "classified, by a date it does not deserve. Weigh each row; do not game the number. -->"  );
-    rw::emitTo( out, "<gateability docs=\"{}\" projected_drift=\"{}\">", targets.size(), projectedDrift  );
+                       "classified, by a date it does not deserve. Weigh each row; do not game the number. -->" );
+    rw::emitTo( out, "<gateability docs=\"{}\" projected_drift=\"{}\">", targets.size(), projectedDrift );
     for( const DocRow* row : targets )
     {
         rw::emitTo( out, "<fix p=\"{}\" live=\"{}\"/>", ex( row->path ).c_str(),
-                      std::uint32_t( row->drifted.size() ) - row->datedCount  );
+                      std::uint32_t( row->drifted.size() ) - row->datedCount );
     }
-    rw::emitRaw( out, "</gateability>"  );
+    rw::emitRaw( out, "</gateability>" );
 }
 
 // The doc-drift legend, hoisted to a file-scope constant for the reason situ.h states of kTestGateLegend:
@@ -2667,7 +2667,7 @@ inline void writeWeakDisclosures( std::FILE* out, const DriftResult& res, std::s
 {
     for( const WeakDocGroup& g : res.weakGroups )
     {
-        rw::emitTo( out, "<weak-file-line p=\"{}\" n=\"{}\">", ex( g.path ).c_str(), g.rows.size()  );
+        rw::emitTo( out, "<weak-file-line p=\"{}\" n=\"{}\">", ex( g.path ).c_str(), g.rows.size() );
         const std::size_t shownCount = std::min( g.rows.size(), maxPerDoc );
         for( std::size_t rowIndex = 0; rowIndex < shownCount; ++rowIndex )
         {
@@ -2675,9 +2675,9 @@ inline void writeWeakDisclosures( std::FILE* out, const DriftResult& res, std::s
         }
         if( g.rows.size() > shownCount )
         {
-            rw::emitTo( out, "<more weak=\"{}\"/>", g.rows.size() - shownCount  );
+            rw::emitTo( out, "<more weak=\"{}\"/>", g.rows.size() - shownCount );
         }
-        rw::emitRaw( out, "</weak-file-line>"  );
+        rw::emitRaw( out, "</weak-file-line>" );
     }
 }
 
@@ -2714,27 +2714,27 @@ inline void writeDocDriftPage( std::FILE* out, const DriftResult& res, std::size
     }
     std::fputs( "-->", out );
     rw::emitTo( out, "<doc-drift docs=\"{}\" clean=\"{}\" anchors=\"{}\" checked=\"{}\" unchecked=\"{}\" drift=\"{}\" dated=\"{}\" prose=\"{}\" corpus=\"{}\"",
-                  res.docsScanned, res.cleanDocs, res.anchors, res.checked, unchecked, res.drift, res.dated, res.prose, res.corpusFiles  );
+                  res.docsScanned, res.cleanDocs, res.anchors, res.checked, unchecked, res.drift, res.dated, res.prose, res.corpusFiles );
     if( res.docsUnread > 0 )
     {
-        rw::emitTo( out, " docs_unread=\"{}\"", res.docsUnread  );   // absent means every indexed doc was read
+        rw::emitTo( out, " docs_unread=\"{}\"", res.docsUnread );   // absent means every indexed doc was read
     }
     if( !res.filter.empty() )
     {
-        rw::emitTo( out, " filter=\"{}\"", ex( res.filter ).c_str()  );
+        rw::emitTo( out, " filter=\"{}\"", ex( res.filter ).c_str() );
     }
     // r26-stamp Task A: anchor these counts to the commit (and dirty-tree state) they were computed against —
     // omitted entirely on a non-git root rather than printed as a placeholder (see gitstamp.h's header comment).
     if( !res.atStamp.empty() )
     {
-        rw::emitTo( out, " at=\"{}\"", res.atStamp.c_str()  );
+        rw::emitTo( out, " at=\"{}\"", res.atStamp.c_str() );
     }
     {
         char pab[ kPageDisclosureCap ];
         rw::emitTo( out, "{}", pageDisclosure( pab, sizeof( pab ), docPage.end - docPage.begin, res.docs.size(),
-                                                 docPage.end, pageLimit, pageOffset, false )  );
+                                                 docPage.end, pageLimit, pageOffset, false ) );
     }
-    rw::emitRaw( out, ">"  );
+    rw::emitRaw( out, ">" );
 
     // What the history probe did, when it was asked for — stated up front so a reader knows whether the
     // mention lane below is the strong (three-way) one or the old two-way one.
@@ -2748,7 +2748,7 @@ inline void writeDocDriftPage( std::FILE* out, const DriftResult& res, std::size
         const DocRow& row = res.docs[ docIndex ];
         rw::emitTo( out, "<doc p=\"{}\" anchors=\"{}\" checked=\"{}\" drift=\"{}\" dated=\"{}\">",
                       ex( row.path ).c_str(), row.anchorCount, row.checkedCount + std::uint32_t( row.drifted.size() ),
-                      row.drifted.size() - row.datedCount, row.datedCount  );
+                      row.drifted.size() - row.datedCount, row.datedCount );
         // "Nothing is dropped without a number": shownCount is what the loop will PRINT, so the <more/>
         // remainder is exactly what it will not. The `shown++ >= cap` form got this wrong twice over — it
         // left the counter at cap+1, so <more/> under-reported the drop by one, and at exactly cap+1 rows
@@ -2760,9 +2760,9 @@ inline void writeDocDriftPage( std::FILE* out, const DriftResult& res, std::size
         }
         if( row.drifted.size() > shownCount )
         {
-            rw::emitTo( out, "<more drift=\"{}\"/>", row.drifted.size() - shownCount  );
+            rw::emitTo( out, "<more drift=\"{}\"/>", row.drifted.size() - shownCount );
         }
-        rw::emitRaw( out, "</doc>"  );
+        rw::emitRaw( out, "</doc>" );
     }
 
     writeWeakDisclosures( out, res, maxPerDoc, ex );
@@ -2779,7 +2779,7 @@ inline void writeDocDriftPage( std::FILE* out, const DriftResult& res, std::size
         writeGateability( out, res, ex );
     }
 
-    rw::emitRaw( out, "</doc-drift>"  );
+    rw::emitRaw( out, "</doc-drift>" );
 }
 
 // The un-paginated form — unchanged contract, for callers that want every drifted doc in one document.

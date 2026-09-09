@@ -84,18 +84,18 @@ std::optional<int> loadRefPairDelta( const std::string& root, std::string_view s
             rw::emitTo( stderr, "ripwire: --quality-delta: '{}' does not resolve to a commit in {}\n"
                                   "  check it with `git -C {} rev-parse --verify {}^{{commit}}`; the usual causes are a typo, a ref that\n"
                                   "  lives only on a remote you have not fetched, or a shallow clone whose history stops before it\n",
-                          ref.badToken.c_str(), root.c_str(), root.c_str(), ref.badToken.c_str()  );
+                          ref.badToken.c_str(), root.c_str(), root.c_str(), ref.badToken.c_str() );
             return 1;
         case quality::RefSpecStatus::BadRange:
             rw::emitTo( stderr, "ripwire: --quality-delta: '{}' uses the three-dot form; this compares two TREES, so spell it A..B "
-                                  "(or --quality-delta=$(git merge-base A B)..B if the merge base is what you meant)\n", ref.badToken.c_str()  );
+                                  "(or --quality-delta=$(git merge-base A B)..B if the merge base is what you meant)\n", ref.badToken.c_str() );
             return 1;
         case quality::RefSpecStatus::NoGit:
         case quality::RefSpecStatus::NoParent:
             // Environment, not a typo — and unlike --dmm (a measurement that reports UNAVAILABLE and exits 0)
             // this verb has nothing to report at all, so it takes the same exit 1 the bare form's
             // "nothing to compare against" path takes.
-            rw::emitTo( stderr, "ripwire: --quality-delta={}: {}\n", std::string_view( spec.data(), spec.size() ), ref.reason.c_str()  );
+            rw::emitTo( stderr, "ripwire: --quality-delta={}: {}\n", std::string_view( spec.data(), spec.size() ), ref.reason.c_str() );
             return 1;
         case quality::RefSpecStatus::Ok:
             break;
@@ -105,7 +105,7 @@ std::optional<int> loadRefPairDelta( const std::string& root, std::string_view s
     // a materialized tree against a working tree whose keys are spelled against a different root.
     if( ref.targetIsWorkingTree || ref.baseSha.empty() || ref.targetSha.empty() )
     {
-        rw::emitRaw( stderr, "ripwire: --quality-delta needs TWO commits (A..B); use the bare --quality-delta for the working tree\n"  );
+        rw::emitRaw( stderr, "ripwire: --quality-delta needs TWO commits (A..B); use the bare --quality-delta for the working tree\n" );
         return 1;
     }
 
@@ -114,12 +114,12 @@ std::optional<int> loadRefPairDelta( const std::string& root, std::string_view s
     out.sameRef = ( ref.baseSha == ref.targetSha );
     if( !quality::loadRefTree( root, ref.baseSha, cfg.excludes, cfg.maxFileBytes, "qdpair-base", out.baseGuard, out.baseTree ) )
     {
-        rw::emitTo( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at {}\n", ref.baseSha.c_str()  );
+        rw::emitTo( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at {}\n", ref.baseSha.c_str() );
         return 1;
     }
     if( !out.sameRef && !quality::loadRefTree( root, ref.targetSha, cfg.excludes, cfg.maxFileBytes, "qdpair-target", out.targetGuard, out.targetTree ) )
     {
-        rw::emitTo( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at {}\n", ref.targetSha.c_str()  );
+        rw::emitTo( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at {}\n", ref.targetSha.c_str() );
         return 1;
     }
 
@@ -241,12 +241,12 @@ std::optional<int> resolveDeltaBasis( const MainDispatch& d, const std::string& 
         {
             // 2026-09-06 stranger audit: this used to print "no <file>" about a file sitting on disk.
             rw::emitTo( stderr, "ripwire: {} exists but is not a readable baseline (unrecognizable, or a pre-Q1 sidecar without per-symbol loc records) — IGNORED; "
-                                  "auto-comparing the working tree vs git HEAD; re-pin it with --quality-baseline\n", baselineFile.c_str()  );
+                                  "auto-comparing the working tree vs git HEAD; re-pin it with --quality-baseline\n", baselineFile.c_str() );
         }
         else if( !out.baseSel.isSidecarStale() )
         { // the stale/healed case is silent by design — only the true "never baselined" case is informative
             rw::emitTo( stderr, "ripwire: no {} — auto-comparing the working tree vs git HEAD (commit the baseline with --quality-baseline to pin it)\n",
-                          baselineFile.c_str()  );
+                          baselineFile.c_str() );
         }
     }
     // R1 IDENTITY — heal both sidecars into the current tree's identity BEFORE the delta is taken against
@@ -277,14 +277,14 @@ std::optional<int> expandScopeDiff( rw::quality::Scope& scope, bool refPair, con
         // working tree is not part of the comparison at all, so the answer would describe a different tree
         // than the one being judged.
         rw::emitRaw( stderr, "ripwire: --scope=diff scopes to the WORKING TREE's changes, but --quality-delta=A..B compares two COMMITTED trees —\n"
-                              "  spell the scope as paths there (e.g. --scope=src/quality.h), or drop the range to measure the working tree\n"  );
+                              "  spell the scope as paths there (e.g. --scope=src/quality.h), or drop the range to measure the working tree\n" );
         return 1;
     }
     std::vector<char> changed( judged.files.size(), 0 );
     if( !rw::gitChangedFiles( root, judged, changed ) )
     {
         rw::emitTo( stderr, "ripwire: --scope=diff needs git to say what changed, and {} is not a readable git repository —\n"
-                              "  name the paths instead (e.g. --scope=src/quality.h,src/verbs_quality.h)\n", root.c_str()  );
+                              "  name the paths instead (e.g. --scope=src/quality.h,src/verbs_quality.h)\n", root.c_str() );
         return 1;
     }
     std::vector<std::string> expanded;
@@ -306,7 +306,7 @@ std::optional<int> expandScopeDiff( rw::quality::Scope& scope, bool refPair, con
     if( diffFileCount == 0 )
     {
         rw::emitRaw( stderr, "ripwire: --scope=diff expanded to NO changed indexed file — the working tree matches the baseline (or the edits are in files\n"
-                              "  this index does not carry), so the scope owns nothing and an exit 0 under it would say nothing about your change\n"  );
+                              "  this index does not carry), so the scope owns nothing and an exit 0 under it would say nothing about your change\n" );
         return 1;
     }
     std::sort( expanded.begin(), expanded.end() );
@@ -439,7 +439,7 @@ std::optional<int> refuseForeignAckSelection( const rw::Config& cfg, const rw::q
     rw::emitTo( stderr, "ripwire: --ack-only={} selects {} finding(s) OUT OF SCOPE for --scope={} — refusing, and writing nothing at all:{}{}\n"
                           "  those rows belong to whoever is editing those paths. Acking them here writes their debt into a committed ledger under YOUR\n"
                           "  reason string, which is how a per-finding ratchet becomes a rubber stamp. Narrow the pattern, or widen the scope if they really are yours.\n", std::string_view( cfg.qualityAckOnly.data(), cfg.qualityAckOnly.size() ), namedCount, scope.spec.c_str(),
-                  named.c_str(), namedCount > 8 ? "\n    …" : ""  );
+                  named.c_str(), namedCount > 8 ? "\n    …" : "" );
     return 1;
 }
 
@@ -806,12 +806,12 @@ inline std::string registerMacroConfigWarningAttr( const rw::quality::RegisterMa
     if( !diag.unrecognizedKeys.empty() )
     {
         rw::emitTo( stderr, "ripwire: .ripwire_config has an unrecognized key (the only key this file reads is register_macros): {}\n",
-                      joined( diag.unrecognizedKeys ).c_str()  );
+                      joined( diag.unrecognizedKeys ).c_str() );
     }
     if( !diag.inertNames.empty() )
     {
         rw::emitTo( stderr, "ripwire: .ripwire_config's register_macros= names a macro matching no indexed symbol (typo, or unused): {}\n",
-                      joined( diag.inertNames ).c_str()  );
+                      joined( diag.inertNames ).c_str() );
     }
     return " config-warnings=\"" + std::to_string( diag.total() ) + "\"";
 }
@@ -833,21 +833,21 @@ int ackNothingToAccept( const std::string& acksFile, const gtl::btree_map<std::s
         if( scope.active() && outOfScopeCount > 0 )
         {
             rw::emitTo( stderr, "ripwire: nothing to acknowledge — 0 finding(s) in --scope={} ({} out of scope, not yours); {} left untouched\n",
-                          scope.spec.c_str(), outOfScopeCount, acksFile.c_str()  );
+                          scope.spec.c_str(), outOfScopeCount, acksFile.c_str() );
         }
         else
         {
-            rw::emitTo( stderr, "ripwire: nothing to acknowledge — the report has 0 finding(s); {} left untouched\n", acksFile.c_str()  );
+            rw::emitTo( stderr, "ripwire: nothing to acknowledge — the report has 0 finding(s); {} left untouched\n", acksFile.c_str() );
         }
         return 0;
     }
     if( !rw::quality::writeAckRecords( acksFile, acks ) )
     {
-        rw::emitTo( stderr, "ripwire: could not write {}\n", acksFile.c_str()  );
+        rw::emitTo( stderr, "ripwire: could not write {}\n", acksFile.c_str() );
         return 1;
     }
     rw::emitTo( stderr, "ripwire: nothing to acknowledge — the report has 0 finding(s), but {} was not in canonical form "
-                          "(duplicate, legacy or misfiled rows) and has been re-serialised\n", acksFile.c_str()  );
+                          "(duplicate, legacy or misfiled rows) and has been re-serialised\n", acksFile.c_str() );
     return 0;
 }
 
@@ -924,7 +924,7 @@ int runQualityBaselinePin( const MainDispatch& d, const std::string& baselineFil
                               "  them into the floor, and every later --quality-delta would read clean. First: {}\n"
                               "  Commit the tree first, or pass --allow-dirty to pin anyway (the sidecar then records the {} absorbed, and every\n"
                               "  report against it carries baseline_absorbed=\"{}\").\n",
-                      pin.absorbed, pin.firstRow.c_str(), pin.absorbed, pin.absorbed  );
+                      pin.absorbed, pin.firstRow.c_str(), pin.absorbed, pin.absorbed );
         return 1;
     }
     const quality::Snapshot snap  = quality::computeSnapshot( d.ing, d.g, d.cfg.rootPath );
@@ -933,7 +933,7 @@ int runQualityBaselinePin( const MainDispatch& d, const std::string& baselineFil
     {
         rw::emitTo( stderr, "ripwire: --quality-baseline --allow-dirty: pinned with {} gating finding(s) ABSORBED into the floor "
                               "(stamped in the sidecar; every --quality-delta against it carries baseline_absorbed=\"{}\")\n",
-                      pin.absorbed, pin.absorbed  );
+                      pin.absorbed, pin.absorbed );
     }
     // §L10b LOW tail: this used to report ing.symbols.size() — every raw indexed symbol — while the sidecar
     // computeSnapshot() actually WRITES one row per DISTINCT canonId (overloads collapse to their MAX, and a
@@ -1154,7 +1154,7 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             }
             if( ackWritten == 0 && !cfg.qualityAckOnly.empty() )
             {
-                rw::emitTo( stderr, "ripwire: --ack-only={} matched none of the {} finding(s) — nothing written\n", std::string_view( cfg.qualityAckOnly.data(), cfg.qualityAckOnly.size() ), regs.size()  );
+                rw::emitTo( stderr, "ripwire: --ack-only={} matched none of the {} finding(s) — nothing written\n", std::string_view( cfg.qualityAckOnly.data(), cfg.qualityAckOnly.size() ), regs.size() );
                 return 1;
             }
             // H10: nothing to accept — leave a canonical ledger alone, heal a non-canonical one (ackNothingToAccept)
@@ -1166,16 +1166,16 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             if( wroteAcks && !cfg.qualityAckOnly.empty() )
             {
                 rw::emitTo( stderr, "ripwire: acknowledged {} of {} finding(s) ({} left UNACKED by --ack-only, {} already acked) → {}\n",
-                              ackWritten, regs.size(), ackSkipped, ackedCount, acksFile.c_str()  );
+                              ackWritten, regs.size(), ackSkipped, ackedCount, acksFile.c_str() );
             }
             else if( wroteAcks )
             {
                 rw::emitTo( stderr, "ripwire: acknowledged {} finding(s) ({} already acked) → {}\n",
-                              regs.size(), ackedCount, acksFile.c_str()  );
+                              regs.size(), ackedCount, acksFile.c_str() );
             }
             else
             {
-                rw::emitTo( stderr, "ripwire: could not write {}\n", acksFile.c_str()  );
+                rw::emitTo( stderr, "ripwire: could not write {}\n", acksFile.c_str() );
             }
             // P1 — the skip is DISCLOSED, never silent: the count of rows this ack deliberately did not
             // touch is the whole reason the caller passed a scope, and a quiet success would leave them
@@ -1184,7 +1184,7 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             {
                 rw::emitTo( stderr, "ripwire: {} finding(s) OUT OF SCOPE for --scope={} were left unacked — not yours to accept "
                                       "(they are still in the report, under the out-of-scope element)\n",
-                              outOfScope.size(), scope.spec.c_str()  );
+                              outOfScope.size(), scope.spec.c_str() );
             }
             return wroteAcks ? 0 : 1;
         }
@@ -1281,7 +1281,7 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
                 // for display (quality::displaySym); this stderr line was the one caller that skipped it,
                 // so it named "./src/…::rw::…" beside a row that named the same finding "src/…::rw::…".
                 rw::emitTo( stderr, "ripwire: --quality-delta gating: {} preexisting-worse major finding(s); first: {} {}{} (was={} now={})\n",
-                              gatingCount, first->kind.c_str(), quality::displaySym( first->sym, deltaRoot ).c_str(), at.c_str(), first->was, first->now  );
+                              gatingCount, first->kind.c_str(), quality::displaySym( first->sym, deltaRoot ).c_str(), at.c_str(), first->was, first->now );
             }
         }
 
@@ -1310,84 +1310,84 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
                          "\"preexisting-worse\":{},\"new-symbol\":{},\"gating\":{},\"register-macro-excluded\":{},\"at\":{}{}{}{}{}{},\"r\":[",
                          jsonStr( baseMarkerJ ).c_str(), regs.size(), minorCount, ackedCount, staleAcks.size(),
                          preexistingCount, newSymbolCount, gatingCount, basis.registerMacroExcluded, atJsonJ.c_str(), refs.jsonAttrs.c_str(),
-                         identityJson.c_str(), scopeJson.c_str(), configWarnJson.c_str(), absorbedJson.c_str()  );
+                         identityJson.c_str(), scopeJson.c_str(), configWarnJson.c_str(), absorbedJson.c_str() );
             // P1: one row emitter, called for both halves of the scope partition — the disclosed rows carry
             // the identical key set, so nothing about a row changes by being someone else's. `gatingAllowed`
             // is the ONE difference: an out-of-scope row is not what the exit code fires on, so claiming
             // gating on it would contradict the exit code in the same document.
             const auto emitJsonRow = [ & ]( const quality::Regression& r, bool gatingAllowed )
             {
-                rw::emitTo( stdout, "{{\"kind\":\"{}\"", jsonStr( r.kind ).c_str()  );
+                rw::emitTo( stdout, "{{\"kind\":\"{}\"", jsonStr( r.kind ).c_str() );
                 if( r.kind == "duplication" )
                 {
-                    rw::emitTo( stdout, ",\"members\":\"{}\",\"tokens\":{}", jsonStr( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.now  );
+                    rw::emitTo( stdout, ",\"members\":\"{}\",\"tokens\":{}", jsonStr( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.now );
                 }
                 else
                 {
-                    rw::emitTo( stdout, ",\"sym\":\"{}\"", jsonStr( quality::displaySym( r.sym, deltaRoot ) ).c_str()  );
+                    rw::emitTo( stdout, ",\"sym\":\"{}\"", jsonStr( quality::displaySym( r.sym, deltaRoot ) ).c_str() );
                     if( !( r.kind == "dead-code" ) && !( r.kind == "api-surface" && r.was == r.now ) )
                     {
-                        rw::emitTo( stdout, ",\"was\":{},\"now\":{}", r.was, r.now  );
+                        rw::emitTo( stdout, ",\"was\":{},\"now\":{}", r.was, r.now );
                     }
                 }
                 if( !r.path.empty() )
                 {
-                    rw::emitTo( stdout, ",\"p\":\"{}:{}\"", jsonStr( r.path ).c_str(), r.line  ); // P2.5 locator
+                    rw::emitTo( stdout, ",\"p\":\"{}:{}\"", jsonStr( r.path ).c_str(), r.line ); // P2.5 locator
                 }
                 if( gatingAllowed && !r.isNewSymbol && !r.isMinor )
                 {
-                    rw::emitRaw( stdout, ",\"gating\":true"  ); // P2.5 — the exit predicate, stated per row
+                    rw::emitRaw( stdout, ",\"gating\":true" ); // P2.5 — the exit predicate, stated per row
                 }
                 if( r.isMinor )
                 {
-                    rw::emitRaw( stdout, ",\"sev\":\"minor\""  );
+                    rw::emitRaw( stdout, ",\"sev\":\"minor\"" );
                 }
                 if( !r.facet.empty() )
                 {
                     const char* facetName = quality::facetAttrName( r.kind );   // ONE kind→name table (quality.h)
                     if( facetName )
                     {
-                        rw::emitTo( stdout, ",\"{}\":\"{}\"", facetName, jsonStr( r.facet ).c_str()  );
+                        rw::emitTo( stdout, ",\"{}\":\"{}\"", facetName, jsonStr( r.facet ).c_str() );
                     }
                 }
                 if( r.isNewSymbol )
                 {
-                    rw::emitRaw( stdout, ",\"origin\":\"new-symbol\""  ); // absent = preexisting-worse (mirrors the XML)
+                    rw::emitRaw( stdout, ",\"origin\":\"new-symbol\"" ); // absent = preexisting-worse (mirrors the XML)
                 }
-                rw::emitRaw( stdout, "}"  );
+                rw::emitRaw( stdout, "}" );
             };
             bool firstR = true;
             for( const quality::Regression& r : regs )
             {
                 if( !firstR )
                 {
-                    rw::emitRaw( stdout, ","  );
+                    rw::emitRaw( stdout, "," );
                 }
                 firstR = false;
                 emitJsonRow( r, /*gatingAllowed=*/true );
             }
-            rw::emitRaw( stdout, "],"  );
+            rw::emitRaw( stdout, "]," );
             if( scope.active() )
             {
                 // The JSON sibling of the XML out-of-scope element: a SEPARATE array, never a flag on a row
                 // in "r", so a consumer that reads "r" and checks "gating" cannot accidentally count someone
                 // else's debt as this run's. Emitted (possibly empty) whenever a scope was given, so its
                 // absence means "no scope", never "no disclosed rows".
-                rw::emitRaw( stdout, "\"oos\":["  );
+                rw::emitRaw( stdout, "\"oos\":[" );
                 bool firstO = true;
                 for( const quality::Regression& r : outOfScope )
                 {
                     if( !firstO )
                     {
-                        rw::emitRaw( stdout, ","  );
+                        rw::emitRaw( stdout, "," );
                     }
                     firstO = false;
                     emitJsonRow( r, /*gatingAllowed=*/false );
                 }
-                rw::emitRaw( stdout, "],"  );
+                rw::emitRaw( stdout, "]," );
             }
             std::fputs( quality::staleAcksJsonArray( saRows ).c_str(), stdout );   // L2 — "sa":[...], same taxonomy as the XML sa= rows below
-            rw::emitRaw( stdout, "}"  );
+            rw::emitRaw( stdout, "}" );
             return gatingCount > 0 ? 2 : 0;
         }
 
@@ -1420,7 +1420,7 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
                      // target_ref= are the anchor there, and they carry FULL shas because a wave measurement
                      // gets quoted into handoffs where a 9-char prefix is one collision from unverifiable.
                      refPair ? "" : gitstamp::atAttr( root ).c_str(), refs.attrs.c_str(), identityAttrs.c_str(),
-                     scopeAttrs.c_str(), configWarnAttr.c_str(), baselineAbsorbedAttr.c_str(), sidecarHealthAttrs.c_str()  );
+                     scopeAttrs.c_str(), configWarnAttr.c_str(), baselineAbsorbedAttr.c_str(), sidecarHealthAttrs.c_str() );
         // P1: ONE row emitter for both halves of the scope partition — a disclosed row carries the identical
         // attribute set, because nothing about a finding changes by belonging to someone else. `gatingAllowed`
         // is the one difference: an out-of-scope row is not what the exit code fires on, and a gating
@@ -1479,11 +1479,11 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             }
             if( r.kind == "duplication" )
             {
-                rw::emitTo( stdout, "<r kind=\"duplication\" members=\"{}\" tokens=\"{}\"{}{}{}{}{}/>", ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.now, sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr  );
+                rw::emitTo( stdout, "<r kind=\"duplication\" members=\"{}\" tokens=\"{}\"{}{}{}{}{}/>", ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.now, sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr );
             }
             else if( r.kind == "dead-code" )
             {
-                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\"{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str()  );
+                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\"{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str() );
             // B10.2e: api-surface now carries two shapes — a brand-new/newly-public symbol (was=now=0, no
             // param comparison to show) and a param-count contract-change (was/now = the real counts). Print
             // was/now whenever they differ from each other so the contract-change case's was=/now= is visible
@@ -1491,11 +1491,11 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             }
             else if( r.kind == "api-surface" && r.was == r.now )
             {
-                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\"{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str()  );
+                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\"{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str() );
             }
             else
             {
-                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\" was=\"{}\" now=\"{}\"{}{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.was, r.now, barAttr, sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str()  );
+                rw::emitTo( stdout, "<r kind=\"{}\" sym=\"{}\" was=\"{}\" now=\"{}\"{}{}{}{}{}{}{}/>", r.kind.c_str(), ex( quality::displaySym( r.sym, deltaRoot ) ).c_str(), r.was, r.now, barAttr, sev, facetAttr.c_str(), origin, locAttr.c_str(), gatingAttr, nextAttr.c_str() );
             }
         };
         for( const quality::Regression& r : regs )
@@ -1511,19 +1511,19 @@ std::optional<int> runQualityDelta( const MainDispatch& d )
             // element then means "no scope was given", never "nobody else has anything open".
             rw::emitTo( stdout, "<out-of-scope n=\"{}\" would-gate=\"{}\" note=\"not yours - do not ack: these rows lie outside the scope this run named. "
                          "They are disclosed rather than hidden, they never gate this exit code, and the ack refuses to write them.\">",
-                         outOfScope.size(), scopedOutGating  );
+                         outOfScope.size(), scopedOutGating );
             for( const quality::Regression& r : outOfScope )
             {
                 emitRow( r, /*gatingAllowed=*/false );
             }
-            rw::emitRaw( stdout, "</out-of-scope>"  );
+            rw::emitRaw( stdout, "</out-of-scope>" );
         }
         {   // L2 — one <sa> row per stale ack (quality::staleAcksXml). M21(a): the escaper is passed in
             // because sym= carries a canonical id (corpus text), unlike the closed-vocabulary kind=/why=.
             std::vector<char> saEsc;
             std::fputs( quality::staleAcksXml( saRows, [ & ]( std::string_view t ) { return std::string( escapeXml( t, saEsc ) ); } ).c_str(), stdout );
         }
-        rw::emitRaw( stdout, "</quality-delta>"  );
+        rw::emitRaw( stdout, "</quality-delta>" );
         return gatingCount > 0 ? 2 : 0;   // r26: only a PREEXISTING-worse AND major regression gates (== gating=)
     }
     return std::nullopt;
@@ -1550,13 +1550,13 @@ std::optional<int> runDmm( const MainDispatch& d )
     const dmm::Result r = dmm::computeDmm( d.root, cfg.dmmRange, d.ing, cfg.excludes, cfg.maxFileBytes );
     if( r.status == dmm::Status::BadRev )
     {
-        rw::emitTo( stderr, "ripwire: --dmm: '{}' does not resolve to a commit in {}\n", r.badToken.c_str(), d.root.c_str()  );
+        rw::emitTo( stderr, "ripwire: --dmm: '{}' does not resolve to a commit in {}\n", r.badToken.c_str(), d.root.c_str() );
         return 1;
     }
     if( r.status == dmm::Status::BadRange )
     {
         rw::emitTo( stderr, "ripwire: --dmm: '{}' uses the three-dot form; --dmm compares two TREES, so spell it A..B "
-                              "(or --dmm=$(git merge-base A B)..B if the merge base is what you meant)\n", r.badToken.c_str()  );
+                              "(or --dmm=$(git merge-base A B)..B if the merge base is what you meant)\n", r.badToken.c_str() );
         return 1;
     }
     return dmm::writeDmmReport( r );
@@ -1895,7 +1895,7 @@ std::optional<int> runQualityViews( const MainDispatch& d )
                      "config-warnings= counts two DISCLOSED .ripwire_config problems, each also written to stderr — an "
                      "unrecognized key, and a register_macros= name matching no indexed symbol — never gating, present "
                      "only when non-zero. "
-                     "Graph evidence is local to the indexed tree; verify before deleting. {}-->", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str()  );
+                     "Graph evidence is local to the indexed tree; verify before deleting. {}-->", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str() );
         // §P15/§P16: candidates is already deterministically sorted (path asc, line asc, name asc) and used to
         // print every candidate unconditionally — completeness was the whole contract, matching --uses' shape,
         // so it pages the same way: no historic display cap, discloseCap=false (un-paginated tag byte-identical).
@@ -1924,12 +1924,12 @@ std::optional<int> runQualityViews( const MainDispatch& d )
             const Symbol& s = ing.symbols[ candidateId ];
             // name and path may contain & < > " — escape both so output is valid XML.
             const auto en = rw::escapeXml( s.name, dcEsc );
-            rw::emitTo( stdout, "<d n=\"{}\" t=\"{}\"", std::string_view( en.data(), en.size() ), symTag( s.kind )  );
+            rw::emitTo( stdout, "<d n=\"{}\" t=\"{}\"", std::string_view( en.data(), en.size() ), symTag( s.kind ) );
             const std::string_view rp = qvSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], qvRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
             const auto ep = rw::escapeXml( rp, dcEsc );
-            rw::emitTo( stdout, " p=\"{}\" l=\"{}\"/>", std::string_view( ep.data(), ep.size() ), s.line  );
+            rw::emitTo( stdout, " p=\"{}\" l=\"{}\"/>", std::string_view( ep.data(), ep.size() ), s.line );
         }
-        rw::emitRaw( stdout, "</dead-code>"  );
+        rw::emitRaw( stdout, "</dead-code>" );
         return 0;
     }
     return std::nullopt;
@@ -2013,7 +2013,7 @@ std::optional<int> runEditCheck( const MainDispatch& d )
         // §B4.2: the shared refusal — see selectorrefuse.h. A `file:name` whose FILE half is the fault used
         // to read as "that symbol does not exist", which sends an agent hunting for a rename that never was.
         rw::emitTo( stderr, "{}\n", selectorNotFoundMessage( ing, "ripwire: --edit-check symbol not found: ",
-                                                               cfg.editCheckSym, "--edit-check=" ).c_str()  );
+                                                               cfg.editCheckSym, "--edit-check=" ).c_str() );
         return 1;
     }
 
@@ -2021,7 +2021,7 @@ std::optional<int> runEditCheck( const MainDispatch& d )
     if( groups.size() > 1 )
     {
         rw::emitTo( stderr, "ripwire: --edit-check: {}\n",
-                      editCheckAmbiguousMessage( cfg.editCheckSym, groups, "--edit-check=", matches.size() ).c_str()  );
+                      editCheckAmbiguousMessage( cfg.editCheckSym, groups, "--edit-check=", matches.size() ).c_str() );
         return 1;
     }
     const NodeId focus = groups[0].lowestNode;
@@ -2036,14 +2036,14 @@ std::optional<int> runEditCheck( const MainDispatch& d )
         std::string payload, payloadErr;
         if( !rw::editpreview::readPayload( cfg.editPayload, cfg.maxFileBytes, payload, payloadErr ) )
         {
-            rw::emitTo( stderr, "ripwire: --edit-check --dry-run: {}\n", payloadErr.c_str()  );
+            rw::emitTo( stderr, "ripwire: --edit-check --dry-run: {}\n", payloadErr.c_str() );
             return 1;
         }
         const rw::editpreview::Outcome preview = rw::editpreview::run( ing, d.g, d.root, cfg.maxFileBytes, cfg.excludes,
                                                                         d.valueUses, cfg.editCheckSym, focus, payload, d.notesPtr );
         if( !preview.ok )
         {
-            rw::emitTo( stderr, "ripwire: --edit-check --dry-run: {}\n", preview.message.c_str()  );
+            rw::emitTo( stderr, "ripwire: --edit-check --dry-run: {}\n", preview.message.c_str() );
             return 1;
         }
         std::fwrite( preview.xml.data(), 1, preview.xml.size(), stdout );

@@ -1057,7 +1057,7 @@ bool prepareParserFor( TSParser* parser, const LangEntry& le )
     {
         // never emit a silently-empty tree — say which language we dropped.
         rw::emitTo( stderr, "[ripwire] grammar ABI mismatch or set_language failed for {} — skipping language\n",
-                      std::string( le.querySub ).c_str()  );
+                      std::string( le.querySub ).c_str() );
         return false;
     }
     return true;

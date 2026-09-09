@@ -920,23 +920,23 @@ inline void printSkillScanArtifact( std::FILE* out, const std::vector<SkillScanR
     const std::size_t shown  = total < kSkillScanFindingCap ? total : kSkillScanFindingCap;
     const bool         capped = shown < total;
 
-    rw::emitTo( out, "<skillscan files=\"{}\" findings=\"{}\"", filesScanned, total  );
+    rw::emitTo( out, "<skillscan files=\"{}\" findings=\"{}\"", filesScanned, total );
     if( filesSkipped > 0 )
     {
-        rw::emitTo( out, " skipped=\"{}\"", filesSkipped  );
+        rw::emitTo( out, " skipped=\"{}\"", filesSkipped );
     }
     if( capped )
     {
-        rw::emitTo( out, " shown=\"{}\" capped=\"1\"", shown  );
+        rw::emitTo( out, " shown=\"{}\" capped=\"1\"", shown );
     }
-    rw::emitTo( out, " verdict=\"{}\">", verdict  );
+    rw::emitTo( out, " verdict=\"{}\">", verdict );
     for( std::size_t i = 0; i < shown; ++i )
     {
         const SkillScanRow& r = rows[i];
         rw::emitTo( out, "<f p=\"{}:{}\" rule=\"{}\" sev=\"{}\"/>",
-                     escapeXmlAttr( r.path ).c_str(), r.finding.line, r.finding.rule, skillSeverityAttr( r.finding.sev ).c_str()  );
+                     escapeXmlAttr( r.path ).c_str(), r.finding.line, r.finding.rule, skillSeverityAttr( r.finding.sev ).c_str() );
     }
-    rw::emitRaw( out, "</skillscan>\n"  );
+    rw::emitRaw( out, "</skillscan>\n" );
 }
 
 }   // namespace rw

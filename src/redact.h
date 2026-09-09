@@ -614,7 +614,7 @@ inline void reportRedactions( std::FILE* err, const RedactCounts& counts )
     };
 
     rw::emitTo( err, "ripwire: redacted {} secret{} from emitted context (",
-                  total, total == 1 ? "" : "s"  );
+                  total, total == 1 ? "" : "s" );
     bool first = true;
     for( std::size_t k = 0; k < std::size_t( SecretKind::kCount ); ++k )
     {
@@ -622,10 +622,10 @@ inline void reportRedactions( std::FILE* err, const RedactCounts& counts )
         {
             continue;
         }
-        rw::emitTo( err, "{}{}={}", first ? "" : " ", kLabel[k], counts.byKind[k]  );
+        rw::emitTo( err, "{}{}={}", first ? "" : " ", kLabel[k], counts.byKind[k] );
         first = false;
     }
-    rw::emitRaw( err, ") — pass --no-redact to disable\n"  );
+    rw::emitRaw( err, ") — pass --no-redact to disable\n" );
 }
 
 }   // namespace rw

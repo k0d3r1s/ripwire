@@ -207,7 +207,7 @@ inline int writeHandoffPacket( std::FILE* out, const std::string& root, const In
             continue;
         }
         char degBuf[32];
-        rw::formatTo( degBuf, sizeof degBuf, "{:.2f}", deg  );
+        rw::formatTo( degBuf, sizeof degBuf, "{:.2f}", deg );
         std::string r = "<cochange p=\"";
         r += escapeXml( hoPathRel( f ), esc );
         r += "\" deg=\"";
@@ -276,7 +276,7 @@ inline int writeHandoffPacket( std::FILE* out, const std::string& root, const In
         for( std::size_t i = 0; i < best.size() && i < kHandoffDocRows; ++i )
         {
             char sBuf[32];
-            rw::formatTo( sBuf, sizeof sBuf, "{:.3f}", double( best[i].first )  );
+            rw::formatTo( sBuf, sizeof sBuf, "{:.3f}", double( best[i].first ) );
             std::string r = "<doc p=\"";
             r += escapeXml( hoPathRel( best[i].second ), esc );
             r += "\" s=\"";

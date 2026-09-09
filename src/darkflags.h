@@ -1062,19 +1062,19 @@ inline void writeGate( std::FILE* out, const Gate& g, const XmlEscaper& ex, std:
 {
     rw::emitTo( out, "<gate name=\"{}\" kind=\"{}\" default=\"{}\" dark=\"{}\" regions=\"{}\" loc=\"{}\" reads=\"{}\" p=\"{}\" l=\"{}\">",
                   ex( g.name ).c_str(), gateKindTag( g.kind ), ex( g.def ).c_str(), isDarkDefault( g.def ) ? 1 : 0,
-                  g.regions, g.guardedLines, g.reads.size(), ex( g.defSite.path ).c_str(), g.defSite.line  );
+                  g.regions, g.guardedLines, g.reads.size(), ex( g.defSite.path ).c_str(), g.defSite.line );
     if( !g.aliasOf.empty() )
     {
-        rw::emitTo( out, "<alias-of name=\"{}\"/>", ex( g.aliasOf ).c_str()  );
+        rw::emitTo( out, "<alias-of name=\"{}\"/>", ex( g.aliasOf ).c_str() );
     }
     if( g.aliasCount )
     {
-        rw::emitTo( out, "<aliases n=\"{}\" regions=\"{}\" loc=\"{}\"/>", g.aliasCount, g.aliasRegions, g.aliasLines  );
+        rw::emitTo( out, "<aliases n=\"{}\" regions=\"{}\" loc=\"{}\"/>", g.aliasCount, g.aliasRegions, g.aliasLines );
     }
     if( g.hasAlso )
     {
         rw::emitTo( out, "<also kind=\"{}\" default=\"{}\" p=\"{}\" l=\"{}\"/>",
-                      gateKindTag( g.alsoKind ), ex( g.alsoDef ).c_str(), ex( g.alsoSite.path ).c_str(), g.alsoSite.line  );
+                      gateKindTag( g.alsoKind ), ex( g.alsoDef ).c_str(), ex( g.alsoSite.path ).c_str(), g.alsoSite.line );
     }
     // "Nothing is dropped without a number": shownCount is what the loop will PRINT, so the <more/> remainder
     // is exactly what it will not. The `shown++ >= cap` form got this wrong twice over — it left the counter
@@ -1083,13 +1083,13 @@ inline void writeGate( std::FILE* out, const Gate& g, const XmlEscaper& ex, std:
     const std::size_t shownCount = std::min( g.reads.size(), maxSites );
     for( std::size_t readIndex = 0; readIndex < shownCount; ++readIndex )
     {
-        rw::emitTo( out, "<read p=\"{}\" l=\"{}\"/>", ex( g.reads[ readIndex ].path ).c_str(), g.reads[ readIndex ].line  );
+        rw::emitTo( out, "<read p=\"{}\" l=\"{}\"/>", ex( g.reads[ readIndex ].path ).c_str(), g.reads[ readIndex ].line );
     }
     if( g.reads.size() > shownCount )
     {
-        rw::emitTo( out, "<more reads=\"{}\"/>", g.reads.size() - shownCount  );
+        rw::emitTo( out, "<more reads=\"{}\"/>", g.reads.size() - shownCount );
     }
-    rw::emitRaw( out, "</gate>"  );
+    rw::emitRaw( out, "</gate>" );
 }
 
 inline void writeFlags( std::FILE* out, const FlagsResult& res, std::size_t maxSites )
@@ -1105,7 +1105,7 @@ inline void writeFlags( std::FILE* out, const FlagsResult& res, std::size_t maxS
                        "preprocessed: this reports the in-repo default, never the value your build used. dark_gates on this root "
                        "is the COUNT of dark gates; it was spelled dark until that collided with the child bool. files= is THIS "
                        "verb's own harvest scan (source + CMakeLists files it read looking for gates) — a wider crawl than the "
-                       "map's indexed corpus, so it will not equal the map's files= -->"  );
+                       "map's indexed corpus, so it will not equal the map's files= -->" );
     // §P8 collision: `dark=` was a COUNT here and a BOOL on the <gate/> children beneath — indistinguishable
     // to a parser. The count is renamed (index-vs-count rule) and reads correctly beside its
     // gates=/compile=/cmake=/env= siblings; it had ZERO parsers, so the bool half keeps its name.
@@ -1116,12 +1116,12 @@ inline void writeFlags( std::FILE* out, const FlagsResult& res, std::size_t maxS
                                                         : ( " filter=\"" + std::string( rw::escapeXml( res.filter, fgEsc ) ) + "\"" );
     rw::emitTo( out, "<flags gates=\"{}\" dark_gates=\"{}\" compile=\"{}\" cmake=\"{}\" env=\"{}\" files=\"{}\"{}>",
                   res.gates.size(), res.dark, res.compileCount, res.cmakeCount, res.envCount, res.filesScanned,
-                  fgFilterAttr.c_str()  );
+                  fgFilterAttr.c_str() );
     for( const Gate& g : res.gates )
     {
         writeGate( out, g, ex, maxSites );
     }
-    rw::emitRaw( out, "</flags>"  );
+    rw::emitRaw( out, "</flags>" );
 }
 
 }}   // namespace rw::darkflags

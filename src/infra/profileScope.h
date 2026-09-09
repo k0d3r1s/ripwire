@@ -40,7 +40,7 @@
 //
 
 #pragma once
-#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include "emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 
 
 // ---- configuration (override by #define-ing before the include) -------------
@@ -523,7 +523,7 @@ public:
                 rw::emitTo( stderr,
                     "PROFILE WARNING: thread {} ({}) still running at exit — join it "
                     "before main() returns; leaking its profile data to stay safe\n",
-                    (unsigned long long) d->tid, d->name[ 0 ] ? d->name : "unnamed"  );
+                    (unsigned long long) d->tid, d->name[ 0 ] ? d->name : "unnamed" );
             }
         }
     }
@@ -806,23 +806,23 @@ inline void fmt_count( char* buf, std::size_t sz, uint64_t v ) noexcept
 {
     if( v < 1000ull )
     {
-        rw::formatTo( buf, sz, "{}", (unsigned long long)v  );
+        rw::formatTo( buf, sz, "{}", (unsigned long long)v );
     }
     else if( v < 1000000ull )
     {
-        rw::formatTo( buf, sz, "{:.2f}k", double( v ) * 1e-3  );
+        rw::formatTo( buf, sz, "{:.2f}k", double( v ) * 1e-3 );
     }
     else if( v < 1000000000ull )
     {
-        rw::formatTo( buf, sz, "{:.2f}M", double( v ) * 1e-6  );
+        rw::formatTo( buf, sz, "{:.2f}M", double( v ) * 1e-6 );
     }
     else if( v < 1000000000000ull )
     {
-        rw::formatTo( buf, sz, "{:.2f}G", double( v ) * 1e-9  );
+        rw::formatTo( buf, sz, "{:.2f}G", double( v ) * 1e-9 );
     }
     else
     {
-        rw::formatTo( buf, sz, "{:.2f}T", double( v ) * 1e-12  );
+        rw::formatTo( buf, sz, "{:.2f}T", double( v ) * 1e-12 );
     }
 }
 
@@ -880,13 +880,13 @@ inline void name_and_loc( const Row& r, char* nameBuf, std::size_t nameSz,
     trim_pretty( r.site->pretty, fn, sizeof( fn ) );
     if( r.site->description )
     {
-        rw::formatTo( nameBuf, nameSz, "{} [{}]", fn, r.site->description  );
+        rw::formatTo( nameBuf, nameSz, "{} [{}]", fn, r.site->description );
     }
     else
     {
-        rw::formatTo( nameBuf, nameSz, "{}", fn  );
+        rw::formatTo( nameBuf, nameSz, "{}", fn );
     }
-    rw::formatTo( locBuf, locSz, "{}:{}", r.site->file, r.site->line  );
+    rw::formatTo( locBuf, locSz, "{}:{}", r.site->file, r.site->line );
 }
 
 inline int index_of_site( const ThreadSnap& s, const Site* site )

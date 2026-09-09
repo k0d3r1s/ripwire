@@ -1090,7 +1090,7 @@ inline std::string cochangePartnersJson( const std::string& root, const std::str
             out += ",";
         }
         first = false;
-        char deg[ 16 ];  rw::formatTo( deg, sizeof( deg ), "{:.2f}", p.deg  );
+        char deg[ 16 ];  rw::formatTo( deg, sizeof( deg ), "{:.2f}", p.deg );
         // §A9.3: the JSON sibling of the XML dep_capable= tell — surprising is false for a pair that could
         // never have carried a static dependency, and dep_capable says WHY it is false.
         out += "{\"file\":\"" + mcpdetail::jsonEscape( ccRel( p.fileId ) ) + "\",\"together\":" + std::to_string( p.together )
@@ -1295,7 +1295,7 @@ inline std::string situationDiffJson( const std::string& root, const std::string
                 out += ",";
             }
             first = false;
-            char d[ 16 ];  rw::formatTo( d, sizeof( d ), "{:.2f}", deg  );
+            char d[ 16 ];  rw::formatTo( d, sizeof( d ), "{:.2f}", deg );
             out += "{\"file\":\"" + mcpdetail::jsonEscape( std::string( situJPathRel( f ) ) ) + "\",\"cochange_degree\":" + d + "}";
         }
     }
@@ -1555,7 +1555,7 @@ inline std::string forTaskText( const std::string& root, const std::string& task
             char nb[ 220 ];
             rw::formatTo( nb, sizeof( nb ), " [mention anchor: {} file{} + {} symbols named in the task, score lifted to within 5% of the top score; "
                            "mention_anchored= on the root repeats this total]",
-                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount  );
+                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount );
             mentionNote     = nb;
             mentionAnchored = mentionInfo.fileCount + mentionInfo.symbolCount;   // §A4f: the same count the CLI candidates root emits
         }
@@ -1578,7 +1578,7 @@ inline std::string forTaskText( const std::string& root, const std::string& task
         {
             char nb[ 200 ];
             rw::formatTo( nb, sizeof( nb ), " [cochange boost: promoted {} symbols in {} files that historically change with the top seeds (last {} commits)]",
-                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow  );
+                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow );
             boostNote = nb;
         }
     }
@@ -1597,7 +1597,7 @@ inline std::string forTaskText( const std::string& root, const std::string& task
             char nb[ 220 ];
             rw::formatTo( nb, sizeof( nb ), " [doc mentions: {} doc{} discussing {} top-ranked symbol{} surfaced; doc_mentions= on the root repeats the doc count]",
                            docMentionInfo.docCount, docMentionInfo.docCount == 1 ? "" : "s",
-                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s"  );
+                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s" );
             docMentionNote = nb;
             docMentions    = docMentionInfo.docCount;
         }
@@ -1797,7 +1797,7 @@ inline std::string forTaskText( const std::string& root, const std::string& task
         if( closeAt != std::string::npos )
         {
             char nb[ 40 ];
-            rw::formatTo( nb, sizeof( nb ), " dropped_positive=\"{}\"", mcpDroppedPositive  );
+            rw::formatTo( nb, sizeof( nb ), " dropped_positive=\"{}\"", mcpDroppedPositive );
             headerStr.insert( closeAt, nb ); // else: unexpected shape, header left as-is
         }
     }
@@ -1822,7 +1822,7 @@ inline std::string forTaskText( const std::string& root, const std::string& task
                                                        kForFileTailShownCap, tailEsc );
         std::fwrite( tailStr.data(), 1, tailStr.size(), mem );
     }
-    rw::emitRaw( mem, "</ctx>"  );
+    rw::emitRaw( mem, "</ctx>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -1865,11 +1865,11 @@ inline std::string legoText( const std::string& root, const std::string& type, R
 
     return captureXml( [ & ]( std::FILE* mem )
     {
-        rw::emitTo( mem, "<ctx>{}", kLegoLegend  );   // H5: the same legend the CLI --lego prints (graphlegend.h)
+        rw::emitTo( mem, "<ctx>{}", kLegoLegend );   // H5: the same legend the CLI --lego prints (graphlegend.h)
         packLego( mem, ing, ix.g.implementors, flat, 1, redact, &impure, focus, /*withPaths=*/true,
                   ing.realPaths.empty() ? std::string_view( root ) : std::string_view(),    // R-R: root-relative <iface p=>
                   graphCountFloorAttrXml( ix.g ) );                                           // M15: gauge + marker
-        rw::emitRaw( mem, "</ctx>"  );
+        rw::emitRaw( mem, "</ctx>" );
     } );
 }
 
@@ -1948,7 +1948,7 @@ inline std::string ownersText( const std::string& root, const std::string& symbo
                        "With a symbol, of= echoes it and defs= is how many DEFINITIONS that name has: this report covers the "
                        "file holding the FIRST of them (lowest node id), so defs= above 1 means the other definitions' files "
                        "were NOT analysed. An @FILE:LINE seed rebinds to the innermost definition enclosing that line "
-                       "(sym= names it) and covers exactly that definition's file -->"  );
+                       "(sym= names it) and covers exactly that definition's file -->" );
     // §P8: the SAME <owners> element the CLI emits, so it takes the same at=. Stamping only the CLI half
     // would re-create, inside one element name, the two-shapes-one-spelling problem this round removes.
     // §B11.3-class: and the same of=/defs= fold disclosure, for the same reason.
@@ -1975,10 +1975,10 @@ inline std::string ownersText( const std::string& root, const std::string& symbo
     rw::emitTo( mem, "<owners files=\"{}\"{}{}{}{}>", ownerships.size(), owSymAttr.c_str(),
                   pageDisclosure( owPab, sizeof( owPab ), owPw.end - owPw.begin, printRows.size(), owPw.end,
                                   page.limit, page.offset, /*discloseCap=*/false ),
-                  owRootAttr.c_str(), gitstamp::atAttr( root ).c_str()  );
+                  owRootAttr.c_str(), gitstamp::atAttr( root ).c_str() );
     if( uniformCount > 0 )
     {
-        rw::emitTo( mem, "<uniform authors=\"1\" bf=\"1\" share=\"1.00\" files=\"{}\"/>", uniformCount  );
+        rw::emitTo( mem, "<uniform authors=\"1\" bf=\"1\" share=\"1.00\" files=\"{}\"/>", uniformCount );
     }
     for( std::size_t owRowIndex = owPw.begin; owRowIndex < owPw.end; ++owRowIndex )
     {
@@ -1987,11 +1987,11 @@ inline std::string ownersText( const std::string& root, const std::string& symbo
         const AuthorScore&   top = ow.authors[0];
         const auto ep = rw::escapeXml( owSingleRoot ? sarif::rootRelativeUri( ing.files[ ow.fileId ], owRootPrefix )
                                                     : std::string_view( ing.files[ ow.fileId ] ), owEsc );
-        rw::emitTo( mem, "<f p=\"{}\" authors=\"{}\" bf=\"{}\"", std::string_view( ep.data(), ep.size() ), ow.uniqueAuthors, int( ow.busFactor )  );
+        rw::emitTo( mem, "<f p=\"{}\" authors=\"{}\" bf=\"{}\"", std::string_view( ep.data(), ep.size() ), ow.uniqueAuthors, int( ow.busFactor ) );
         const auto em = rw::escapeXml( top.email, owEsc );
-        rw::emitTo( mem, " top=\"{}\" share=\"{:.2f}\"/>", std::string_view( em.data(), em.size() ), top.share  );
+        rw::emitTo( mem, " top=\"{}\" share=\"{:.2f}\"/>", std::string_view( em.data(), em.size() ), top.share );
     }
-    rw::emitRaw( mem, "</owners>"  );
+    rw::emitRaw( mem, "</owners>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -2071,11 +2071,11 @@ inline std::string exemplarText( const std::string& root, const std::string& kin
     {
         return {};
     }
-    rw::emitRaw( mem, "<ctx>"  );
+    rw::emitRaw( mem, "<ctx>" );
     // §B6 M13: the rule is exemplar.h's kExemplarSelectionRule, rendered — not restated here in a fourth wording.
     rw::emitTo( mem, "<!-- ripwire exemplar for \"{}\"{}: the repo's best-in-class {} to imitate — {}. "
                        "Copy its shape, not its text. -->",
-                  ex( reqNote ).c_str(), kindNote.c_str(), symTag( pick.targetKind ), kExemplarSelectionRule  );
+                  ex( reqNote ).c_str(), kindNote.c_str(), symTag( pick.targetKind ), kExemplarSelectionRule );
     // R-E fix (2026-08-19): the CLI twin went root-relative and this one did not, so ONE exemplar came back
     // p="src/infra/fastmath.h:51" on the CLI and the same file spelled as a full absolute path over MCP — the
     // one-answer-two-surfaces contract mcptranchecheck.sh exists to hold. Same single-root condition, same
@@ -2088,11 +2088,11 @@ inline std::string exemplarText( const std::string& root, const std::string& kin
                   ex( exSingleRoot ? sarif::rootRelativeUri( ing.files[ wsym.fileId ], exRootPrefix ) : std::string_view( ing.files[ wsym.fileId ] ) ).c_str(), wsym.line,
                   fin( pick.winner ), wsym.ccx, exRootAttr.c_str(), ts( pick.winner ) ? " tested=\"1\"" : "",
                   pick.lowConfidence ? " low_confidence=\"1\"" : "",
-                  pick.overCcxBar    ? " over_ccx_bar=\"1\"" : ""  );
+                  pick.overCcxBar    ? " over_ccx_bar=\"1\"" : "" );
     packBodies( mem, ing, { pick.winner }, 0 /* no byte budget in MCP (0 = unlimited) */, g.outOff, g.outTargets, false, redact,
                 /*ranges=*/nullptr, /*noteIndex=*/nullptr, /*outEmitted=*/nullptr, /*truncateOversizedFirst=*/true,
                 /*withFileContext=*/false, exSingleRoot ? std::string_view( root ) : std::string_view() );
-    rw::emitRaw( mem, "</exemplar></ctx>"  );
+    rw::emitRaw( mem, "</exemplar></ctx>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -2155,7 +2155,7 @@ inline std::string impactText( const std::string& root, const std::string& symbo
     rw::emitTo( mem, "{}{}. {}{}{}{}{}{}-->", kImpactLegendOpen, kPageRaiseCapClause, kImpactImportTierLegend,
                   kTestedRowLegend, kImpactTestedPartitionLegend,   // A6
                   kTestedLensBlindSpotLegend,                       // F-02: rides with the partition, byte-identical to the CLI twin
-                  graphCountDisclosure( g.unindexedFiles > 0 ).c_str(), renderDisclosure( prD, DiscloseAs::LegendClause ).c_str()  );
+                  graphCountDisclosure( g.unindexedFiles > 0 ).c_str(), renderDisclosure( prD, DiscloseAs::LegendClause ).c_str() );
     // r27-emitters §P2.1: the listing is capped at 40 by rank. Without shown=/capped= a 40-row answer to
     // "is it safe to change X?" reads as the WHOLE blast radius when it can be 3% of it. Same attributes,
     // same meaning as the CLI --impact — the two surfaces must not diverge on an honesty marker.
@@ -2189,7 +2189,7 @@ inline std::string impactText( const std::string& root, const std::string& symbo
     // different element (see the CLI arm and kImpactImportTierLegend for why they are never one number).
     emitImportRowsXml( mem, ing, std::span<const std::uint32_t>( imports.files ).first( imports.shown ), imRootPrefix,
                        std::span<const char>( imports.lazy ).first( imports.shown ) );
-    rw::emitRaw( mem, "</impact>"  );
+    rw::emitRaw( mem, "</impact>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -2434,14 +2434,14 @@ inline std::string usesText( const std::string& root, const std::string& symbol,
     {
         const UseSite& u = sites[ siteIndex ];
         const std::string_view up = usSingleRoot ? sarif::rootRelativeUri( ing.files[ u.fileId ], usRootPrefix ) : std::string_view( ing.files[ u.fileId ] );
-        rw::emitTo( mem, "<u role=\"{}\" p=\"{}:{}\"", refRoleTag( u.role ), ex( up ).c_str(), u.line  );
+        rw::emitTo( mem, "<u role=\"{}\" p=\"{}:{}\"", refRoleTag( u.role ), ex( up ).c_str(), u.line );
         if( !u.in.empty() )
         {
-            rw::emitTo( mem, " in_id=\"{}\"", ex( u.in ).c_str()  ); // §P8: MCP twin of the CLI --uses rename
+            rw::emitTo( mem, " in_id=\"{}\"", ex( u.in ).c_str() ); // §P8: MCP twin of the CLI --uses rename
         }
-        rw::emitRaw( mem, "/>"  );
+        rw::emitRaw( mem, "/>" );
     }
-    rw::emitRaw( mem, "</uses>"  );
+    rw::emitRaw( mem, "</uses>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -2496,7 +2496,7 @@ inline std::string pathText( const std::string& root, const std::string& from, c
     // verb has no legend of its own either, and the two dialects must not differ on what they explain.
     // H5: the same brief floor legend + marker the CLI --path prints (verbs_navigate.h) — one wording, two transports.
     rw::emitTo( mem, "<!-- ripwire path: one DIRECTED call path from= to to= (each <s> a hop); reachable= is 0 and hops= 0 when the "
-                       "graph holds none. {}-->{}", graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( ptSingleRoot )  );
+                       "graph holds none. {}-->{}", graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( ptSingleRoot ) );
     rw::emitTo( mem, "<path from=\"{}\" to=\"{}\" from_p=\"{}\" to_p=\"{}\" from_defs=\"{}\" to_defs=\"{}\" reachable=\"{}\" hops=\"{}\"{}{}",
                   ex( from ).c_str(), ex( to ).c_str(), loc( srcUsed ).c_str(), loc( dstUsed ).c_str(),
                   srcDefs.size(), dstDefs.size(),
@@ -2505,14 +2505,14 @@ inline std::string pathText( const std::string& root, const std::string& from, c
     if( pth.empty() )
     {
         rw::emitTo( mem, " hint=\"no directed call path — try the connect verb on {},{} (undirected: finds a shared caller), or uses/impact for non-call references\"",
-                      ex( from ).c_str(), ex( to ).c_str()  );
+                      ex( from ).c_str(), ex( to ).c_str() );
     }
-    rw::emitRaw( mem, ">"  );
+    rw::emitRaw( mem, ">" );
     for( NodeId n : pth )
     { const Symbol&           s  = ing.symbols[n];
       const std::string_view  rp = ptSingleRoot ? sarif::rootRelativeUri( ing.files[ s.fileId ], ptRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-      rw::emitTo( mem, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line  ); }
-    rw::emitRaw( mem, "</path>"  );
+      rw::emitTo( mem, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line ); }
+    rw::emitRaw( mem, "</path>" );
     std::fflush( mem );
     std::fclose( mem );
     std::string out = buf ? std::string( buf, sz ) : std::string{};
@@ -2950,7 +2950,7 @@ inline void packConnect( std::FILE* out, const IngestResult& ing, const Graph& g
     char connectCeiling[ 32 ];  connectCeiling[ 0 ] = '\0';
     if( maxTokens > 0 )
     {
-        rw::formatTo( connectCeiling, sizeof( connectCeiling ), " max_tokens=\"{}\"", maxTokens  );
+        rw::formatTo( connectCeiling, sizeof( connectCeiling ), " max_tokens=\"{}\"", maxTokens );
     }
     // F5 sibling (capture-audit verify-wave2 2026-09-05, budgetpolicycheck (D)): the trim loop above has
     // exactly two moves — sigs off, then legs dropped — and then it BREAKS whether or not the bundle fits.
@@ -2964,14 +2964,14 @@ inline void packConnect( std::FILE* out, const IngestResult& ing, const Graph& g
     {
         estTokens = connectEstTokens( payload.size(), connectExtraBytes + std::strlen( connectOverAttr ) );
     }
-    rw::emitTo( out, "{}{}{}", kConnectHeader, graphUnindexedLegendComment( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( !rootArg.empty() )  );
+    rw::emitTo( out, "{}{}{}", kConnectHeader, graphUnindexedLegendComment( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( !rootArg.empty() ) );
     rw::emitTo( out, "<connect terminals=\"{}\" nodes=\"{}\" edges=\"{}\" radius=\"{}\" groups=\"{}\" est_tokens=\"{}\" hub_floor=\"{}\"{}{}{}{}{}>",
                   res.terminals.size(), nodeTotal, edgeTotal, res.radius, connectedGroups, estTokens, hubFloor,
                   connectCeiling, connectOverAttr,
                   truncated ? " truncated=\"paths\"" : "", connectRootAttr.c_str(),
                   graphCountFloorAttrXml( g ).c_str()  );   // H5/M15: nodes=/edges= are read off the name-based CSR — a floor, with the gauge
     std::fwrite( payload.data(), 1, payload.size(), out );
-    rw::emitRaw( out, "</connect>"  );
+    rw::emitRaw( out, "</connect>" );
 }
 
 // `connect` verb: resolve the 2..16 symbol specs (resolveFocus - `file:name` disambiguation, exactly the CLI)
@@ -3361,7 +3361,7 @@ inline std::string packTaskText( const std::string& root, const std::string& tas
         {
             char nb[ 160 ];
             rw::formatTo( nb, sizeof( nb ), " [mention anchor: {} file{} + {} symbols named in the task, score lifted to within 5% of the top score]",
-                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount  );
+                           mentionInfo.fileCount, mentionInfo.fileCount == 1 ? "" : "s", mentionInfo.symbolCount );
             lr.mentionNote = nb;
         }
     }
@@ -3373,7 +3373,7 @@ inline std::string packTaskText( const std::string& root, const std::string& tas
         {
             char nb[ 200 ];
             rw::formatTo( nb, sizeof( nb ), " [cochange boost: promoted {} symbols in {} files that historically change with the top seeds (last {} commits)]",
-                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow  );
+                           boostInfo.boostedSymbolCount, boostInfo.boostedFileCount, kCoBoostCommitWindow );
             lr.boostNote = nb;
         }
     }
@@ -3385,7 +3385,7 @@ inline std::string packTaskText( const std::string& root, const std::string& tas
             char nb[ 160 ];
             rw::formatTo( nb, sizeof( nb ), " [doc mentions: {} doc{} discussing {} top-ranked symbol{} surfaced]",
                            docMentionInfo.docCount, docMentionInfo.docCount == 1 ? "" : "s",
-                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s"  );
+                           docMentionInfo.anchorCount, docMentionInfo.anchorCount == 1 ? "" : "s" );
             lr.docMentionNote = nb;
         }
     }

@@ -118,7 +118,7 @@ inline bool buildWorkspaceRoots( const std::vector<std::string>& args, std::vect
         }
         if( dup )
         {
-            rw::emitTo( stderr, "ripwire: duplicate root '{}' ignored (same directory already listed)\n", a.c_str()  );
+            rw::emitTo( stderr, "ripwire: duplicate root '{}' ignored (same directory already listed)\n", a.c_str() );
             continue;
         }
         out.push_back( { a, real, std::string() } );
@@ -140,7 +140,7 @@ inline bool buildWorkspaceRoots( const std::vector<std::string>& args, std::vect
             {
                 rw::emitTo( stderr, "ripwire: nested roots are not allowed: '{}' is inside '{}' — pass disjoint roots "
                                       "(to focus on a subtree, use --for / DIR-scoped verbs instead)\n",
-                              out[j].arg.c_str(), out[i].arg.c_str()  );
+                              out[j].arg.c_str(), out[i].arg.c_str() );
                 return false;
             }
         }

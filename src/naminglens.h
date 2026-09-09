@@ -874,7 +874,7 @@ inline void checkNameInformativeness( const Symbol& s, const std::vector<std::st
         return;
     }
     char idfBuf[32];
-    rw::formatTo( idfBuf, sizeof( idfBuf ), "{:.2f}", maxIdf  );
+    rw::formatTo( idfBuf, sizeof( idfBuf ), "{:.2f}", maxIdf );
     sink.add( "naming-uninformative", s, s.line,
               s.name + " (" + std::to_string( bodyLines ) + "-line body; every name subtoken is corpus-ubiquitous, max idf=" + idfBuf + ")" );
 }

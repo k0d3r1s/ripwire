@@ -487,7 +487,7 @@ inline void streamBlobs( const std::string& root, const std::vector<std::string>
         }
         for( const std::string& s : shas )
         {
-            rw::emitTo( lf, "{}\n", s.c_str()  );
+            rw::emitTo( lf, "{}\n", s.c_str() );
         }
         std::fclose( lf );
     }
@@ -1872,15 +1872,15 @@ inline void writeStrayEval( std::FILE* out, const EvalReport& rep )
                        "(merged refs are omitted by design); a label naming a ref that does not exist is refused, "
                        "not scored (see badRefs on refusal). unknown= on the root counts cases whose verdict "
                        "is unknown (no merge-base / unrelated history); its own bucket, never folded into merged. "
-                       "Use this to MEASURE a threshold change instead of eyeballing it. -->"  );
-    rw::emitTo( out, "<stray-eval cases=\"{}\" correct=\"{}\" unknown=\"{}\" accuracy=\"{:.1f}\">", n, rep.correct, rep.unknownCount, acc  );
+                       "Use this to MEASURE a threshold change instead of eyeballing it. -->" );
+    rw::emitTo( out, "<stray-eval cases=\"{}\" correct=\"{}\" unknown=\"{}\" accuracy=\"{:.1f}\">", n, rep.correct, rep.unknownCount, acc );
     for( const EvalCase& c : rep.cases )
     {
         rw::emitTo( out, "<case ref=\"{}\" want=\"{}\" got=\"{}\" hit=\"{}\" reported=\"{}\"/>",
                       ex( c.ref ).c_str(), verdictTag( c.expected ), verdictTag( c.got ),
-                      c.got == c.expected ? 1 : 0, c.found ? 1 : 0  );
+                      c.got == c.expected ? 1 : 0, c.found ? 1 : 0 );
     }
-    rw::emitRaw( out, "</stray-eval>"  );
+    rw::emitRaw( out, "</stray-eval>" );
 }
 
 // ── XML emission (G4: minified, xmllint-clean; no `\n` outside CDATA) ────────────────────────────────────
@@ -1891,7 +1891,7 @@ inline void writeStrayFile( std::FILE* out, const FileRow& f, const XmlEscaper& 
 {
     rw::emitTo( out, "<file p=\"{}\" v=\"{}\" stray=\"{}\" authored=\"{}\" del=\"{}\" redone=\"{}\" sim=\"{:.2f}\" head-touched=\"{}\"{}/>",
                   ex( f.path ).c_str(), verdictTag( f.verdict ), f.strayLines, f.authored, f.deleted, f.redone,
-                  double( f.sim ), f.headTouched ? 1 : 0, f.diffable ? "" : " diffable=\"0\""  );
+                  double( f.sim ), f.headTouched ? 1 : 0, f.diffable ? "" : " diffable=\"0\"" );
 }
 
 inline void writeStrayRef( std::FILE* out, const RefRow& r, const XmlEscaper& ex, std::size_t maxFiles )
@@ -1904,7 +1904,7 @@ inline void writeStrayRef( std::FILE* out, const RefRow& r, const XmlEscaper& ex
 
     rw::emitTo( out, "<ref name=\"{}\" tip=\"{:.9}\" date=\"{}\" base=\"{:.9}\" ok=\"{}\" v=\"{}\" stray=\"{}\" files=\"{}\" superseded=\"{}\">",
                   ex( r.ref.name ).c_str(), r.ref.tip.c_str(), ex( r.ref.date ).c_str(), r.base.c_str(),
-                  r.ok ? 1 : 0, verdictTag( shownVerdict ), r.strayLines, r.strayFiles, r.supersededLines  );
+                  r.ok ? 1 : 0, verdictTag( shownVerdict ), r.strayLines, r.strayFiles, r.supersededLines );
 
     // The <more/> contract: shown + dropped == the total, always. Count against the CAP (maxFiles), never
     // against a loop variable the break has already incremented past it — that off-by-one is what made
@@ -1922,9 +1922,9 @@ inline void writeStrayRef( std::FILE* out, const RefRow& r, const XmlEscaper& ex
     VERIFY( shownCount == std::min( r.files.size(), maxFiles ) );
     if( r.files.size() > maxFiles )
     {
-        rw::emitTo( out, "<more files=\"{}\"/>", r.files.size() - maxFiles  );
+        rw::emitTo( out, "<more files=\"{}\"/>", r.files.size() - maxFiles );
     }
-    rw::emitRaw( out, "</ref>"  );
+    rw::emitRaw( out, "</ref>" );
 }
 
 // §P15/§P16: res.refs is already deterministic (strayLines desc, then ref.name asc — computeStrayContent's
@@ -1987,7 +1987,7 @@ inline void writeStrayContentPage( std::FILE* out, const StrayResult& res, std::
                        "SECONDARY listing (it repeats complete and identical on every page) and is capped by detail, not "
                        "by limit / offset, which page the OUTER ref listing and report their own shown= / capped=. "
                        "at= is the git commit these numbers were computed at; a trailing +shallow means the clone's history is truncated (a depth-limited clone: churn counts only the commits present), and a trailing +dirty means the working tree "
-                       "differed from that commit (head= is the same commit, bare sha, kept for compatibility). -->"  );
+                       "differed from that commit (head= is the same commit, bare sha, kept for compatibility). -->" );
     // §P8: shipped as `head-ref=` while its own --abi sibling (abicheck.h's `<abi head_ref=>`, over the SAME
     // field, reached by the SAME command line) shipped `head_ref=` — the tool's only kebab/snake pair, so a
     // parser written against one half read nothing from the other. Unified onto snake_case: it is the
@@ -2004,12 +2004,12 @@ inline void writeStrayContentPage( std::FILE* out, const StrayResult& res, std::
                   res.headSha.c_str(), ex( res.headRef ).c_str(), res.refsScanned, res.distinctBlobs, unmerged, superseded, res.mergedRefs, unknown,
                   filterAttr.c_str(),
                   pageDisclosure( srab, sizeof( srab ), refPage.end - refPage.begin, res.refs.size(), refPage.end, pageLimit, pageOffset, false ),
-                  atAttrStr.c_str()  );
+                  atAttrStr.c_str() );
     for( std::size_t refIndex = refPage.begin; refIndex < refPage.end; ++refIndex )
     {
         writeStrayRef( out, res.refs[refIndex], ex, maxFiles );
     }
-    rw::emitRaw( out, "</stray-content>"  );
+    rw::emitRaw( out, "</stray-content>" );
 }
 
 inline void writeStrayContent( std::FILE* out, const StrayResult& res, std::size_t maxFiles )
@@ -2150,7 +2150,7 @@ inline void writeWhereisPage( std::FILE* out, const WhereResult& res, std::size_
                        "so with complete= present a ref absent from the rows genuinely lacks the symbol in its committed tree. "
                        "Binary blobs are outside the claim (a text symbol cannot occur in one); an oversized TEXT blob suppresses "
                        "the claim instead of being silently skipped. Its ABSENCE claims nothing. "
-                       "raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). "  );
+                       "raise the default cap with limit=N (offset=M pages; a cut listing carries total=/has_more=/next_offset= so a paging loop can continue from it). " );
     // §L10b: the with_history lane's own <history> element, previously undefined on this legend — shared
     // verbatim with --doc-drift's copy (gitoracle.h kHistoryProbeLegend) so the two cannot drift. Only
     // when res.history actually made that element reachable — an unconditional splice would cost every
@@ -2178,7 +2178,7 @@ inline void writeWhereisPage( std::FILE* out, const WhereResult& res, std::size_
                   pageDisclosure( pab, sizeof( pab ), hitPage.end - hitPage.begin, res.hits.size(), hitPage.end,
                                   pageLimit, pageOffset, true ),
                   res.headSha.c_str(),
-                  completeClaim ? " complete=\"1\"" : ""  );
+                  completeClaim ? " complete=\"1\"" : "" );
 
     // §B11.2 — a zero that is a SPELLING fact, not a repository fact, says so. Emitted first, before the
     // history lane, so it is the first thing after the root on the one shape where it fires: hits="0" AND a
@@ -2186,19 +2186,19 @@ inline void writeWhereisPage( std::FILE* out, const WhereResult& res, std::size_
     if( res.hits.empty() && whereisSpecIsFileQualified( res.sym ) )
     {
         rw::emitTo( out, "<selector-note r=\"qualified-selector\" spec=\"{}\" retry=\"{}\"/>",
-                      ex( res.sym ).c_str(), ex( whereisBareNameOf( res.sym ) ).c_str()  );
+                      ex( res.sym ).c_str(), ex( whereisBareNameOf( res.sym ) ).c_str() );
     }
     // H7: the same element, two more reasons — the line seed that was RESOLVED before the scan (so sym= is a
     // name and not the raw @spec), and the near-miss beside a zero the index can explain.
     if( !res.seedSpec.empty() )
     {
         rw::emitTo( out, "<selector-note r=\"line-seed\" spec=\"{}\" retry=\"{}\"/>",
-                      ex( res.seedSpec ).c_str(), ex( res.sym ).c_str()  );
+                      ex( res.seedSpec ).c_str(), ex( res.sym ).c_str() );
     }
     if( res.hits.empty() && !res.nearMiss.empty() )
     {
         rw::emitTo( out, "<selector-note r=\"near-miss\" spec=\"{}\" retry=\"{}\"/>",
-                      ex( res.sym ).c_str(), ex( res.nearMiss ).c_str()  );
+                      ex( res.sym ).c_str(), ex( res.nearMiss ).c_str() );
     }
 
     // The history lane, when it was asked for: what the probe did, then this symbol's own verdict.
@@ -2232,7 +2232,7 @@ inline void writeWhereisPage( std::FILE* out, const WhereResult& res, std::size_
         ++shownCount;
         rw::emitTo( out, "<hit ref=\"{}\" tip=\"{:.9}\" date=\"{}\" p=\"{}\" l=\"{}\" kind=\"{}\" t=\"{}\"/>",
                       ex( h.ref ).c_str(), h.tip.c_str(), ex( h.date ).c_str(), ex( h.path ).c_str(),
-                      h.line, h.isDef ? "def" : "ref", ex( h.text ).c_str()  );
+                      h.line, h.isDef ? "def" : "ref", ex( h.text ).c_str() );
     }
     VERIFY( shownCount == hitPage.end - hitPage.begin );
     // <more hits="N"/> = the rows AFTER this page, so shown + more == the rows from this page's offset on.
@@ -2240,9 +2240,9 @@ inline void writeWhereisPage( std::FILE* out, const WhereResult& res, std::size_
     // (and next_offset= on the root says where to ask for it).
     if( hitPage.end < res.hits.size() )
     {
-        rw::emitTo( out, "<more hits=\"{}\"/>", res.hits.size() - hitPage.end  );
+        rw::emitTo( out, "<more hits=\"{}\"/>", res.hits.size() - hitPage.end );
     }
-    rw::emitRaw( out, "</whereis>"  );
+    rw::emitRaw( out, "</whereis>" );
 }
 
 // The un-paginated form — unchanged contract, for callers that want the whole (capped) listing.

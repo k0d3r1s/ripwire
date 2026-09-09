@@ -631,7 +631,7 @@ namespace mcpedit
         std::uint64_t h = 1469598103934665603ULL;      // FNV-1a-64 of the target path → a stable per-file lock name
         for( char c : targetPath ) { h ^= static_cast<unsigned char>( c ); h = hashutil::fnv1aMultiply( h ); }
         char name[ 64 ];
-        rw::formatTo( name, sizeof( name ), "ripwire-edit-{:016x}.lock", (unsigned long long)h  );
+        rw::formatTo( name, sizeof( name ), "ripwire-edit-{:016x}.lock", (unsigned long long)h );
         const std::string lockDir = quality::cacheDirLadder() + "/locks";
         ::mkdir( lockDir.c_str(), 0700 );
         ::chmod( lockDir.c_str(), 0700 );
@@ -1298,7 +1298,7 @@ inline mcpedit::Outcome runEditVerb( const std::string& root, mcpedit::Op op, co
     //    and report the applied span + the OLD index stamp with a note that it will refresh.
     char oldStamp[ 96 ];
     rw::formatTo( oldStamp, sizeof( oldStamp ), "[index: files={} symbols={} hash={:08x}]",
-                   ing.files.size(), ing.symbols.size(), (unsigned)( ix.contentHash & 0xFFFFFFFFu )  );
+                   ing.files.size(), ing.symbols.size(), (unsigned)( ix.contentHash & 0xFFFFFFFFu ) );
     invalidateMcpIndex();
 
     const char* opName = ( op == mcpedit::Op::ReplaceBody ) ? "replace_symbol_body"

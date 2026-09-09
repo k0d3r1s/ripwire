@@ -696,15 +696,15 @@ inline std::string renderTestHopBlock( const IngestResult& ing, const TestHop& h
     const std::string pairPath = hop.pairFileId == kNoTraceFile ? std::string() : ex( pathRel( hop.pairFileId ) );
     rw::emitTo( m, "<test_hop heuristic=\"1\" from=\"{}\" from_p=\"{}:{}\" pair=\"{}\" callee=\"{}\" basename=\"{}\" rows=\"{}\" capped=\"{}\">",
         ex( fromSym.name ).c_str(), ex( pathRel( fromSym.fileId ) ).c_str(), fromSym.line, pairPath.c_str(),
-        hop.calleeCandidateCount, hop.basenameCandidateCount, hop.rows.size(), hop.cappedCount  );
+        hop.calleeCandidateCount, hop.basenameCandidateCount, hop.rows.size(), hop.cappedCount );
     for( std::size_t i = 0; i < hop.rows.size(); ++i )
     {
         const Symbol& s = ing.symbols[ hop.rows[i].symbolId ];
         rw::emitTo( m, "<hop rank=\"{}\" n=\"{}\" t=\"{}\" p=\"{}:{}\" via=\"{}\"/>",
             i + 1, ex( s.name ).c_str(), symTag( s.kind ), ex( pathRel( s.fileId ) ).c_str(), s.line,
-            hop.rows[i].via == TestHopVia::Callee ? "callee" : "basename"  );
+            hop.rows[i].via == TestHopVia::Callee ? "callee" : "basename" );
     }
-    rw::emitRaw( m, "</test_hop>"  );
+    rw::emitRaw( m, "</test_hop>" );
     std::fflush( m );  std::fclose( m );
 
     std::string out;
@@ -732,7 +732,7 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
     }
     rw::emitTo( m, "<trace src=\"{}\" format=\"{}\" frame_lines=\"{}\" parsed=\"{}\" in_corpus=\"{}\" skipped=\"{}\" merged=\"{}\" unresolved=\"{}\" suspects=\"{}\">",
         ex( srcNote ).c_str(), tracein::formatSpec( dominant ).label, part.frameLinesSeen, part.parsedCount, part.inCorpusCount,
-        part.skipped.size(), part.mergedCount, part.unresolved.size(), part.suspects.size()  );
+        part.skipped.size(), part.mergedCount, part.unresolved.size(), part.suspects.size() );
     for( std::size_t i = 0; i < part.suspects.size(); ++i )
     {
         const TraceSuspect& sus = part.suspects[i];
@@ -747,7 +747,7 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
 
         rw::emitTo( m, "<frame rank=\"{}\" n=\"{}\" t=\"{}\" p=\"{}:{}\" resolved_by=\"{}\"{}{}/>",
             i + 1, ex( s.name ).c_str(), symTag( s.kind ), ex( sus.frame->path ).c_str(), sus.frame->line,
-            sus.isResolvedByName ? "name" : "line", encloses.c_str(), i == 0 ? " innermost=\"1\"" : ""  );
+            sus.isResolvedByName ? "name" : "line", encloses.c_str(), i == 0 ? " innermost=\"1\"" : "" );
     }
     for( const tracein::ParsedFrame* ur : part.unresolved )
     {
@@ -756,13 +756,13 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
         {
             named = " n=\"" + ex( ur->func ) + "\"";
         }
-        rw::emitTo( m, "<unresolved p=\"{}:{}\"{}/>", ex( ur->path ).c_str(), ur->line, named.c_str()  );
+        rw::emitTo( m, "<unresolved p=\"{}:{}\"{}/>", ex( ur->path ).c_str(), ur->line, named.c_str() );
     }
     for( const tracein::ParsedFrame* sk : part.skipped )
     {
-        rw::emitTo( m, "<skipped p=\"{}\" line=\"{}\"/>", ex( sk->path ).c_str(), sk->line  );
+        rw::emitTo( m, "<skipped p=\"{}\" line=\"{}\"/>", ex( sk->path ).c_str(), sk->line );
     }
-    rw::emitRaw( m, "</trace>"  );
+    rw::emitRaw( m, "</trace>" );
     std::fflush( m );  std::fclose( m );
     std::string out;
     if( buf ) { out.assign( buf, sz );  std::free( buf ); }

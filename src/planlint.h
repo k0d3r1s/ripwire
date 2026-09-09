@@ -765,56 +765,56 @@ inline void writePlanLint( std::FILE* out, const LintResult& res )
     const std::uint32_t gating = gatingCount( res );
 
     rw::emitTo( out, "<plan-lint file=\"{}\" dialect=\"{}\" cards=\"{}\" ledger=\"{}\"",
-                  ex( res.file ).c_str(), res.dialectDetected ? 1 : 0, res.cards.size(), res.hasLedger ? 1 : 0  );
+                  ex( res.file ).c_str(), res.dialectDetected ? 1 : 0, res.cards.size(), res.hasLedger ? 1 : 0 );
     if( res.hasLedger )
     {
-        rw::emitTo( out, " ledger_line=\"{}\"", res.ledgerLine  );
+        rw::emitTo( out, " ledger_line=\"{}\"", res.ledgerLine );
     }
     if( !res.atStamp.empty() )
     {
-        rw::emitTo( out, " at=\"{}\"", res.atStamp.c_str()  );
+        rw::emitTo( out, " at=\"{}\"", res.atStamp.c_str() );
     }
     rw::emitTo( out, " git=\"{}\" stale_commits=\"{}\" gating=\"{}\">",
-                  res.gitAvailable ? 1 : 0, kStaleCommits, gating  );
+                  res.gitAvailable ? 1 : 0, kStaleCommits, gating );
 
     for( const CardRow& c : res.cards )
     {
-        rw::emitTo( out, "<card id=\"{}\" line=\"{}\" status=\"{}\"", ex( c.id ).c_str(), c.line, glyphName( c.terminal )  );
+        rw::emitTo( out, "<card id=\"{}\" line=\"{}\" status=\"{}\"", ex( c.id ).c_str(), c.line, glyphName( c.terminal ) );
         if( c.terminalLine != 0 )
         {
-            rw::emitTo( out, " tline=\"{}\"", c.terminalLine  );
+            rw::emitTo( out, " tline=\"{}\"", c.terminalLine );
         }
         if( c.fromLedger )
         {
-            rw::emitRaw( out, " src=\"ledger\""  );
+            rw::emitRaw( out, " src=\"ledger\"" );
         }
         if( c.terminal == Glyph::None )
         {
-            rw::emitTo( out, " why=\"{}\"", missingWhy( c, res.hasLedger )  );
+            rw::emitTo( out, " why=\"{}\"", missingWhy( c, res.hasLedger ) );
         }
         if( c.staleComputed )
         {
-            rw::emitTo( out, " since=\"{}\"", c.commitsSince  );
+            rw::emitTo( out, " since=\"{}\"", c.commitsSince );
         }
         if( cardIsStale( c ) )
         {
-            rw::emitRaw( out, " stale=\"1\""  );
+            rw::emitRaw( out, " stale=\"1\"" );
         }
         if( cardIsGating( c ) )
         {
-            rw::emitRaw( out, " gating=\"1\""  );
+            rw::emitRaw( out, " gating=\"1\"" );
         }
-        rw::emitRaw( out, "/>"  );
+        rw::emitRaw( out, "/>" );
     }
 
     for( const LedgerOrphan& lo : res.ledgerOrphans )
     {
-        rw::emitTo( out, "<ledger-orphan id=\"{}\" line=\"{}\" gating=\"1\"/>", ex( lo.id ).c_str(), lo.line  );
+        rw::emitTo( out, "<ledger-orphan id=\"{}\" line=\"{}\" gating=\"1\"/>", ex( lo.id ).c_str(), lo.line );
     }
 
     for( const OwedRow& o : res.owed )
     {
-        rw::emitTo( out, "<owed line=\"{}\"{}>", o.line, o.discharged ? "" : " gating=\"1\""  );
+        rw::emitTo( out, "<owed line=\"{}\"{}>", o.line, o.discharged ? "" : " gating=\"1\"" );
         std::string safe;
         appendCdataSafe( o.text, safe );
         std::fputs( "<![CDATA[", out );

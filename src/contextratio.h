@@ -547,7 +547,7 @@ inline int writeContextRatioReport( const IngestResult& ing, int pageLimit, int 
                  " shown_syms=\"{}\" syms_capped=\"{}\" shown_files=\"{}\" files_capped=\"{}\"{}{}{}>",
                  total, scan.files.size(), unsigned( kDefsPerNameCap ), kBytesPerTokenBody,
                  shown, shown < total ? "1" : "0",
-                 fileShown, fileShown < scan.files.size() ? "1" : "0", paging, defsCappedAttr.c_str(), rootAttr.c_str()  );
+                 fileShown, fileShown < scan.files.size() ? "1" : "0", paging, defsCappedAttr.c_str(), rootAttr.c_str() );
 
     // TWO scratch buffers, not one reused twice in the same call: escapeXml returns a VIEW into its `out`,
     // so a second call with the same buffer invalidates the first view (readability.h carries the same note).
@@ -569,7 +569,7 @@ inline int writeContextRatioReport( const IngestResult& ing, int pageLimit, int 
                      row.sites, row.ents, row.entsOut, ratioOf( row.entsOut, row.ents ),
                      row.files, row.filesOut,
                      static_cast<unsigned long long>( row.rtok ), static_cast<unsigned long long>( row.rtokOut ),
-                     ratioOf( row.rtokOut, row.rtok ), row.ext, row.amb  );
+                     ratioOf( row.rtokOut, row.rtok ), row.ext, row.amb );
     }
     for( std::size_t fileIndex = 0; fileIndex < fileShown; ++fileIndex )
     {
@@ -580,9 +580,9 @@ inline int writeContextRatioReport( const IngestResult& ing, int pageLimit, int 
                      path.c_str(), row.sites, row.ents, row.entsOut, ratioOf( row.entsOut, row.ents ),
                      row.files, row.filesOut,
                      static_cast<unsigned long long>( row.rtok ), static_cast<unsigned long long>( row.rtokOut ),
-                     ratioOf( row.rtokOut, row.rtok ), row.ext, row.amb  );
+                     ratioOf( row.rtokOut, row.rtok ), row.ext, row.amb );
     }
-    rw::emitRaw( stdout, "</contextratio>"  );
+    rw::emitRaw( stdout, "</contextratio>" );
     return 0;
 }
 

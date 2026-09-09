@@ -2461,64 +2461,64 @@ inline void writeLayoutDef( std::FILE* out, const LayoutDef& def, const XmlEscap
 {
     const std::string_view rp = rootPrefix.empty() ? std::string_view( def.path ) : rw::sarif::rootRelativeUri( def.path, rootPrefix );
     rw::emitTo( out, "<def p=\"{}\" l=\"{}\" agg=\"{}\" modeled=\"{}\" fields=\"{}\"",
-                  ex( rp ).c_str(), def.line, def.aggregate, def.modeled ? 1 : 0, def.fields.size()  );
+                  ex( rp ).c_str(), def.line, def.aggregate, def.modeled ? 1 : 0, def.fields.size() );
     if( def.modeled )
     {
-        rw::emitTo( out, " size=\"{}\" align=\"{}\" tail_pad=\"{}\"", def.size, def.align, def.tailPad  );
+        rw::emitTo( out, " size=\"{}\" align=\"{}\" tail_pad=\"{}\"", def.size, def.align, def.tailPad );
     }
     if( def.declaredAlign )
     {
-        rw::emitTo( out, " alignas=\"{}\"", def.declaredAlign  );
+        rw::emitTo( out, " alignas=\"{}\"", def.declaredAlign );
     }
     if( def.packedAttr )
     {
-        rw::emitRaw( out, " packed=\"1\""  );
+        rw::emitRaw( out, " packed=\"1\"" );
     }
-    rw::emitRaw( out, ">"  );
+    rw::emitRaw( out, ">" );
 
     for( const FieldRow& f : def.fields )
     {
         if( f.padBefore )
         {
-            rw::emitTo( out, "<pad bytes=\"{}\"/>", f.padBefore  );
+            rw::emitTo( out, "<pad bytes=\"{}\"/>", f.padBefore );
         }
-        rw::emitTo( out, "<f n=\"{}\" ty=\"{}\"", ex( f.name ).c_str(), ex( f.type ).c_str()  );
+        rw::emitTo( out, "<f n=\"{}\" ty=\"{}\"", ex( f.name ).c_str(), ex( f.type ).c_str() );
         if( !f.resolved.empty() )
         {
-            rw::emitTo( out, " as=\"{}\"", ex( f.resolved ).c_str()  );
+            rw::emitTo( out, " as=\"{}\"", ex( f.resolved ).c_str() );
         }
         if( f.elems != 1 )
         {
-            rw::emitTo( out, " x=\"{}\"", f.elems  );
+            rw::emitTo( out, " x=\"{}\"", f.elems );
         }
         if( f.sized )
         {
-            rw::emitTo( out, " sz=\"{}\" al=\"{}\"", f.size, f.align  );
+            rw::emitTo( out, " sz=\"{}\" al=\"{}\"", f.size, f.align );
         }
         else
         {
-            rw::emitRaw( out, " sized=\"0\""  );
+            rw::emitRaw( out, " sized=\"0\"" );
         }
         if( f.placed )
         {
-            rw::emitTo( out, " off=\"{}\"", f.offset  );
+            rw::emitTo( out, " off=\"{}\"", f.offset );
         }
-        rw::emitRaw( out, "/>"  );
+        rw::emitRaw( out, "/>" );
     }
     if( def.modeled && def.tailPad )
     {
-        rw::emitTo( out, "<pad tail=\"{}\"/>", def.tailPad  );
+        rw::emitTo( out, "<pad tail=\"{}\"/>", def.tailPad );
     }
     for( const Caveat& c : def.caveats )
     {
-        rw::emitTo( out, "<caveat k=\"{}\" d=\"{}\"", ex( c.kind ).c_str(), ex( c.detail ).c_str()  );
+        rw::emitTo( out, "<caveat k=\"{}\" d=\"{}\"", ex( c.kind ).c_str(), ex( c.detail ).c_str() );
         if( c.count > 1 )
         {
-            rw::emitTo( out, " count=\"{}\"", c.count  ); // §P6.12: how many sites this ONE row stands for
+            rw::emitTo( out, " count=\"{}\"", c.count ); // §P6.12: how many sites this ONE row stands for
         }
-        rw::emitRaw( out, "/>"  );
+        rw::emitRaw( out, "/>" );
     }
-    rw::emitRaw( out, "</def>"  );
+    rw::emitRaw( out, "</def>" );
 }
 
 // `rootArg` — R-E (2026-08-17 harvest), same single-root-only root argument serialize() takes.
@@ -2578,7 +2578,7 @@ inline void writeLayout( std::FILE* out, const LayoutResult& res, std::string_vi
     const std::string layoutRootAttr = rootArg.empty() ? std::string() : ( " root=\"" + ex( rootArg ) + "\"" );
     rw::emitTo( out, "<layout sym=\"{}\" found=\"{}\" defs=\"{}\" mirror=\"{}\" asserts=\"{}\" conflicts=\"{}\" scanned=\"{}\"{}>",
                   ex( res.sym ).c_str(), res.found ? 1 : 0, res.defsFound, mirror, res.asserts.size(),
-                  res.assertConflicts, res.filesScanned, layoutRootAttr.c_str()  );
+                  res.assertConflicts, res.filesScanned, layoutRootAttr.c_str() );
 
     for( const LayoutDef& d : res.defs )
     {
@@ -2586,36 +2586,36 @@ inline void writeLayout( std::FILE* out, const LayoutResult& res, std::string_vi
     }
     if( res.defsFound > res.defs.size() )
     {
-        rw::emitTo( out, "<more defs=\"{}\"/>", res.defsFound - res.defs.size()  );
+        rw::emitTo( out, "<more defs=\"{}\"/>", res.defsFound - res.defs.size() );
     }
 
     for( const MirrorDiff& m : res.mirrors )
     {
         rw::emitTo( out, "<mismatch kind=\"{}\" a=\"{}\" b=\"{}\" size_a=\"{}\" size_b=\"{}\" size_differs=\"{}\" diffs=\"{}\">",
                       m.kind, ex( relPathLine( m.a ) ).c_str(), ex( relPathLine( m.b ) ).c_str(),
-                      m.sizeA, m.sizeB, m.sizeDiffers ? 1 : 0, m.fields.size()  );
+                      m.sizeA, m.sizeB, m.sizeDiffers ? 1 : 0, m.fields.size() );
         for( const FieldDiff& f : m.fields )
         {
-            rw::emitTo( out, "<d n=\"{}\" a=\"{}\" b=\"{}\"/>", ex( f.name ).c_str(), ex( f.inA ).c_str(), ex( f.inB ).c_str()  );
+            rw::emitTo( out, "<d n=\"{}\" a=\"{}\" b=\"{}\"/>", ex( f.name ).c_str(), ex( f.inA ).c_str(), ex( f.inB ).c_str() );
         }
-        rw::emitRaw( out, "</mismatch>"  );
+        rw::emitRaw( out, "</mismatch>" );
     }
 
     for( const AssertRow& a : res.asserts )
     {
         const std::string_view arp = rootPrefix.empty() ? std::string_view( a.path ) : rw::sarif::rootRelativeUri( a.path, rootPrefix );
-        rw::emitTo( out, "<assert p=\"{}\" l=\"{}\" kind=\"{}\"", ex( arp ).c_str(), a.line, a.kind  );
+        rw::emitTo( out, "<assert p=\"{}\" l=\"{}\" kind=\"{}\"", ex( arp ).c_str(), a.line, a.kind );
         if( a.hasWant )
         {
-            rw::emitTo( out, " want=\"{}\"", a.want  );
+            rw::emitTo( out, " want=\"{}\"", a.want );
         }
         if( a.compared )
         {
-            rw::emitTo( out, " got=\"{}\" agree=\"{}\"", a.got, a.agree ? 1 : 0  );
+            rw::emitTo( out, " got=\"{}\" agree=\"{}\"", a.got, a.agree ? 1 : 0 );
         }
-        rw::emitTo( out, " t=\"{}\"/>", ex( a.text ).c_str()  );
+        rw::emitTo( out, " t=\"{}\"/>", ex( a.text ).c_str() );
     }
-    rw::emitRaw( out, "</layout>"  );
+    rw::emitRaw( out, "</layout>" );
 }
 
 }}   // namespace rw::layout

@@ -392,7 +392,7 @@ inline int writeNamingConsistencyReport( const IngestResult& ing, int pageLimit,
     // R-E fix (2026-08-19): the shared root-relative clause, emitted exactly when root= is (graphlegend.h).
     std::fputs( rw::rootRelPathsLegend( !rootAttr.empty() ), stdout );
     rw::emitTo( stdout, "<naming-consistency groups=\"{}\" candidates=\"{}\" decided=\"{}\" flagged=\"{}\"{}{}>",
-                 scan.groups.size(), scan.symbols.size(), decidedCount, total, disclosure, rootAttr.c_str()  );
+                 scan.groups.size(), scan.symbols.size(), decidedCount, total, disclosure, rootAttr.c_str() );
 
     for( const ConventionGroup& g : scan.groups )
     {
@@ -400,12 +400,12 @@ inline int writeNamingConsistencyReport( const IngestResult& ing, int pageLimit,
         {
             rw::emitTo( stdout, "<g lang=\"{}\" kind=\"{}\" style=\"{}\" agree=\"{}\" total=\"{}\"/>",
                          langTag( g.lang ), kindBucketTag( g.kind ), styleTag( g.dominant ),
-                         g.votes[ std::uint8_t( g.dominant ) ], g.total  );
+                         g.votes[ std::uint8_t( g.dominant ) ], g.total );
         }
         else
         {
             rw::emitTo( stdout, "<g lang=\"{}\" kind=\"{}\" style=\"UNAVAILABLE\" why=\"{}\" total=\"{}\"/>",
-                         langTag( g.lang ), kindBucketTag( g.kind ), g.why, g.total  );
+                         langTag( g.lang ), kindBucketTag( g.kind ), g.why, g.total );
         }
     }
 
@@ -423,9 +423,9 @@ inline int writeNamingConsistencyReport( const IngestResult& ing, int pageLimit,
         const std::string     propose( escapeXml( recombineToStyle( sym.toks, group->dominant ), escProp ) );
         rw::emitTo( stdout, "<f p=\"{}:{}\" n=\"{}\" lang=\"{}\" kind=\"{}\" style=\"{}\" propose=\"{}\"/>",
                      path.c_str(), s.line, name.c_str(), langTag( sym.lang ), kindBucketTag( sym.kind ),
-                     styleTag( sym.style ), propose.c_str()  );
+                     styleTag( sym.style ), propose.c_str() );
     }
-    rw::emitRaw( stdout, "</naming-consistency>"  );
+    rw::emitRaw( stdout, "</naming-consistency>" );
     return 0;
 }
 

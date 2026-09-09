@@ -679,7 +679,7 @@ inline ScipOverlay loadScipOverlay( std::string_view path, const IngestResult& i
     if( bytes.empty() )
     {
         DEGRADED_PATH_ALERT( "--scip: index missing or unreadable — proceeding name-based" );
-        rw::emitTo( stderr, "ripwire --scip: cannot read index '{}' — proceeding name-based\n", p.c_str()  );
+        rw::emitTo( stderr, "ripwire --scip: cannot read index '{}' — proceeding name-based\n", p.c_str() );
         return {};
     }
 
@@ -687,7 +687,7 @@ inline ScipOverlay loadScipOverlay( std::string_view path, const IngestResult& i
     if( !scipDecodeIndex( bytes.data(), bytes.size(), docs ) )
     {
         DEGRADED_PATH_ALERT( "--scip: corrupt/truncated index — proceeding name-based" );
-        rw::emitTo( stderr, "ripwire --scip: corrupt or truncated index '{}' — proceeding name-based\n", p.c_str()  );
+        rw::emitTo( stderr, "ripwire --scip: corrupt or truncated index '{}' — proceeding name-based\n", p.c_str() );
         return {};
     }
 
@@ -705,7 +705,7 @@ inline ScipOverlay loadScipOverlay( std::string_view path, const IngestResult& i
         // decoded fine, but nothing mapped AND no occurrence was even examined: the index describes a
         // DIFFERENT tree than the one ripwire parsed (wrong index / wrong root). Say so, proceed name-based.
         DEGRADED_PATH_ALERT( "--scip: index covers no parsed file/line — proceeding name-based" );
-        rw::emitTo( stderr, "ripwire --scip: index '{}' matched no parsed (file,line) — proceeding name-based\n", p.c_str()  );
+        rw::emitTo( stderr, "ripwire --scip: index '{}' matched no parsed (file,line) — proceeding name-based\n", p.c_str() );
     }
     else if( sawOccurrences )
     {
@@ -735,7 +735,7 @@ inline ScipOverlay loadScipOverlay( std::string_view path, const IngestResult& i
         rw::emitTo( stderr,
             "ripwire: SCIP matched {}% of occurrences ({}/{}), {} defs unmatched, {} external (unmatchable) occurrences skipped{}\n",
             pct, matchedOccurrencesPreDedup, internalOccurrences, ov.defsUnmatched, externalOccurrences,
-            stale ? " — index may be from an older commit" : ""  );
+            stale ? " — index may be from an older commit" : "" );
     }
     return ov;
 }

@@ -336,12 +336,12 @@ inline int writeCommentCoherenceReport( const IngestResult& ing, int pageLimit, 
     pageDisclosure( disclosure, sizeof disclosure, shown, total, page.end, pageLimit, pageOffset, true );
 
     std::fputs( kCommentCoherenceLegend, stdout );
-    rw::emitTo( stdout, "<comment_coherence documented=\"{}\" no_comment=\"{}\"{}", total, scan.noCommentCount, disclosure  );
+    rw::emitTo( stdout, "<comment_coherence documented=\"{}\" no_comment=\"{}\"{}", total, scan.noCommentCount, disclosure );
     if( scan.unreadableFileCount != 0 )
     {
-        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount  );
+        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount );
     }
-    rw::emitTo( stdout, "{}>", rootAttr.c_str()  );
+    rw::emitTo( stdout, "{}>", rootAttr.c_str() );
 
     std::vector<char> escPath;
     std::vector<char> escName;
@@ -356,9 +356,9 @@ inline int writeCommentCoherenceReport( const IngestResult& ing, int pageLimit, 
                      "cic=\"{:.3f}\" c_terms=\"{}\" i_terms=\"{}\" shared=\"{}\"/>",
                      path.c_str(), s.line, name.c_str(),
                      row.cCoeff, row.commentWordCount, row.restatingWordCount,
-                     row.cic, row.commentTermCount, row.idTermCount, row.sharedTermCount  );
+                     row.cic, row.commentTermCount, row.idTermCount, row.sharedTermCount );
     }
-    rw::emitRaw( stdout, "</comment_coherence>"  );
+    rw::emitRaw( stdout, "</comment_coherence>" );
     return 0;
 }
 

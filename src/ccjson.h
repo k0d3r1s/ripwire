@@ -241,7 +241,7 @@ inline void writeCcJson( std::FILE* out, const std::string& root, const IngestRe
     {
         rw::emitTo( out,
             "\"attributes\":{{\"loc\":{},\"symbols\":{},\"cx\":{},\"cognitive_cx\":{},\"fan_in\":{},\"fan_out\":{},\"churn\":{}}}",
-            e.loc, e.symbols, e.cx, e.ccx, e.fanIn, e.fanOut, e.churn  );
+            e.loc, e.symbols, e.cx, e.ccx, e.fanIn, e.fanOut, e.churn );
     };
 
     // recursive emit of one node.
@@ -249,28 +249,28 @@ inline void writeCcJson( std::FILE* out, const std::string& root, const IngestRe
     {
         const CcNode& n = pool[ id ];
         esc.clear();  ccJsonEscape( n.name, esc );
-        rw::emitTo( out, "{{\"name\":\"{}\",", esc.c_str()  );
+        rw::emitTo( out, "{{\"name\":\"{}\",", esc.c_str() );
 
         if( n.fileId >= 0 )   // File leaf
         {
-            rw::emitRaw( out, "\"type\":\"File\","  );
+            rw::emitRaw( out, "\"type\":\"File\"," );
             emitAttrs( metrics[ std::uint32_t( n.fileId ) ] );
-            rw::emitRaw( out, "}"  );
+            rw::emitRaw( out, "}" );
             return;
         }
 
         // Folder: attributes are the aggregate of descendant files? CodeCharta computes folder rollups
         // itself on import, so we emit an empty folder attributes object (import-compatible) + children.
-        rw::emitRaw( out, "\"type\":\"Folder\",\"attributes\":{},\"children\":["  );
+        rw::emitRaw( out, "\"type\":\"Folder\",\"attributes\":{},\"children\":[" );
         for( std::size_t i = 0; i < n.children.size(); ++i )
         {
             if( i )
             {
-                rw::emitRaw( out, ","  );
+                rw::emitRaw( out, "," );
             }
             self( self, n.children[i] );
         }
-        rw::emitRaw( out, "]}"  );
+        rw::emitRaw( out, "]}" );
     };
 
     // attributeDescriptors: cheap, static, and makes the CodeCharta UI show friendly axis labels.
@@ -278,7 +278,7 @@ inline void writeCcJson( std::FILE* out, const std::string& root, const IngestRe
     // loc/symbols are neutral, left at -1 per CodeCharta's convention for size-ish metrics). Optional per
     // the spec — included because it is one constexpr-ish blob.
     esc.clear();  ccJsonEscape( projectName, esc );
-    rw::emitTo( out, "{{\"projectName\":\"{}\",\"apiVersion\":\"1.3\",", esc.c_str()  );
+    rw::emitTo( out, "{{\"projectName\":\"{}\",\"apiVersion\":\"1.3\",", esc.c_str() );
     rw::emitRaw( out,
         "\"attributeDescriptors\":{"
         "\"loc\":{\"title\":\"Lines of Code\",\"description\":\"Physical line count\",\"direction\":-1},"
@@ -288,10 +288,10 @@ inline void writeCcJson( std::FILE* out, const std::string& root, const IngestRe
         "\"fan_in\":{\"title\":\"Fan In\",\"description\":\"In-corpus files that depend on this file\",\"direction\":-1},"
         "\"fan_out\":{\"title\":\"Fan Out\",\"description\":\"In-corpus files this file depends on\",\"direction\":-1},"
         "\"churn\":{\"title\":\"Churn\",\"description\":\"Commits touching this file in the recent window\",\"direction\":-1}"
-        "},"  );
-    rw::emitRaw( out, "\"nodes\":["  );
+        "}," );
+    rw::emitRaw( out, "\"nodes\":[" );
     emitNode( emitNode, 0 );
-    rw::emitRaw( out, "]}\n"  );
+    rw::emitRaw( out, "]}\n" );
 }
 
 }   // namespace rw

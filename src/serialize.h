@@ -180,7 +180,7 @@ inline void writeMultiRootTable( std::FILE* out, const IngestResult& ing )
     {
         rw::emitTo( out, "<root label=\"{}\" p=\"{}\"/>",
                       std::string( escapeXml( ing.rootLabels[r], esc ) ).c_str(),
-                      std::string( escapeXml( r < ing.rootPaths.size() ? ing.rootPaths[r] : std::string(), esc ) ).c_str()  );
+                      std::string( escapeXml( r < ing.rootPaths.size() ? ing.rootPaths[r] : std::string(), esc ) ).c_str() );
     }
 }
 
@@ -1530,11 +1530,11 @@ inline void writeRecentRows( XmlWriter& w, const MapAnnotations& ann, const Path
         return;
     }
     char rc[ 64 ];
-    rw::formatTo( rc, sizeof rc, "<recent n=\"{}\" of=\"{}\">", ann.recent->size(), ann.recentOf  );
+    rw::formatTo( rc, sizeof rc, "<recent n=\"{}\" of=\"{}\">", ann.recent->size(), ann.recentOf );
     w.write( rc );
     for( const RecentFile& r : *ann.recent )
     {
-        rw::formatTo( rc, sizeof rc, "\" age_d=\"{}\" w=\"{:.3g}\"/>", r.ageDays, r.weight  );
+        rw::formatTo( rc, sizeof rc, "\" age_d=\"{}\" w=\"{:.3g}\"/>", r.ageDays, r.weight );
         w.write( "<rc p=\"" );  w.write( escapeXml( pathRel( r.fileId ), esc ) );  w.write( rc );
     }
     w.write( "</recent>" );
@@ -2130,14 +2130,14 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char precAttr[ 40 ];  precAttr[ 0 ] = '\0';                // emitted only when a SCIP overlay pinned something
     if( preciseTotal > 0 )
     {
-        rw::formatTo( precAttr, sizeof( precAttr ), " precise={}", preciseTotal  );
+        rw::formatTo( precAttr, sizeof( precAttr ), " precise={}", preciseTotal );
     }
     // Multi-root workspace (A13): `roots=N` joins the header gauges and a
     // `<root l="LABEL" p="PATH"/>` prologue opens <r> — ONLY when N≥2 (single-root output byte-unchanged).
     char rootsAttr[ 32 ];  rootsAttr[ 0 ] = '\0';
     if( ing.rootLabels.size() >= 2 )
     {
-        rw::formatTo( rootsAttr, sizeof( rootsAttr ), " roots={}", ing.rootLabels.size()  );
+        rw::formatTo( rootsAttr, sizeof( rootsAttr ), " roots={}", ing.rootLabels.size() );
     }
     // D6: --map-diff's teleport-seed file count, ONLY when the caller passes changedCount
     // (nullptr for every non-map-diff caller ⇒ zero token cost, byte-identical golden map). A clean
@@ -2146,7 +2146,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char changedAttr[ 40 ];  changedAttr[ 0 ] = '\0';
     if( changedCount )
     {
-        rw::formatTo( changedAttr, sizeof( changedAttr ), " changed={}", *changedCount  );
+        rw::formatTo( changedAttr, sizeof( changedAttr ), " changed={}", *changedCount );
     }
     // §P0.5d: how many otherwise-indexable files the crawl dropped for exceeding a per-file size ceiling —
     // --max-file-size, or (§B13.1) the .json lane's fixed 256 KB config ceiling that --max-file-size does not
@@ -2156,7 +2156,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char skippedAttr[ 48 ];  skippedAttr[ 0 ] = '\0';
     if( !ing.skippedOversize.empty() )
     {
-        rw::formatTo( skippedAttr, sizeof( skippedAttr ), " skipped_oversize={}", ing.skippedOversize.size()  );
+        rw::formatTo( skippedAttr, sizeof( skippedAttr ), " skipped_oversize={}", ing.skippedOversize.size() );
     }
     // §L1: the LANGUAGES this build could not read at all — buildUnindexedAttr carries the whole rule.
     const std::string unindexedAttr = buildUnindexedAttr( ing.crawlSkips );
@@ -2172,7 +2172,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     {
         rw::formatTo( fitAttr, sizeof( fitAttr ), " max_tokens={} fit_bytes={}{}",
                        ann.maxTokensFit->askedTokens, ann.maxTokensFit->ceilingBytes,
-                       ann.maxTokensFit->isOverCeiling ? " over_ceiling=1" : ""  );
+                       ann.maxTokensFit->isOverCeiling ? " over_ceiling=1" : "" );
     }
     // order= marker: T3's auto-flip must be OBSERVABLE, not a silent behaviour change — "important-
     // last(auto:fill)" is distinct from the explicit "important-last" so a reader (or a diff) can tell
@@ -2256,7 +2256,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
         // needs was unreachable. Additive: the comment is kept, and this carries the SAME `estTokens` value
         // (one estimator). --stable omits it on the precedent of the k= rank attribute below: --stable buys a
         // byte-stable PREFIX, the root element is that prefix, and est_tokens is globally volatile.
-        if( !stable ) { char estAttr[ 40 ];  rw::formatTo( estAttr, sizeof( estAttr ), " est_tokens=\"{}\"", estTokens  );  h += estAttr; }
+        if( !stable ) { char estAttr[ 40 ];  rw::formatTo( estAttr, sizeof( estAttr ), " est_tokens=\"{}\"", estTokens );  h += estAttr; }
         // W2-F: LAST on the root, after est_tokens — the same placement rule counts_floor= follows, so no
         // existing attribute-ADJACENCY assertion in test/ can break on it. Unlike est_tokens this is NOT
         // suppressed under --stable: the iteration count is a property of the CORPUS and the ranker, not of
@@ -2362,7 +2362,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             }
             if( const std::uint32_t lpinK = counterAt( locPinOut, id ); lpinK > 0 )   // Phase 4: the disclosed locality pin
             {
-                rw::formatTo( ambs + ambLen, sizeof( ambs ) - ambLen, " lpin=\"{}\"", lpinK  );
+                rw::formatTo( ambs + ambLen, sizeof( ambs ) - ambLen, " lpin=\"{}\"", lpinK );
             }
 
             // PageRank k= is GLOBALLY volatile (any edit perturbs every rank) → omit it in --stable mode
@@ -2370,7 +2370,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             char kbuf[ 24 ];  kbuf[ 0 ] = '\0';
             if( !stable )
             {
-                rw::formatTo( kbuf, sizeof( kbuf ), " k=\"{:.4f}\"", double( rank[id] )  );
+                rw::formatTo( kbuf, sizeof( kbuf ), " k=\"{:.4f}\"", double( rank[id] ) );
             }
 
             // Q-compute descriptive attrs (loc/params/nest/locals/cbo/lcom4/tested), built into a side buffer
@@ -2481,11 +2481,11 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             {
                 const std::uint32_t in = ( id < fanIn->size() ) ? (*fanIn)[id] : 0u;
                 rw::formatTo( attr, sizeof( attr ), " in=\"{}\" out=\"{}\" cx=\"{}\" ccx=\"{}\"{}{}{}{}",
-                               in, out, s.cx, s.ccx, ( in >= 8 ? " role=\"hub\"" : "" ), qbuf, ambs, kbuf  );
+                               in, out, s.cx, s.ccx, ( in >= 8 ? " role=\"hub\"" : "" ), qbuf, ambs, kbuf );
             }
             else
             {
-                rw::formatTo( attr, sizeof( attr ), "{}{}", ambs, kbuf  );
+                rw::formatTo( attr, sizeof( attr ), "{}{}", ambs, kbuf );
             }
             w.write( attr );
             // Essential complexity (model.h Symbol::ev), --metrics only. Emitted iff ev >= 2: ev >= 1 for any
@@ -3136,10 +3136,10 @@ inline void appendJsonStrField( std::string& out, const char* keyWithComma, std:
 inline void appendJsonMetricFields( std::string& out, const Symbol& s, NodeId id, const std::vector<std::uint32_t>* fanIn )
 {
     char num[ 64 ];
-    rw::formatTo( num, sizeof( num ), ",\"cx\":{},\"ccx\":{}", s.cx, s.ccx  );
+    rw::formatTo( num, sizeof( num ), ",\"cx\":{},\"ccx\":{}", s.cx, s.ccx );
     out += num;
     if( fanIn && id < fanIn->size() )
-    { rw::formatTo( num, sizeof( num ), ",\"in\":{}", ( *fanIn )[ id ]  );  out += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"in\":{}", ( *fanIn )[ id ] );  out += num; }
 }
 
 // P2.3 — the canonical `path::scope::name` id, but ONLY when it ADDS an enclosing scope: a free function's
@@ -3203,7 +3203,7 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
 
     // declaration line, then identity (the chain key)
     char lineAttr[ 32 ];
-    rw::formatTo( lineAttr, sizeof( lineAttr ), "<d l=\"{}\" n=\"", s.line  );
+    rw::formatTo( lineAttr, sizeof( lineAttr ), "<d l=\"{}\" n=\"", s.line );
     std::string head = lineAttr;
     head += escapeXml( s.name, esc );          // escapeXml returns a view INTO esc — copy before the next call
     head += "\"";
@@ -3224,7 +3224,7 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
     char rankAttr[ 24 ];  rankAttr[ 0 ] = '\0';
     if( facts.rank > 0 )
     {
-        rw::formatTo( rankAttr, sizeof( rankAttr ), " r=\"{}\"", facts.rank  );
+        rw::formatTo( rankAttr, sizeof( rankAttr ), " r=\"{}\"", facts.rank );
     }
     char tail[ 224 ];
     if( facts.metrics )
@@ -3232,13 +3232,13 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
         char inAttr[ 24 ];  inAttr[ 0 ] = '\0';
         if( facts.fanIn && id < facts.fanIn->size() )
         {
-            rw::formatTo( inAttr, sizeof( inAttr ), " in=\"{}\"", ( *facts.fanIn )[ id ]  );
+            rw::formatTo( inAttr, sizeof( inAttr ), " in=\"{}\"", ( *facts.fanIn )[ id ] );
         }
-        rw::formatTo( tail, sizeof( tail ), " cx=\"{}\" ccx=\"{}\"{}{}{}{}>", s.cx, s.ccx, inAttr, facts.lens, facts.pure, rankAttr  );
+        rw::formatTo( tail, sizeof( tail ), " cx=\"{}\" ccx=\"{}\"{}{}{}{}>", s.cx, s.ccx, inAttr, facts.lens, facts.pure, rankAttr );
     }
     else
     {
-        rw::formatTo( tail, sizeof( tail ), "{}{}{}>", facts.lens, facts.pure, rankAttr  );
+        rw::formatTo( tail, sizeof( tail ), "{}{}{}>", facts.lens, facts.pure, rankAttr );
     }
     head += tail;
     // P3 (L7, nextverb.h): the TOP-ranked row hands the agent the body to read — --expand=FILE:NAME, the
@@ -3321,7 +3321,7 @@ inline RelevanceFloorCut relevanceFloorCut( const std::vector<float>& rank, int 
     }
     char nb[ 200 ];
     rw::formatTo( nb, sizeof( nb ), " [relevance floor: kept {} of {} - the other {} scored zero on this query, so the bundle shrank instead of padding]",
-                   positiveCount, topN, std::size_t( topN ) - positiveCount  );
+                   positiveCount, topN, std::size_t( topN ) - positiveCount );
     return { int( positiveCount ), std::string( nb ) };
 }
 
@@ -3824,7 +3824,7 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
             std::size_t shownRows = 0;
             for( const SigEntry& e : entries ) { if( !e.dropped ) { ++shownRows; } }
             char open[ 80 ];
-            rw::formatTo( open, sizeof( open ), "<sigs shown=\"{}\" total=\"{}\" capped=\"1\">", shownRows, entries.size()  );
+            rw::formatTo( open, sizeof( open ), "<sigs shown=\"{}\" total=\"{}\" capped=\"1\">", shownRows, entries.size() );
             w.write( open );
         }
         else
@@ -4117,12 +4117,12 @@ inline void packCandidates( std::FILE* out, const IngestResult& ing, const std::
         }
         const std::string canon = canonicalIdForEmit( ing, s, rootArg );   // R-R
 
-        char hb[ 96 ];  rw::formatTo( hb, sizeof( hb ), "<cand r=\"{}\" s=\"{:.6g}\" n=\"", r + 1, double( rank[id] )  );
+        char hb[ 96 ];  rw::formatTo( hb, sizeof( hb ), "<cand r=\"{}\" s=\"{:.6g}\" n=\"", r + 1, double( rank[id] ) );
         w.write( hb );  w.write( escapeXml( s.name, esc ) );
         w.write( "\" id=\"" );  w.write( escapeXml( canon, esc ) );
         w.write( "\" k=\"" );   w.write( symTag( s.kind ) );
         w.write( "\" p=\"" );   w.write( escapeXml( pathRel( s.fileId ), esc ) );   // R-R
-        char lb[ 24 ];  rw::formatTo( lb, sizeof( lb ), "\" l=\"{}\">", s.line  );
+        char lb[ 24 ];  rw::formatTo( lb, sizeof( lb ), "\" l=\"{}\">", s.line );
         w.write( lb );
         w.write( "<sig>" );  w.write( escapeXml( sig, esc ) );  w.write( "</sig></cand>" );
     }
@@ -4331,11 +4331,11 @@ inline void appendCallsBlock( std::string& out, std::uint32_t total, int shown, 
     char callsHdr[ 64 ];
     if( static_cast<std::uint32_t>( shown ) < total )
     {
-        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\" shown=\"{}\" capped=\"1\">", total, shown  );
+        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\" shown=\"{}\" capped=\"1\">", total, shown );
     }
     else
     {
-        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\">", total  );
+        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\">", total );
     }
     out += callsHdr;
     out += rows;
@@ -4381,7 +4381,7 @@ inline void appendCalleeNameRow( std::string& callsBody, const Symbol& cs, std::
                                  std::size_t& used, const CalleeCallsSink& sink )
 {
     char nb[ 32 ];
-    rw::formatTo( nb, sizeof( nb ), "\" l=\"{}\"/>", cs.line  );
+    rw::formatTo( nb, sizeof( nb ), "\" l=\"{}\"/>", cs.line );
     callsBody += "<c n=\"";
     callsBody += escapeXml( cs.name, esc );
     callsBody += nb;
@@ -4447,7 +4447,7 @@ inline void emitCalleeCallsBlock( std::string& out, NodeId id, const std::vector
         {
             continue;
         }
-        char hb[ 32 ];  rw::formatTo( hb, sizeof( hb ), "\" l=\"{}\">", cs.line  );
+        char hb[ 32 ];  rw::formatTo( hb, sizeof( hb ), "\" l=\"{}\">", cs.line );
         callsBody += "<c n=\"";  callsBody += escapeXml( cs.name, esc );  callsBody += hb;
         callsBody += escapeXml( sig, esc );  callsBody += "</c>";
         used += sig.size() + 24;
@@ -4841,7 +4841,7 @@ inline void packBodies( std::FILE* out, const IngestResult& ing, const std::vect
             // predicate re-derivation, so the flag cannot disagree with the scrub that produced them.
             const bool bodyScrubbed = ( safe.size() != body.size() ) || xmlScrubIsLossy( body );
 
-            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<b t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line  );
+            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<b t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line );
             children += hdr;  children += escapeXml( pathRel( f ), esc );
             children += "\" n=\"";  children += escapeXml( s.name, esc );  children += "\"";
             children += partAttr;                                 // octocode partial-fetch: lines="lo-hi/total" (empty on the whole-body path)
@@ -4902,7 +4902,7 @@ inline void packBodies( std::FILE* out, const IngestResult& ing, const std::vect
     char open[ 112 ];
     rw::formatTo( open, sizeof( open ), "<bodies shown=\"{}\" total=\"{}\" capped=\"{}\"{}>",
                    shownCount, requestedCount, shownCount < requestedCount ? 1 : 0,
-                   compress ? " compress=\"1\"" : ""  );
+                   compress ? " compress=\"1\"" : "" );
     // §L10: sibs=/inc=/<calls> are only ever emitted when withFileContext is on (--expand's own call sites),
     // so the legend that defines them rides the SAME gate — every other packBodies caller (--for auto-body,
     // --pack-task, --detail, --around, MCP exemplar) stays byte-identical, as withFileContext's own contract
@@ -5024,7 +5024,7 @@ inline void packHops( std::FILE* out, const IngestResult& ing, const std::vector
         const Symbol& s = ing.symbols[ id ];
         std::string   row;
         char          hdr[ 64 ];
-        rw::formatTo( hdr, sizeof( hdr ), "<h l=\"{}\" p=\"", s.line  );
+        rw::formatTo( hdr, sizeof( hdr ), "<h l=\"{}\" p=\"", s.line );
         row += hdr;
         row += escapeXml( pathRel( s.fileId ), esc );
         row += "\" n=\"";
@@ -5049,12 +5049,12 @@ inline void packHops( std::FILE* out, const IngestResult& ing, const std::vector
     if( noEdgeCount > 0 )
     {
         rw::formatTo( open, sizeof( open ), "<hops shown=\"{}\" total=\"{}\" capped=\"{}\" noedge=\"{}\">",
-                       shownCount, requestedCount, shownCount + noEdgeCount < requestedCount ? 1 : 0, noEdgeCount  );
+                       shownCount, requestedCount, shownCount + noEdgeCount < requestedCount ? 1 : 0, noEdgeCount );
     }
     else
     {
         rw::formatTo( open, sizeof( open ), "<hops shown=\"{}\" total=\"{}\" capped=\"{}\">",
-                       shownCount, requestedCount, shownCount < requestedCount ? 1 : 0  );
+                       shownCount, requestedCount, shownCount < requestedCount ? 1 : 0 );
     }
     w.write( open );
     w.write( children );
@@ -5465,7 +5465,7 @@ inline void packOutline( std::FILE* out, const IngestResult& ing, const std::vec
 
             std::string safe;  safe.reserve( sk.size() );              // split ]]>; scrub C0 controls (G4) + invalid UTF-8 (A4-F20)
             appendCdataSafe( sk, safe );
-            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<o t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line  );
+            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<o t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line );
             w.write( hdr );  w.write( escapeXml( pathRel( f ), esc ) );
             w.write( "\" n=\"" );  w.write( escapeXml( s.name, esc ) );  w.write( "\"><![CDATA[" );
             w.write( safe );  w.write( "]]></o>" );
@@ -5649,7 +5649,7 @@ inline void packGraphBlock( std::FILE* out, const IngestResult& ing, const std::
                 continue; // 1-hop among the top-N only — not the whole graph
             }
             char eb[ 32 ];
-            rw::formatTo( eb, sizeof( eb ), "n{} --> n{}\n", i, j  );
+            rw::formatTo( eb, sizeof( eb ), "n{} --> n{}\n", i, j );
             body += eb;
         }
     }
@@ -5920,11 +5920,11 @@ inline void packLego( std::FILE* out, const IngestResult& ing, const std::vector
         if( focusId != kNoNode )
         {
             rw::formatTo( hdr, sizeof( hdr ), "\" defs=\"{}\" implementors=\"{}\">",
-                           definitionCountOfName( ing, id ), implementors[id].size()  );
+                           definitionCountOfName( ing, id ), implementors[id].size() );
         }
         else
         {
-            rw::formatTo( hdr, sizeof( hdr ), "\" implementors=\"{}\">", implementors[id].size()  );
+            rw::formatTo( hdr, sizeof( hdr ), "\" implementors=\"{}\">", implementors[id].size() );
         }
         w.write( "<iface n=\"" );  w.write( escapeXml( isym.name, esc ) );
         if( withPaths ) { w.write( "\" p=\"" );  w.write( escapeXml( pathRel( isym.fileId ), esc ) ); }
@@ -6090,7 +6090,7 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
     {
         char db[ 64 + rw::kPageDisclosureCap ], pd[ rw::kPageDisclosureCap ];
         rw::formatTo( db, sizeof( db ), "<deps files=\"{}\"{}", order.size(),
-                       rw::pageDisclosure( pd, sizeof( pd ), end - begin, order.size(), end, pageLimit, pageOffset, true )  );
+                       rw::pageDisclosure( pd, sizeof( pd ), end - begin, order.size(), end, pageLimit, pageOffset, true ) );
         w.write( db );
         // R-E: root= is unbounded (a deep absolute path), so it is NOT folded into the fixed `db` buffer above
         // (the V1-1 truncation class main.cpp's own history warns about) — written separately.
@@ -6111,11 +6111,11 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
     char hb[ 176 ];
     rw::formatTo( hb, sizeof( hb ), "<health files=\"{}\" dep_files=\"{}\" ccd=\"{}\" acd=\"{:.1f}\" nccd=\"{:.2f}\" shape=\"{}\"",
                    ing.files.size(), depFiles, static_cast<unsigned long long>( ccd ), acd, nccd,
-                   nccd < 1.0 ? "horizontal" : ( nccd > 2.0 ? "tangled" : "vertical" )  );
+                   nccd < 1.0 ? "horizontal" : ( nccd > 2.0 ? "tangled" : "vertical" ) );
     w.write( hb );
     if( lazyEdges > 0 )   // absent exactly when nothing was left out — never a hidden 0, and byte-identical for every corpus without a lazy directive
     {
-        char lb[ 40 ];  rw::formatTo( lb, sizeof( lb ), " lazy_edges=\"{}\"", static_cast<unsigned long long>( lazyEdges )  );
+        char lb[ 40 ];  rw::formatTo( lb, sizeof( lb ), " lazy_edges=\"{}\"", static_cast<unsigned long long>( lazyEdges ) );
         w.write( lb );
     }
     w.write( " dep_langs=\"" );  w.write( escapeXml( depLangs, esc ) );  w.write( "\"/>" );
@@ -6141,11 +6141,11 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
             // src/pageview.h, THE TRUNCATION VOCABULARY, rules 1-3, applied here too.
             char gfb[ 64 ];
             rw::formatTo( gfb, sizeof( gfb ), "<godfiles total=\"{}\" shown=\"{}\" capped=\"{}\">",
-                           byAff.size(), capG, capG < byAff.size() ? 1 : 0  );
+                           byAff.size(), capG, capG < byAff.size() ? 1 : 0 );
             w.write( gfb );   // ranked by afferent = # files that #include this one
             for( std::size_t i = 0; i < capG; ++i )
             {
-                char gb[ 48 ];  rw::formatTo( gb, sizeof( gb ), "\" afferent=\"{}\"/>", afferent[ byAff[i] ]  );
+                char gb[ 48 ];  rw::formatTo( gb, sizeof( gb ), "\" afferent=\"{}\"/>", afferent[ byAff[i] ] );
                 w.write( "<f p=\"" );  w.write( escapeXml( pathRel( byAff[i] ), esc ) );  w.write( gb );
             }
             w.write( "</godfiles>" );
@@ -6180,11 +6180,11 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         const std::size_t capS = sv.size() < 12 ? sv.size() : 12;
         if( capS )
         {
-            char sh[ 56 ];  rw::formatTo( sh, sizeof( sh ), "<stabledeps violations=\"{}\">", sv.size()  );
+            char sh[ 56 ];  rw::formatTo( sh, sizeof( sh ), "<stabledeps violations=\"{}\">", sv.size() );
             w.write( sh );
             for( std::size_t i = 0; i < capS; ++i )
             {
-                char vb[ 32 ];  rw::formatTo( vb, sizeof( vb ), "\" gap=\"{:.2f}\"/>", sv[i].gap  );
+                char vb[ 32 ];  rw::formatTo( vb, sizeof( vb ), "\" gap=\"{:.2f}\"/>", sv[i].gap );
                 w.write( "<v from=\"" );  w.write( escapeXml( pathRel( sv[i].from ), esc ) );
                 w.write( "\" to=\"" );    w.write( escapeXml( pathRel( sv[i].to ), esc ) );  w.write( vb );
             }
@@ -6199,7 +6199,7 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         for( std::size_t c = 0; c < capC; ++c )
         {
             char cb[ 56 ];   // cost = k² = this cycle's contribution to CCD (Lakos: a k-cycle costs k²)
-            rw::formatTo( cb, sizeof( cb ), "<cycle size=\"{}\" cost=\"{}\"", cycles[c].size(), cycles[c].size() * cycles[c].size()  );
+            rw::formatTo( cb, sizeof( cb ), "<cycle size=\"{}\" cost=\"{}\"", cycles[c].size(), cycles[c].size() * cycles[c].size() );
             w.write( cb );
 
             // weakest-link cut suggestion: among the cycle's INTERNAL edges (both endpoints members of
@@ -6275,12 +6275,12 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         if( lazyHere > 0 )   // the resolved pairs this row's directives make that the structure leaves out (parser version 83)
         {
             rw::formatTo( hdr, sizeof( hdr ), "\" includes=\"{}\" lazy_edges=\"{}\" afferent=\"{}\" instab=\"{:.2f}\" transitive=\"{}\">",
-                           byFile[f].size(), lazyHere, f < afferent.size() ? afferent[f] : 0u, inst, trans( f )  );
+                           byFile[f].size(), lazyHere, f < afferent.size() ? afferent[f] : 0u, inst, trans( f ) );
         }
         else
         {
             rw::formatTo( hdr, sizeof( hdr ), "\" includes=\"{}\" afferent=\"{}\" instab=\"{:.2f}\" transitive=\"{}\">",
-                           byFile[f].size(), f < afferent.size() ? afferent[f] : 0u, inst, trans( f )  );
+                           byFile[f].size(), f < afferent.size() ? afferent[f] : 0u, inst, trans( f ) );
         }
         w.write( "<f p=\"" );  w.write( escapeXml( pathRel( f ), esc ) );  w.write( hdr );
         const std::size_t cap = byFile[f].size() < 40 ? byFile[f].size() : 40;
@@ -6368,7 +6368,7 @@ inline void emitImportRowsXml( std::FILE* out, const IngestResult& ing,
         const std::string_view raw = ing.files[ files[i] ];
         const std::string_view rel = rootPrefix.empty() ? raw : rw::sarif::rootRelativeUri( raw, rootPrefix );
         const bool              isLazy = i < lazy.size() && lazy[i] != 0;
-        rw::emitTo( out, "<f via=\"import\" p=\"{}\" lazy=\"{}\"/>", std::string( escapeXml( rel, esc ) ).c_str(), isLazy ? "1" : "0"  );
+        rw::emitTo( out, "<f via=\"import\" p=\"{}\" lazy=\"{}\"/>", std::string( escapeXml( rel, esc ) ).c_str(), isLazy ? "1" : "0" );
     }
 }
 
@@ -6380,7 +6380,7 @@ inline void emitImportRowsJson( std::FILE* out, const IngestResult& ing,
         const std::string_view raw = ing.files[ files[i] ];
         const std::string_view rel = rootPrefix.empty() ? raw : rw::sarif::rootRelativeUri( raw, rootPrefix );
         const bool              isLazy = i < lazy.size() && lazy[i] != 0;
-        rw::emitTo( out, "{}{{\"via\":\"import\",\"p\":\"{}\",\"lazy\":{}}}", i ? "," : "", jsonStr( rel ).c_str(), isLazy ? "true" : "false"  );
+        rw::emitTo( out, "{}{{\"via\":\"import\",\"p\":\"{}\",\"lazy\":{}}}", i ? "," : "", jsonStr( rel ).c_str(), isLazy ? "true" : "false" );
     }
 }
 
@@ -6405,10 +6405,10 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
     const Symbol& s = q.sym;
     char          num[ 96 ];
 
-    if( s.loc > 0 ) { rw::formatTo( num, sizeof( num ), ",\"loc\":{}", s.loc  );  w.write( num ); }
+    if( s.loc > 0 ) { rw::formatTo( num, sizeof( num ), ",\"loc\":{}", s.loc );  w.write( num ); }
     if( s.kind == SymKind::Function || s.kind == SymKind::Method )
     {
-        rw::formatTo( num, sizeof( num ), ",\"params\":{},\"nest\":{}", unsigned( s.params ), unsigned( s.maxNest )  );
+        rw::formatTo( num, sizeof( num ), ",\"params\":{},\"nest\":{}", unsigned( s.params ), unsigned( s.maxNest ) );
         w.write( num );
         // Phase 1 (local-variable-indexing, docs/LOCALS_INDEXING.md): the JSON sibling of the XML
         // locals=/locals_floor= pair — omitted key (never a fabricated 0) outside model.h's
@@ -6416,14 +6416,14 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
         // as JSON `true`, matching how `tested` is spelled two lines below.
         if( localsCountedLang( s.lang ) )
         {
-            rw::formatTo( num, sizeof( num ), ",\"locals\":{},\"locals_floor\":true", s.locals  );
+            rw::formatTo( num, sizeof( num ), ",\"locals\":{},\"locals_floor\":true", s.locals );
             w.write( num );
         }
         // ppalt disclosure — the JSON sibling of the XML ppalt= attribute (model.h Symbol::ppAlt):
         // omitted key when 0, mirroring locals/tested (absent-unless-measured).
         if( s.ppAlt > 0 )
         {
-            rw::formatTo( num, sizeof( num ), ",\"ppalt\":{}", unsigned( s.ppAlt )  );
+            rw::formatTo( num, sizeof( num ), ",\"ppalt\":{}", unsigned( s.ppAlt ) );
             w.write( num );
         }
         // The JSON sibling of the XML humps=/deep=/deep_floor= triple — same omission rule (absent exactly
@@ -6431,7 +6431,7 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
         // NOT language-gated: cc_walk computes nesting for every grammar.
         if( s.humps > 0 )
         {
-            rw::formatTo( num, sizeof( num ), ",\"humps\":{},\"deep\":{},\"deep_floor\":true", unsigned( s.humps ), unsigned( s.deepLoc )  );
+            rw::formatTo( num, sizeof( num ), ",\"humps\":{},\"deep\":{},\"deep_floor\":true", unsigned( s.humps ), unsigned( s.deepLoc ) );
             w.write( num );
         }
         // The JSON sibling of the XML ev=/ev_floor=/ev_why= triple — same omission rule (absent means
@@ -6447,10 +6447,10 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
             w.write( "\"" );
         }
     }
-    if( q.cbo && q.id < q.cbo->size() ) { rw::formatTo( num, sizeof( num ), ",\"cbo\":{}", (*q.cbo)[q.id]  );  w.write( num ); }
+    if( q.cbo && q.id < q.cbo->size() ) { rw::formatTo( num, sizeof( num ), ",\"cbo\":{}", (*q.cbo)[q.id] );  w.write( num ); }
     if( q.lcom4 && q.id < q.lcom4->size() && (*q.lcom4)[q.id] != 0xFFFFFFFFu )   // 0xFFFFFFFF = kLcom4NA (graph.h) ⇒ omit
-    { rw::formatTo( num, sizeof( num ), ",\"lcom4\":{}", (*q.lcom4)[q.id]  );  w.write( num ); }
-    if( q.amp && q.id < q.amp->size() ) { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*q.amp)[q.id]  );  w.write( num ); }
+    { rw::formatTo( num, sizeof( num ), ",\"lcom4\":{}", (*q.lcom4)[q.id] );  w.write( num ); }
+    if( q.amp && q.id < q.amp->size() ) { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*q.amp)[q.id] );  w.write( num ); }
     if( q.tested && q.id < q.tested->size() && ( *q.tested )[q.id] )
     {
         w.write( ",\"tested\":true" );
@@ -6461,7 +6461,7 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
     }
 
     const std::uint32_t in = ( q.id < q.fanIn->size() ) ? (*q.fanIn)[q.id] : 0u;
-    rw::formatTo( num, sizeof( num ), ",\"in\":{},\"out\":{},\"cx\":{},\"ccx\":{}", in, q.outDegree, s.cx, s.ccx  );
+    rw::formatTo( num, sizeof( num ), ",\"in\":{},\"out\":{},\"cx\":{},\"ccx\":{}", in, q.outDegree, s.cx, s.ccx );
     w.write( num );
     if( in >= 8 )
     {
@@ -6565,7 +6565,7 @@ inline void writeJsonMapStamp( JsonWriter& w, std::string& esc, const MapAnnotat
         char fit[ 160 ];
         rw::formatTo( fit, sizeof( fit ), ",\"max_tokens\":{},\"fit_bytes\":{},\"fit_measured_in\":\"xml\"{}",
                        ann->maxTokensFit->askedTokens, ann->maxTokensFit->ceilingBytes,
-                       ann->maxTokensFit->isOverCeiling ? ",\"over_ceiling\":true" : ""  );
+                       ann->maxTokensFit->isOverCeiling ? ",\"over_ceiling\":true" : "" );
         w.write( fit );
     }
 }
@@ -6595,16 +6595,16 @@ inline void writeJsonUnindexed( JsonWriter& w, std::string& esc, const CrawlSkip
             w.write( "," );
         }
         writeJsonStr( w, bare, esc );
-        rw::formatTo( num, sizeof( num ), ":{}", ( unsigned long long ) ue.files  );
+        rw::formatTo( num, sizeof( num ), ":{}", ( unsigned long long ) ue.files );
         w.write( num );
     }
     if( skips.unindexedExts.size() > shown )
     {
-        rw::formatTo( num, sizeof( num ), "}},\"unindexed_exts\":{},", skips.unindexedExts.size()  );
+        rw::formatTo( num, sizeof( num ), "}},\"unindexed_exts\":{},", skips.unindexedExts.size() );
     }
     else
     {
-        rw::formatTo( num, sizeof( num ), "}},"  );   // complete list ⇒ no cap to disclose
+        rw::formatTo( num, sizeof( num ), "}}," );   // complete list ⇒ no cap to disclose
     }
     w.write( num );
 }
@@ -6613,18 +6613,18 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
 {
     char hdr[ 256 ];   // the gauge line has 7 size_t fields — wider than the per-symbol scratch
     rw::formatTo( hdr, sizeof( hdr ), "{{\"files\":{},\"symbols\":{},\"edges\":{},\"shown\":{},\"est_tokens\":{},\"ambiguous\":{},\"unresolved\":{},",
-                   h.ing.files.size(), h.symbolCount, h.edgeCount, h.shownCount, h.estTokens, h.ambiguousCount, h.unresolvedCount  );
+                   h.ing.files.size(), h.symbolCount, h.edgeCount, h.shownCount, h.estTokens, h.ambiguousCount, h.unresolvedCount );
     w.write( hdr );
     // Phase 4: the S6-C locality-pin gauge — same absent-when-zero rule as the XML `locality_pinned=`.
     if( h.localityPinnedCount > 0 )
     {
-        rw::formatTo( hdr, sizeof( hdr ), "\"locality_pinned\":{},", h.localityPinnedCount  );
+        rw::formatTo( hdr, sizeof( hdr ), "\"locality_pinned\":{},", h.localityPinnedCount );
         w.write( hdr );
     }
     // Phase 5: the external-name veto gauge — the JSON twin of the XML `external=`, same absent-when-zero rule.
     if( h.externalCount > 0 )
     {
-        rw::formatTo( hdr, sizeof( hdr ), "\"external\":{},", h.externalCount  );
+        rw::formatTo( hdr, sizeof( hdr ), "\"external\":{},", h.externalCount );
         w.write( hdr );
     }
 
@@ -6633,7 +6633,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
     // still shown the survivors as if they were the corpus. Same absent-when-zero rule as the XML side.
     if( !h.ing.skippedOversize.empty() )
     {
-        rw::formatTo( hdr, sizeof( hdr ), "\"skipped_oversize\":{},", h.ing.skippedOversize.size()  );
+        rw::formatTo( hdr, sizeof( hdr ), "\"skipped_oversize\":{},", h.ing.skippedOversize.size() );
         w.write( hdr );
     }
 
@@ -6651,7 +6651,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
         }
         if( preciseTotal > 0 )
         {
-            rw::formatTo( hdr, sizeof( hdr ), "\"precise\":{},", preciseTotal  );
+            rw::formatTo( hdr, sizeof( hdr ), "\"precise\":{},", preciseTotal );
             w.write( hdr );
         }
     }
@@ -6683,7 +6683,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
         return;
     }
 
-    rw::formatTo( hdr, sizeof( hdr ), ",\"roots_count\":{},\"roots\":[", h.ing.rootLabels.size()  );
+    rw::formatTo( hdr, sizeof( hdr ), ",\"roots_count\":{},\"roots\":[", h.ing.rootLabels.size() );
     w.write( hdr );
     for( std::size_t r = 0; r < h.ing.rootLabels.size(); ++r )
     {
@@ -6870,19 +6870,19 @@ inline void serializeJson( std::FILE* out, const IngestResult& ing, const std::v
             if( canon != s.name ) { w.write( ",\"id\":" );  writeJsonStr( w, canon, esc ); }
 
             if( rows.overloads[ rowIndex ] > 1 )
-            { rw::formatTo( num, sizeof( num ), ",\"overloads\":{}", rows.overloads[ rowIndex ]  );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"overloads\":{}", rows.overloads[ rowIndex ] );  w.write( num ); }
 
             if( bind && id < bind->size() && !(*bind)[id].empty() )
             { w.write( ",\"bind\":" );  writeJsonStr( w, (*bind)[id], esc ); }
 
             if( const std::uint32_t ambK = counterAt( ambOut, id ); ambK > 0 )
-            { rw::formatTo( num, sizeof( num ), ",\"amb\":{}", ambK  );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"amb\":{}", ambK );  w.write( num ); }
 
             if( const std::uint32_t lpinK = counterAt( locPinOut, id ); lpinK > 0 )   // Phase 4: the XML lpin= twin
-            { rw::formatTo( num, sizeof( num ), ",\"lpin\":{}", lpinK  );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"lpin\":{}", lpinK );  w.write( num ); }
 
             if( !stable )
-            { rw::formatTo( num, sizeof( num ), ",\"k\":{:.4f}", double( rank[id] )  );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"k\":{:.4f}", double( rank[id] ) );  w.write( num ); }
 
             if( metrics )
             {
@@ -7077,7 +7077,7 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
     char          num[ 64 ];
     std::string   head;
 
-    rw::formatTo( num, sizeof( num ), "{{\"l\":{}", s.line  );
+    rw::formatTo( num, sizeof( num ), "{{\"l\":{}", s.line );
     head += num;
     // P2.3: the chain key — "n" always, "id" only when the canonical form adds an enclosing scope
     // (the XML sibling's rule, scopedCanonicalId above), so a JSON consumer can chain onward too.
@@ -7097,9 +7097,9 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
         appendJsonMetricFields( head, s, id, lens.fanIn );
     }
     if( lens.churnPerFile && fileId < lens.churnPerFile->size() && (*lens.churnPerFile)[fileId] > 0 )
-    { rw::formatTo( num, sizeof( num ), ",\"churn\":{}", (*lens.churnPerFile)[fileId]  );  head += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"churn\":{}", (*lens.churnPerFile)[fileId] );  head += num; }
     if( lens.amp && id < lens.amp->size() && (*lens.amp)[id] > 0 )
-    { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*lens.amp)[id]  );  head += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*lens.amp)[id] );  head += num; }
     if( lens.cloneMember && id < lens.cloneMember->size() && ( *lens.cloneMember )[id] )
     {
         head += ",\"clone\":true";
@@ -7116,7 +7116,7 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
     // run — appended last so every existing key adjacency a text-grep consumer relies on stays byte-stable.
     if( globalRank > 0 )
     {
-        rw::formatTo( num, sizeof( num ), ",\"r\":{}", globalRank  );
+        rw::formatTo( num, sizeof( num ), ",\"r\":{}", globalRank );
         head += num;
     }
     return head;
@@ -7501,7 +7501,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
         first = false;
 
         w.write( "{\"t\":" );  writeJsonStr( w, symTag( s.kind ), esc );
-        rw::formatTo( num, sizeof( num ), ",\"l\":{},", s.line  );
+        rw::formatTo( num, sizeof( num ), ",\"l\":{},", s.line );
         w.write( num );
         // R-E follow-up (2026-08-19): the LAST `p` in the pack-task bundle that was still absolute. Every
         // other row of both dialects had been relativized; this one was invisible because the gate row that
@@ -7532,7 +7532,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
         // calls: the rows the XML <calls> block actually printed, with its own total= as the denominator.
         // calls_capped is pageview.h rule 3 in this dialect — the bit that always rides with a shown count.
         rw::formatTo( num, sizeof( num ), ",\"calls_total\":{},\"calls_capped\":{},\"calls\":[",
-                       e.callsTotal, ( e.calls.size() < std::size_t( e.callsTotal ) ) ? "true" : "false"  );
+                       e.callsTotal, ( e.calls.size() < std::size_t( e.callsTotal ) ) ? "true" : "false" );
         w.write( num );
         bool firstC = true;
         for( const EmittedBodyCall& c : e.calls )
@@ -7543,7 +7543,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
             }
             firstC = false;
             w.write( "{\"n\":" );  writeJsonStr( w, c.name, esc );
-            rw::formatTo( num, sizeof( num ), ",\"l\":{}", c.line  );
+            rw::formatTo( num, sizeof( num ), ",\"l\":{}", c.line );
             w.write( num );
             w.write( ",\"sig\":" );  writeJsonStr( w, c.sig, esc );
             w.write( "}" );

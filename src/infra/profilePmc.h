@@ -38,7 +38,7 @@
 //
 
 #pragma once
-#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include "emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
 
 
 #include "platform.h"        // ALWAYS_INLINE

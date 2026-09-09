@@ -97,28 +97,28 @@ struct Dump
         {
             calls += gNodes[ p ].load();
         }
-        rw::emitTo( stderr, "\n[fuseprobe] files_with_a_parsed_tree={}\n", (unsigned long long) files  );
-        rw::emitTo( stderr, "[fuseprobe] {:<18} {:>13} {:>10} {:>8}\n", "pass", "visitor_calls", "files", "%files"  );
+        rw::emitTo( stderr, "\n[fuseprobe] files_with_a_parsed_tree={}\n", (unsigned long long) files );
+        rw::emitTo( stderr, "[fuseprobe] {:<18} {:>13} {:>10} {:>8}\n", "pass", "visitor_calls", "files", "%files" );
         for( int p = 0; p < kPassCount; ++p )
         {
             const std::uint64_t f = gFiles[ p ].load();
             rw::emitTo( stderr, "[fuseprobe] {:<18} {:>13} {:>10} {:7.1f}%\n", kPassName[ p ], (unsigned long long) gNodes[ p ].load(),
-                          (unsigned long long) f, files ? 100.0 * double( f ) / double( files ) : 0.0  );
+                          (unsigned long long) f, files ? 100.0 * double( f ) / double( files ) : 0.0 );
         }
         const std::uint64_t astProxy = gNodesMaxPass.load();
         const std::uint64_t pops     = gStreamPops.load();
         rw::emitTo( stderr, "[fuseprobe] visitor_calls={}  ast_size_proxy(sum of per-file max pass)={}\n",
-                      (unsigned long long) calls, (unsigned long long) astProxy  );
+                      (unsigned long long) calls, (unsigned long long) astProxy );
         rw::emitTo( stderr, "[fuseprobe] STREAM_POPS={}  streams_per_node={:.2f}x  <-- the number fusion moves\n",
-                      (unsigned long long) pops, astProxy ? double( pops ) / double( astProxy ) : 0.0  );
-        rw::emitRaw( stderr, "[fuseprobe] files by number of passes that SAW a node:\n"  );
+                      (unsigned long long) pops, astProxy ? double( pops ) / double( astProxy ) : 0.0 );
+        rw::emitRaw( stderr, "[fuseprobe] files by number of passes that SAW a node:\n" );
         for( int k = 0; k <= kPassCount; ++k )
         {
             const std::uint64_t f = gHist[ k ].load();
             if( f != 0 )
             {
                 rw::emitTo( stderr, "[fuseprobe]   {} pass{} : {:>10} files ({:5.1f}%)\n", k, k == 1 ? " " : "es", (unsigned long long) f,
-                              files ? 100.0 * double( f ) / double( files ) : 0.0  );
+                              files ? 100.0 * double( f ) / double( files ) : 0.0 );
             }
         }
         std::fflush( stderr );

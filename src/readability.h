@@ -263,12 +263,12 @@ inline int writeReadabilityReport( const IngestResult& ing, int pageLimit, int p
     std::fputs( kReadabilityLegend, stdout );
     // R-E fix (2026-08-19): the shared root-relative clause, emitted exactly when root= is (graphlegend.h).
     std::fputs( rw::rootRelPathsLegend( !rootAttr.empty() ), stdout );
-    rw::emitTo( stdout, "<readability functions=\"{}\"{}", total, disclosure  );
+    rw::emitTo( stdout, "<readability functions=\"{}\"{}", total, disclosure );
     if( scan.unreadableFileCount != 0 )
     {
-        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount  );
+        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount );
     }
-    rw::emitTo( stdout, "{}>", rootAttr.c_str()  );
+    rw::emitTo( stdout, "{}>", rootAttr.c_str() );
 
     // TWO scratch buffers, not one reused twice in the same call: escapeXml returns a VIEW into its `out`,
     // so a second call with the same buffer invalidates the first view — and argument evaluation order is
@@ -285,9 +285,9 @@ inline int writeReadabilityReport( const IngestResult& ing, int pageLimit, int p
         rw::emitTo( stdout, "<fn p=\"{}:{}\" n=\"{}\" lines=\"{}\" toks=\"{}\" ops=\"{}\" vocab=\"{}\" vol=\"{:.1f}\" ent=\"{:.2f}\" posnett=\"{:.3f}\"/>",
                      path.c_str(), s.line, name.c_str(),
                      row.lineCount, row.tokenCount, row.operatorCount, row.vocabularyCount,
-                     row.volume, row.entropy, row.posnett  );
+                     row.volume, row.entropy, row.posnett );
     }
-    rw::emitRaw( stdout, "</readability>"  );
+    rw::emitRaw( stdout, "</readability>" );
     return 0;
 }
 

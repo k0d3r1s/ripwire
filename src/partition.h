@@ -458,7 +458,7 @@ inline std::string partitionSummaryAttrs( const PartitionPlan& plan, const Parti
                    " overlap_mean=\"{:.3f}\" overlap_max=\"{:.3f}\" shared_symbols=\"{}\" union_symbols=\"{}\" core_overlap=\"{:.3f}\"",
                    sum.emitted, sum.requested, plan.coreIds.size(), plan.surfaceCount, plan.moduleCount, plan.splitCount,
                    sum.agentTokens, sum.coreTokens, sum.partitionTokens, sum.totalBytes,
-                   ov.mean, ov.worst, ov.sharedCount, ov.unionCount, ov.coreLeak  );
+                   ov.mean, ov.worst, ov.sharedCount, ov.unionCount, ov.coreLeak );
     return b;
 }
 
@@ -565,12 +565,12 @@ inline std::string packTaskPartitionText( const IngestResult& ing, const Graph& 
         if( index < 0 )
         {
             rw::formatTo( h, sizeof( h ), "<bundle role=\"{}\" symbols=\"{}\" bytes=\"{}\" tokens=\"{}\" est_tokens=\"{}\">",
-                           role, b.assigned, b.xml.size(), estTokens, estTokens  );
+                           role, b.assigned, b.xml.size(), estTokens, estTokens );
         }
         else
         {
             rw::formatTo( h, sizeof( h ), "<bundle role=\"{}\" i=\"{}\" symbols=\"{}\" modules=\"{}\" bytes=\"{}\" tokens=\"{}\" est_tokens=\"{}\">",
-                           role, index, b.assigned, b.modules, b.xml.size(), estTokens, estTokens  );
+                           role, index, b.assigned, b.modules, b.xml.size(), estTokens, estTokens );
         }
         return h;
     };
@@ -601,14 +601,14 @@ inline std::string packTaskPartitionText( const IngestResult& ing, const Graph& 
                        "\"overlap_mean\":{:.3f},\"overlap_max\":{:.3f},\"shared_symbols\":{},\"union_symbols\":{},\"core_overlap\":{:.3f}",
                        sum.emitted, sum.requested, plan.coreIds.size(), plan.surfaceCount, plan.moduleCount, plan.splitCount,
                        sum.agentTokens, sum.coreTokens, sum.partitionTokens, sum.totalBytes,
-                       ov.mean, ov.worst, ov.sharedCount, ov.unionCount, ov.coreLeak  );
+                       ov.mean, ov.worst, ov.sharedCount, ov.unionCount, ov.coreLeak );
         j  = nb;
         j += ",\"task\":\"" + jsonStr( task ) + "\",\"core\":" + ( core.json.empty() ? "{}" : core.json ) + ",\"bundles\":[";
         for( std::size_t p = 0; p < parts.size(); ++p )
         {
             char pb[ 96 ];
             rw::formatTo( pb, sizeof( pb ), "{}{{\"index\":{},\"symbols\":{},\"modules\":{},\"bundle\":",
-                           p == 0 ? "" : ",", p, parts[p].assigned, parts[p].modules  );
+                           p == 0 ? "" : ",", p, parts[p].assigned, parts[p].modules );
             j += pb;
             j += parts[p].json.empty() ? "{}" : parts[p].json;
             j += "}";

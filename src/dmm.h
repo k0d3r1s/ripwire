@@ -382,9 +382,9 @@ inline void printScoreAttr( const char* name, bool available, double score )
     char value[16] = "UNAVAILABLE";
     if( available )
     {
-        rw::formatTo( value, sizeof value, "{:.3f}", score  );
+        rw::formatTo( value, sizeof value, "{:.3f}", score );
     }
-    rw::emitTo( stdout, " {}=\"{}\"", name, value  );
+    rw::emitTo( stdout, " {}=\"{}\"", name, value );
 }
 
 // Emit the report. Returns the process exit code — always 0. This is a MEASUREMENT, not a gate: it has no
@@ -405,7 +405,7 @@ inline int writeDmmReport( const Result& r )
     if( r.status != Status::Ok )
     {
         const std::string reason( escapeXml( r.reason, escReason ) );
-        rw::emitTo( stdout, " available=\"0\" dmm=\"UNAVAILABLE\" reason=\"{}\"{}/>", reason.c_str(), atAttrStr.c_str()  );
+        rw::emitTo( stdout, " available=\"0\" dmm=\"UNAVAILABLE\" reason=\"{}\"{}/>", reason.c_str(), atAttrStr.c_str() );
         return 0;
     }
 
@@ -413,27 +413,27 @@ inline int writeDmmReport( const Result& r )
     const std::string target( escapeXml( r.targetIsWorkingTree ? std::string( "working-tree" ) : r.targetSha, escTarget ) );
     // P8 (L7): the three low-risk thresholds beside the numbers they judge (PyDriller's, verbatim — see the constants)
     rw::emitTo( stdout, " base=\"{}\" target=\"{}\"{} available=\"{}\" combine=\"pooled\" size_metric=\"physical-loc\" low_loc=\"{}\" low_cx=\"{}\" low_params=\"{}\"",
-                 base.c_str(), target.c_str(), atAttrStr.c_str(), r.available ? 1 : 0, kUnitSizeLowRiskMax, kUnitComplexityLowRiskMax, kUnitInterfacingLowRiskMax  );
+                 base.c_str(), target.c_str(), atAttrStr.c_str(), r.available ? 1 : 0, kUnitSizeLowRiskMax, kUnitComplexityLowRiskMax, kUnitInterfacingLowRiskMax );
     printScoreAttr( "dmm", r.available, r.score );
-    rw::emitTo( stdout, " good=\"{}\" bad=\"{}\"", static_cast<unsigned long long>( r.good ), static_cast<unsigned long long>( r.bad )  );
+    rw::emitTo( stdout, " good=\"{}\" bad=\"{}\"", static_cast<unsigned long long>( r.good ), static_cast<unsigned long long>( r.bad ) );
     rw::emitTo( stdout, " base_units=\"{}\" base_volume=\"{}\" target_units=\"{}\" target_volume=\"{}\"",
                  static_cast<unsigned long long>( r.base.unitCount ), static_cast<unsigned long long>( r.base.volume ),
-                 static_cast<unsigned long long>( r.target.unitCount ), static_cast<unsigned long long>( r.target.volume )  );
+                 static_cast<unsigned long long>( r.target.unitCount ), static_cast<unsigned long long>( r.target.volume ) );
     if( !r.available )
     {
         const std::string reason( escapeXml( r.reason, escReason ) );
-        rw::emitTo( stdout, " reason=\"{}\"", reason.c_str()  );
+        rw::emitTo( stdout, " reason=\"{}\"", reason.c_str() );
     }
     std::fputs( ">", stdout );
 
     for( std::size_t propIndex = 0; propIndex < kPropCount; ++propIndex )
     {
         const PropScore& p = r.props[propIndex];
-        rw::emitTo( stdout, "<p k=\"{}\"", kPropNames[propIndex]  );
+        rw::emitTo( stdout, "<p k=\"{}\"", kPropNames[propIndex] );
         printScoreAttr( "dmm", p.available, p.score );
         rw::emitTo( stdout, " good=\"{}\" bad=\"{}\" d_low=\"{}\" d_high=\"{}\"/>",
                      static_cast<unsigned long long>( p.good ), static_cast<unsigned long long>( p.bad ),
-                     static_cast<long long>( p.deltaLow ), static_cast<long long>( p.deltaHigh )  );
+                     static_cast<long long>( p.deltaLow ), static_cast<long long>( p.deltaHigh ) );
     }
     std::fputs( "</dmm>", stdout );
     return 0;

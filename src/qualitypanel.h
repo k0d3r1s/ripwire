@@ -640,7 +640,7 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
     rw::emitTo( stdout, "<quality_panel preset=\"{}\" families=\"{}\" enabled=\"{}\" enabled_n=\"{}\" cut=\"{}\" cut_reachable=\"{}\"",
                  sel.name, unsigned( kPanelFamilyCount ), familyList( sel.enabled ).c_str(),
                  unsigned( std::popcount( sel.enabled ) ), unsigned( sel.cut ),
-                 unsigned( sel.cut ) <= evaluable ? "1" : "0"  );
+                 unsigned( sel.cut ) <= evaluable ? "1" : "0" );
     // §L10: the house convention is absent-means-none — an optional attribute with nothing to say is
     // OMITTED, never printed as ="". unavailable=/unavailable_why= used to print unconditionally, so a
     // panel where every family was available still carried unavailable="" unavailable_why="" — a
@@ -652,26 +652,26 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
     const std::string unavailableWhyAttr = unavailWhyStr.empty()   ? std::string() : ( " unavailable_why=\"" + std::string( escapeXml( unavailWhyStr, escUnavail ) ) + "\"" );
     rw::emitTo( stdout, " eligible=\"{}\" ranked=\"{}\" below_cut=\"{}\" no_family=\"{}\"{}{}",
                  scan.eligibleCount, total, scan.belowCutCount, scan.noFamilyCount,
-                 unavailableAttr.c_str(), unavailableWhyAttr.c_str()  );
+                 unavailableAttr.c_str(), unavailableWhyAttr.c_str() );
     rw::emitTo( stdout, " bar_ccx=\"{}\" bar_loc=\"{}\" bar_nest=\"{}\" bar_params=\"{}\"",
-                 quality::kCcxBar, quality::kLocBar, quality::kNestBar, quality::kParamBar  );
+                 quality::kCcxBar, quality::kLocBar, quality::kNestBar, quality::kParamBar );
     rw::emitTo( stdout, " rcut=\"{}\" rmeasured=\"{}\" hcut=\"{}\" hranked=\"{}\" window=\"{}\" ccut=\"{}\" cranked=\"{}\"",
                  scan.readabilityCut, scan.readabilityMeasured, scan.churnCut, scan.churnRanked,
-                 ensemble::kEnsembleWindowLabel, scan.colocCut, scan.colocRanked  );
+                 ensemble::kEnsembleWindowLabel, scan.colocCut, scan.colocRanked );
     // The LANGUAGE-COVERAGE denominators — what each availability verdict was computed FROM, so a reader can
     rw::emitTo( stdout, " cfiles=\"{}\" cscope=\"{}\" lscope=\"{}\" sfiles=\"{}\" sscope=\"{}\" cells=\"{}\"",
                  scan.confusionFiles, scan.confusionScope, scan.lexicalScope,   // check each verdict instead of
                  scan.stateFiles, scan.stateScope, scan.stateCells  );           // taking it on trust.
     // The join's own two numbers, on the root for the same reason every other denominator is: tested_scope=0
     // is what a reader needs to know before reading a missing annotation as a clean bill of coverage.
-    rw::emitTo( stdout, " tested_scope=\"{}\" deep_untested=\"{}\"", scan.testedScope, scan.deepUntestedCount  );
+    rw::emitTo( stdout, " tested_scope=\"{}\" deep_untested=\"{}\"", scan.testedScope, scan.deepUntestedCount );
     if( scan.unreadableFileCount != 0 )
     {
-        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount  );
+        rw::emitTo( stdout, " unreadable_files=\"{}\"", scan.unreadableFileCount );
     }
     if( scan.stateFloor )
     {
-        rw::emitRaw( stdout, " state_floor=\"1\""  );
+        rw::emitRaw( stdout, " state_floor=\"1\"" );
     }
     if( !floorRules.empty() )
     {
@@ -679,7 +679,7 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
                      kGraphCountFloorAttrXml  );   // H8: a floored family floors the root's counts
     }
     rw::emitTo( stdout, " shown=\"{}\" capped=\"{}\"{}{}{}>", shown, shown < total ? "1" : "0", paging,
-                 qpRootAttr.c_str(), gitstamp::atAttr( root ).c_str()  );
+                 qpRootAttr.c_str(), gitstamp::atAttr( root ).c_str() );
 
     // TWO scratch buffers, not one reused twice in the same call: escapeXml returns a VIEW into its `out`, so a
     // second call with the same buffer invalidates the first view (readability.h carries the same note).
@@ -705,7 +705,7 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
                      path.c_str(), s.line, name.c_str(), unsigned( row.firedCount ), evaluable,
                      familyList( row.countedMask ).c_str(),
                      uncountedAttr.c_str(), unavailAttr.c_str(),
-                     row.deepUntested ? " join=\"deep+untested\"" : ""  );
+                     row.deepUntested ? " join=\"deep+untested\"" : "" );
         for( std::uint8_t family = 0; family < kPanelFamilyCount; ++family )
         {
             if( ( ( row.firedMask >> family ) & 1u ) == 0 )
@@ -715,11 +715,11 @@ inline int writePanelReport( const IngestResult& ing, const Graph& g, const std:
             std::vector<char> escWhy;
             rw::emitTo( stdout, "<e f=\"{}\" counted=\"{}\" why=\"{}\"/>", familyName( family ),
                          ( ( row.countedMask >> family ) & 1u ) != 0 ? "1" : "0",
-                         std::string( escapeXml( row.why[family], escWhy ) ).c_str()  );
+                         std::string( escapeXml( row.why[family], escWhy ) ).c_str() );
         }
-        rw::emitRaw( stdout, "</s>"  );
+        rw::emitRaw( stdout, "</s>" );
     }
-    rw::emitRaw( stdout, "</quality_panel>"  );
+    rw::emitRaw( stdout, "</quality_panel>" );
     return 0;
 }
 

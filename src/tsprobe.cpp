@@ -70,7 +70,7 @@ int main( int argc, char** argv )
 {
     if( argc < 2 )
     {
-        rw::emitTo( stderr, "usage: {} <directory>\n", argv[ 0 ]  );
+        rw::emitTo( stderr, "usage: {} <directory>\n", argv[ 0 ] );
         return 1;
     }
 
@@ -91,24 +91,24 @@ int main( int argc, char** argv )
         ++langCount[ langIndex( s.lang ) ];
     }
 
-    rw::emitRaw( stdout, "==== ripwire ingest probe ====\n"  );
-    rw::emitTo( stdout, "root:        {}\n", root  );
-    rw::emitTo( stdout, "files:       {}\n", ir.files.size()  );
-    rw::emitTo( stdout, "symbols:     {}\n", ir.symbols.size()  );
-    rw::emitTo( stdout, "references:  {}\n", ir.references.size()  );
+    rw::emitRaw( stdout, "==== ripwire ingest probe ====\n" );
+    rw::emitTo( stdout, "root:        {}\n", root );
+    rw::emitTo( stdout, "files:       {}\n", ir.files.size() );
+    rw::emitTo( stdout, "symbols:     {}\n", ir.symbols.size() );
+    rw::emitTo( stdout, "references:  {}\n", ir.references.size() );
 
     // every kind, zeros included — a kind the corpus does NOT have is evidence too, and there are only
     // eight of them. `sec` (markdown heading) and `other` used to be off the end of the printf.
-    rw::emitRaw( stdout, "\nsymbols by kind:\n "  );
+    rw::emitRaw( stdout, "\nsymbols by kind:\n " );
     for( std::size_t kind = 0; kind < kSymKindCount; ++kind )
     {
-        rw::emitTo( stdout, "  {}={}", rw::symTag( static_cast<rw::SymKind>( kind ) ), kindCount[ kind ]  );
+        rw::emitTo( stdout, "  {}={}", rw::symTag( static_cast<rw::SymKind>( kind ) ), kindCount[ kind ] );
     }
-    rw::emitRaw( stdout, "\n"  );
+    rw::emitRaw( stdout, "\n" );
 
     // languages: only the ones that ACTUALLY appear — sixteen rows of mostly zeros is noise, and what
     // the probe is evidence FOR is which grammars extracted something.
-    rw::emitRaw( stdout, "\ndefs by language:\n "  );
+    rw::emitRaw( stdout, "\ndefs by language:\n " );
     {
         int langsShown = 0;
         for( std::size_t lang = 0; lang < std::size( kLangName ); ++lang )
@@ -118,16 +118,16 @@ int main( int argc, char** argv )
                 continue;
             }
 
-            rw::emitTo( stdout, "  {}={}", kLangName[ lang ], langCount[ lang ]  );
+            rw::emitTo( stdout, "  {}={}", kLangName[ lang ], langCount[ lang ] );
             ++langsShown;
         }
 
         if( langsShown == 0 )
         {
-            rw::emitRaw( stdout, "  (no defs)"  );
+            rw::emitRaw( stdout, "  (no defs)" );
         }
     }
-    rw::emitRaw( stdout, "\n"  );
+    rw::emitRaw( stdout, "\n" );
 
     // ---- references resolved vs file-scope (fromSymbol == kNoNode) ----
     {
@@ -140,7 +140,7 @@ int main( int argc, char** argv )
             }
         }
         rw::emitTo( stdout, "\nreferences attributed to an enclosing symbol: {} / {} (rest are file-scope)\n",
-                     attributed, ir.references.size()  );
+                     attributed, ir.references.size() );
     }
 
     // ---- index references by their enclosing symbol for the per-symbol dump ----
@@ -155,7 +155,7 @@ int main( int argc, char** argv )
 
     // ---- first ~40 symbols + their references ----
     const std::size_t showN = ir.symbols.size() < 40 ? ir.symbols.size() : 40;
-    rw::emitTo( stdout, "\n---- first {} symbols (name | kind | lang | file:line  -> references) ----\n", showN  );
+    rw::emitTo( stdout, "\n---- first {} symbols (name | kind | lang | file:line  -> references) ----\n", showN );
 
     for( std::size_t i = 0; i < showN; ++i )
     {
@@ -163,23 +163,23 @@ int main( int argc, char** argv )
         const char* file = ( s.fileId < ir.files.size() ) ? ir.files[ s.fileId ].c_str() : "?";
 
         rw::emitTo( stdout, "[{:>4}] {:<28} {:<7} {:<4}  {}:{}\n",
-                     s.id, s.name.c_str(), rw::symTag( s.kind ), langName( s.lang ), file, s.line  );
+                     s.id, s.name.c_str(), rw::symTag( s.kind ), langName( s.lang ), file, s.line );
 
         auto it = bySym.find( s.id );
         if( it != bySym.end() )
         {
             int shown = 0;
-            rw::emitRaw( stdout, "        calls:"  );
+            rw::emitRaw( stdout, "        calls:" );
             for( const rw::Reference* r : it->second )
             {
-                rw::emitTo( stdout, " {}", r->calleeName.c_str()  );
+                rw::emitTo( stdout, " {}", r->calleeName.c_str() );
                 if( ++shown >= 12 )
                 {
-                    rw::emitRaw( stdout, " ..."  );
+                    rw::emitRaw( stdout, " ..." );
                     break;
                 }
             }
-            rw::emitRaw( stdout, "\n"  );
+            rw::emitRaw( stdout, "\n" );
         }
     }
 

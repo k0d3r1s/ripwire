@@ -698,12 +698,12 @@ inline void writeHistoryProbe( std::FILE* out, const HistoryIndex& idx, Escape e
     if( !idx.ok )
     {
         rw::emitTo( out, "<history probed=\"0\" r=\"{}\"/>",
-                      idx.nonGitRoot ? "not-a-git-repo" : "probe-failed"  );
+                      idx.nonGitRoot ? "not-a-git-repo" : "probe-failed" );
         return;
     }
     rw::emitTo( out, "<history probed=\"1\" head=\"{:.9}\" commits=\"{}\" removed-names=\"{}\"{}/>",
                   idx.headSha.c_str(), idx.commitsWalked, idx.removed.size(),
-                  idx.truncated ? " truncated=\"1\"" : ""  );
+                  idx.truncated ? " truncated=\"1\"" : "" );
     (void)escape;
 }
 
@@ -715,13 +715,13 @@ inline void writeNameFate( std::FILE* out, const std::string& name, const NameFa
     // no sha would print `commit=""` and read as evidence while carrying none.
     VERIFY( f.fate != Fate::Removed || !f.commit.empty() );
 
-    rw::emitTo( out, "<fate sym=\"{}\" v=\"{}\"", escape( name ).c_str(), fateTag( f.fate )  );
+    rw::emitTo( out, "<fate sym=\"{}\" v=\"{}\"", escape( name ).c_str(), fateTag( f.fate ) );
     if( f.fate == Fate::Removed )
     {
         rw::emitTo( out, " commit=\"{:.9}\" date=\"{}\" p=\"{}\"",
-                      f.commit.c_str(), escape( f.date ).c_str(), escape( f.path ).c_str()  );
+                      f.commit.c_str(), escape( f.date ).c_str(), escape( f.path ).c_str() );
     }
-    rw::emitTo( out, " note=\"{}\"/>", escape( kFateTable[ std::size_t( f.fate ) ].note ).c_str()  );
+    rw::emitTo( out, " note=\"{}\"/>", escape( kFateTable[ std::size_t( f.fate ) ].note ).c_str() );
 }
 
 }}   // namespace rw::gitoracle

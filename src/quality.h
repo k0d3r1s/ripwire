@@ -788,7 +788,7 @@ inline gtl::btree_map<std::uint64_t, std::uint64_t> bodyHashesBySym( const Inges
     {
         std::sort( hs.begin(), hs.end() );                                    // order-independent overload fold
         std::string joined;
-        for( std::uint64_t h : hs ) { char b[ 17 ]; rw::formatTo( b, sizeof( b ), "{:016x}", static_cast<unsigned long long>( h )  ); joined += b; }
+        for( std::uint64_t h : hs ) { char b[ 17 ]; rw::formatTo( b, sizeof( b ), "{:016x}", static_cast<unsigned long long>( h ) ); joined += b; }
         out[ key ] = fnv1a64( joined );
     }
     return out;
@@ -1368,7 +1368,7 @@ inline std::string headSnapRepoHex( const std::string& root )
         std::free( rp );
     }
     char hex[ 20 ];
-    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( fnv1a64( absRoot ) )  );
+    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( fnv1a64( absRoot ) ) );
     return std::string( hex );
 }
 
@@ -1572,7 +1572,7 @@ inline std::string exclConfigHex( const std::vector<std::string>& excludes, cons
     keyMat.push_back( '\x1f' );
     keyMat += std::to_string( maxFileBytes );          // P0.2: the file-size ceiling changes the extracted SET
     char hex[ 20 ];
-    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( fnv1a64( keyMat ) )  );
+    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( fnv1a64( keyMat ) ) );
     return std::string( hex );
 }
 
@@ -1599,7 +1599,7 @@ inline std::string headSnapExclHex( const std::vector<std::string>& excludes, st
 inline std::string blobShardHex( std::string_view filename )
 {
     char hex[ 3 ];
-    rw::formatTo( hex, sizeof( hex ), "{:02x}", static_cast<unsigned>( fnv1a64( filename ) & 0xff )  );
+    rw::formatTo( hex, sizeof( hex ), "{:02x}", static_cast<unsigned>( fnv1a64( filename ) & 0xff ) );
     return std::string( hex );
 }
 
@@ -1633,7 +1633,7 @@ inline std::string shaKeyedCachePath( const char* family, const std::string& rep
     const std::uint64_t shaKey = fnv1a64( sha );
     char tail[ 96 ];
     rw::formatTo( tail, sizeof( tail ), "ripwire-{}-{}-{}-{:016x}.bin",
-                   family, repoHex.c_str(), exclHex.c_str(), static_cast<unsigned long long>( shaKey )  );
+                   family, repoHex.c_str(), exclHex.c_str(), static_cast<unsigned long long>( shaKey ) );
     return resolveCacheBlobPath( cacheDirLadder(), tail );
 }
 
@@ -2542,7 +2542,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
         {
             // the fprintf is the visible line in ALL build types (test/qsnapcachecheck.sh (e) gates on it);
             // DEGRADED_PATH_ALERT compiles out under NDEBUG.
-            rw::emitRaw( stderr, "ripwire: quality: HEAD Snapshot cache corrupt — recomputing\n"  );
+            rw::emitRaw( stderr, "ripwire: quality: HEAD Snapshot cache corrupt — recomputing\n" );
             DEGRADED_PATH_ALERT( "quality: HEAD Snapshot cache corrupt — recomputing" );
         }
     }
@@ -2715,7 +2715,7 @@ computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
         }
         if( hit == -1 )
         {
-            rw::emitRaw( stderr, "ripwire: quality: window-ref body cache corrupt — recomputing\n"  );
+            rw::emitRaw( stderr, "ripwire: quality: window-ref body cache corrupt — recomputing\n" );
             DEGRADED_PATH_ALERT( "quality: window-ref body cache corrupt — recomputing" );
         }
     }
@@ -3134,7 +3134,7 @@ inline bool readBaseline( const std::string& path, Snapshot& out, BaselineReadSt
             // The refusal is a USER-FACING disclosure, so it must survive NDEBUG: behind only a
             // DEGRADED_PATH_ALERT a Release binary refuses SILENTLY and the caller reads "no baseline
             // found" — a refusal that hides its reason misleads exactly like the misread it prevents.
-            rw::emitRaw( stderr, "ripwire: quality: baseline sidecar predates the pathQualifiedKey scheme — refused, re-pin with --quality-baseline\n"  );
+            rw::emitRaw( stderr, "ripwire: quality: baseline sidecar predates the pathQualifiedKey scheme — refused, re-pin with --quality-baseline\n" );
             out = Snapshot{};
             return false;
         }
@@ -3967,7 +3967,7 @@ struct AckRecord
 inline std::string ackMapKey( const std::string& kind, std::uint64_t key )
 {
     char hex[ 20 ];
-    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( key )  );
+    rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( key ) );
     return kind + " " + hex;
 }
 
@@ -4303,7 +4303,7 @@ struct SidecarWriteLock
 
         char name[ 64 ];
         rw::formatTo( name, sizeof( name ), "ripwire-sidecar-{:016x}.lock",
-                       static_cast<unsigned long long>( fnv1a64( identity ) )  );
+                       static_cast<unsigned long long>( fnv1a64( identity ) ) );
         const std::string lockDir = cacheDirLadder() + "/locks";
         ::mkdir( lockDir.c_str(), 0700 );
         ::chmod( lockDir.c_str(), 0700 );
@@ -4359,7 +4359,7 @@ inline std::string renderAckRecords( const gtl::btree_map<std::string, AckRecord
     for( const auto& [ mapKey, r ] : acks )                       // btree order → byte-stable, always-sorted file (the merge-friendly guarantee)
     {
         char hex[ 20 ];
-        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( r.key )  );
+        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( r.key ) );
         f << "ack " << r.kind << ' ' << hex << ' ' << r.ackNow << ' ';
         // R1: cid= is OMITTED entirely when unavailable rather than written as a zero — a row that never had
         // a content identity must not be indistinguishable from one whose body hashed to 0, and a repo that
@@ -4367,7 +4367,7 @@ inline std::string renderAckRecords( const gtl::btree_map<std::string, AckRecord
         if( r.cid != 0 )
         {
             char cidHex[ 20 ];
-            rw::formatTo( cidHex, sizeof( cidHex ), "{:016x}", static_cast<unsigned long long>( r.cid )  );
+            rw::formatTo( cidHex, sizeof( cidHex ), "{:016x}", static_cast<unsigned long long>( r.cid ) );
             f << "cid=" << cidHex << ' ';
         }
         // P1.4: same OMIT-when-unavailable rule cid= follows, and for the same reason — a repo whose sessions
@@ -5245,7 +5245,7 @@ inline std::string staleAcksXml( const std::vector<StaleAck>& staleAcks, EscapeF
     for( const StaleAck& sa : staleAcks )
     {
         char hex[ 20 ];
-        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( sa.key )  );
+        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( sa.key ) );
         out += "<sa kind=\"";
         out += sa.kind;
         out += "\" key=\"";
@@ -5291,7 +5291,7 @@ inline std::string staleAcksJsonArray( const std::vector<StaleAck>& staleAcks ) 
         }
         first = false;
         char hex[ 20 ];
-        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( sa.key )  );
+        rw::formatTo( hex, sizeof( hex ), "{:016x}", static_cast<unsigned long long>( sa.key ) );
         out += "{\"kind\":\"";
         out += rw::jsonesc::escapeMcp( sa.kind );
         out += "\",\"key\":\"";

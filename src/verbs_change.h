@@ -95,7 +95,7 @@ std::optional<int> runAffected( const MainDispatch& d )
             rw::emitTo( stderr, "ripwire: --affected: '{}' matches no indexed file path (as a path pattern) and no indexed "
                                   "symbol (as a symbol name; file:name and path::scope::name also accepted){}{}\n",
                           sel.badItem.c_str(), affectedNearPath.c_str(),
-                          affectedNearPath.empty() ? rw::selectorFaultClause( ing, sel.badItem, "--affected=" ).c_str() : ""  );
+                          affectedNearPath.empty() ? rw::selectorFaultClause( ing, sel.badItem, "--affected=" ).c_str() : "" );
             return 1;
         }
         const std::vector<NodeId>& seeds = sel.seeds;
@@ -150,9 +150,9 @@ std::optional<int> runAffected( const MainDispatch& d )
             const std::uint32_t f = row.fileId;
             row.changed           = false;
             rw::emitTo( stdout, "<test p=\"{}\"{}{}{}/>", ex( afPathRel( f ) ).c_str(), answer.isSeedTestFile[f] ? " seed_kind=\"test\"" : "",
-                         rw::testRowEvidence( row, rw::EvDialect::Xml ).c_str(), rw::runAttrDisclosed( runners, f, ex ).c_str()  );
+                         rw::testRowEvidence( row, rw::EvDialect::Xml ).c_str(), rw::runAttrDisclosed( runners, f, ex ).c_str() );
         }
-        rw::emitRaw( stdout, "</affected>"  );
+        rw::emitRaw( stdout, "</affected>" );
         return 0;
     }
     return std::nullopt;
@@ -183,7 +183,7 @@ std::optional<int> runExercises( const MainDispatch& d )
     if( cfg.exercisesFile.empty() )
     {
         rw::emitRaw( stderr, "ripwire: --exercises needs a test file — e.g. --exercises=test/foo_harness.cpp "
-                              "(the inverse of --affected: what that test transitively covers)\n"  );
+                              "(the inverse of --affected: what that test transitively covers)\n" );
         return 1;
     }
 
@@ -192,7 +192,7 @@ std::optional<int> runExercises( const MainDispatch& d )
     {
         rw::emitTo( stderr, "ripwire: --exercises: no indexed file path matches '{}' (the argument is a path pattern, "
                               "like --affected's; use --tree or --grep to find its spelling){}\n", std::string_view( cfg.exercisesFile.data(), cfg.exercisesFile.size() ),
-                      rw::nearestIndexedFileClause( ing, cfg.exercisesFile ).c_str()  );
+                      rw::nearestIndexedFileClause( ing, cfg.exercisesFile ).c_str() );
         return 1;
     }
     if( sel.testFiles.empty() )
@@ -201,7 +201,7 @@ std::optional<int> runExercises( const MainDispatch& d )
         rw::emitTo( stderr, "ripwire: --exercises: '{}' matches {} indexed file(s), none of them a TEST path "
                               "(a test/ or tests/ directory segment, or a test_*/ *_test.* / *_spec.* filename). This verb "
                               "subtracts test code from its answer, which is meaningless for a non-test file — for \"what does "
-                              "this call\", use --callees=SYM (1 hop) or --graph-query with a callees(...) closure\n", std::string_view( cfg.exercisesFile.data(), cfg.exercisesFile.size() ), sel.nonTestMatches  );
+                              "this call\", use --callees=SYM (1 hop) or --graph-query with a callees(...) closure\n", std::string_view( cfg.exercisesFile.data(), cfg.exercisesFile.size() ), sel.nonTestMatches );
         return 1;
     }
 
@@ -229,7 +229,7 @@ std::optional<int> runExercises( const MainDispatch& d )
     rw::emitTo( stdout, "<!-- ripwire exercises: the NON-TEST symbols this test transitively calls into — what it covers (the inverse of the affected verb). "
                  "<t> = the seed test files the pattern matched; <s> = the covered symbols, PageRank desc. "
                  "harness=script|mixed says the seed set contains shell gates, whose subprocess coverage this walk cannot see. "
-                 "{}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( exSingleRoot )  );
+                 "{}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( exSingleRoot ) );
     const std::string exRootAttr = exSingleRoot ? ( " root=\"" + ex( cfg.roots[0] ) + "\"" ) : std::string();
     rw::emitTo( stdout, "<exercises of=\"{}\" seed_files=\"{}\" shown_seed_files=\"{}\" seed_files_capped=\"{}\" test_symbols=\"{}\" reaches=\"{}\"{}{}{}{}>",
                  ex( cfg.exercisesFile ).c_str(), sel.testFiles.size(), shownSeed,
@@ -242,15 +242,15 @@ std::optional<int> runExercises( const MainDispatch& d )
     for( std::size_t i = 0; i < shownSeed; ++i )
     {
         const std::string_view rp = exSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ sel.testFiles[i] ], exRootPrefix ) : std::string_view( ing.files[ sel.testFiles[i] ] );
-        rw::emitTo( stdout, "<t p=\"{}\"{}/>", ex( rp ).c_str(), rw::runAttrDisclosed( runners, sel.testFiles[i], ex ).c_str()  );
+        rw::emitTo( stdout, "<t p=\"{}\"{}/>", ex( rp ).c_str(), rw::runAttrDisclosed( runners, sel.testFiles[i], ex ).c_str() );
     }
     for( std::size_t i = epw.begin; i < epw.end; ++i )
     {
         const Symbol&           s  = ing.symbols[ show[i] ];
         const std::string_view  rp = exSingleRoot ? rw::sarif::rootRelativeUri( ing.files[ s.fileId ], exRootPrefix ) : std::string_view( ing.files[ s.fileId ] );
-        rw::emitTo( stdout, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line  );
+        rw::emitTo( stdout, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( s.kind ), ex( s.name ).c_str(), ex( rp ).c_str(), s.line );
     }
-    rw::emitRaw( stdout, "</exercises>"  );
+    rw::emitRaw( stdout, "</exercises>" );
     return 0;
 }
 
@@ -336,10 +336,10 @@ std::optional<int> runChangeViews( const MainDispatch& d )
                 }
             }
             if( !anyGit )
-            { rw::emitRaw( stderr, "ripwire --situ: no files given and no git diff in any root (use --situ=F1,F2)\n"  ); return 1; }
+            { rw::emitRaw( stderr, "ripwire --situ: no files given and no git diff in any root (use --situ=F1,F2)\n" ); return 1; }
             for( std::uint32_t r = 0; r < ws.size(); ++r )
             {
-                rw::emitTo( stdout, "=== root {} ({}) ===\n", ws[r].label.c_str(), ws[r].arg.c_str()  );
+                rw::emitTo( stdout, "=== root {} ({}) ===\n", ws[r].label.c_str(), ws[r].arg.c_str() );
                 bool any = false;
                 for( char c : perRootChanged[r] )
                 {
@@ -354,7 +354,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
                     if( cfg.situFiles.empty() )
                     {
                         // the git-diff form: an empty diff under this root is a MEASUREMENT — say so as before
-                        rw::emitRaw( stdout, "  (no changed files in this root)\n"  );
+                        rw::emitRaw( stdout, "  (no changed files in this root)\n" );
                         continue;
                     }
                     // N3 (capture-audit verify-wave1 2026-09-04): with an explicit FILE list the refusal ran over the
@@ -364,7 +364,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
                     // this root gets a selector fact — which root(s) the matches live under — never "no changed files".
                     const std::string elsewhere = situRootsHoldingMatches( ws, perRootChanged, r );
                     rw::emitTo( stdout, "  (--situ={} names no indexed file under this root — its matches live under root(s) {}; "
-                                          "a selector fact, not an empty diff)\n", std::string_view( cfg.situFiles.data(), cfg.situFiles.size() ), elsewhere.c_str()  );
+                                          "a selector fact, not an empty diff)\n", std::string_view( cfg.situFiles.data(), cfg.situFiles.size() ), elsewhere.c_str() );
                     continue;
                 }
                 rw::writeSituation( stdout, ws[r].arg, ing, g, perRootChanged[r], r );
@@ -389,7 +389,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
         {
             changed.assign( ing.files.size(), 0 );
             if( !gitChangedFiles( root, ing, changed ) )
-            { rw::emitRaw( stderr, "ripwire --situ: no files given and no git diff (use --situ=F1,F2)\n"  ); return 1; }
+            { rw::emitRaw( stderr, "ripwire --situ: no files given and no git diff (use --situ=F1,F2)\n" ); return 1; }
         }
         rw::writeSituation( stdout, root, ing, g, changed );
         return 0;
@@ -418,7 +418,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
         {
             changed.assign( ing.files.size(), 0 );
             if( !gitChangedFiles( root, ing, changed ) )
-            { rw::emitRaw( stderr, "ripwire --test-gate: no files given and no git diff (use --test-gate=F1,F2)\n"  ); return 1; }
+            { rw::emitRaw( stderr, "ripwire --test-gate: no files given and no git diff (use --test-gate=F1,F2)\n" ); return 1; }
         }
         // §A3a: --test-gate joined the pageview.h paging vocabulary — the
         // <u> untested-row list honors --limit/--offset instead of a silent 25-row cap with no disclosure.
@@ -471,7 +471,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
                 // case (it still degrades to its own empty section); see prcontext.h §badRef.
                 if( masks[r].badRef )
                 {
-                    rw::emitTo( stderr, "ripwire: --pr-context: unknown base ref '{}' in root {}\n", std::string_view( cfg.prContextBase.data(), cfg.prContextBase.size() ), ws[r].arg.c_str()  );
+                    rw::emitTo( stderr, "ripwire: --pr-context: unknown base ref '{}' in root {}\n", std::string_view( cfg.prContextBase.data(), cfg.prContextBase.size() ), ws[r].arg.c_str() );
                     return 1;
                 }
                 for( char c : masks[r].mask )
@@ -511,14 +511,14 @@ std::optional<int> runChangeViews( const MainDispatch& d )
             const std::string baseLabelEsc = std::string( escapeXml( std::string_view( baseLabel ), prEsc ) );
             rw::emitTo( stdout, "<!-- ripwire pr-context (multi-root workspace): ONE <pr-context> section per root over the "
                          "MERGED graph — per-root changed files / owners / co-change from each repo's own history, "
-                         "blast radius crossing roots via real evidence edges. base={}. deterministic. -->", baseLabelEsc.c_str()  );
-            rw::emitTo( stdout, "<pr-context-workspace base=\"{}\" roots=\"{}\">", baseLabelEsc.c_str(), ws.size()  );
+                         "blast radius crossing roots via real evidence edges. base={}. deterministic. -->", baseLabelEsc.c_str() );
+            rw::emitTo( stdout, "<pr-context-workspace base=\"{}\" roots=\"{}\">", baseLabelEsc.c_str(), ws.size() );
             for( std::uint32_t r = 0; r < ws.size(); ++r )
             {
                 rw::writePrContext( stdout, ws[r].arg, ing, g, masks[r].mask, baseLabel, masks[r].skippedModeOnly,
                                      rw::PrBudget{ rootBudget[r], prBudgetDefault, cfg.pageLimit, cfg.pageOffset }, r, ws[r].label, masks[r] );
             }
-            rw::emitRaw( stdout, "</pr-context-workspace>"  );
+            rw::emitRaw( stdout, "</pr-context-workspace>" );
             return 0;
         }
 
@@ -539,8 +539,8 @@ std::optional<int> runChangeViews( const MainDispatch& d )
             // escapes via writePrContext's ex(); this degrade path had forgotten to).
             std::vector<char>  prEsc;
             const std::string  baseLabelEsc = std::string( escapeXml( std::string_view( baseLabel ), prEsc ) );
-            rw::emitRaw( stdout, "<!-- ripwire pr-context: not a git repository (or git unavailable / bad base ref) — nothing to bundle -->"  );
-            rw::emitTo( stdout, "<pr-context base=\"{}\" files=\"0\"/>", baseLabelEsc.c_str()  );
+            rw::emitRaw( stdout, "<!-- ripwire pr-context: not a git repository (or git unavailable / bad base ref) — nothing to bundle -->" );
+            rw::emitTo( stdout, "<pr-context base=\"{}\" files=\"0\"/>", baseLabelEsc.c_str() );
             return 0;
         }
         // R4 / lever 4: --max-tokens caps the (previously unbounded) bundle. 0 = no cap
@@ -583,7 +583,7 @@ std::optional<int> runChangeViews( const MainDispatch& d )
             if( !ccOut )
             {
                 DEGRADED_PATH_ALERT( "writeCcJson: could not open output file" );
-                rw::emitTo( stderr, "ripwire: --export=cc.json:{}: cannot open file for writing\n", ccPath.c_str()  );
+                rw::emitTo( stderr, "ripwire: --export=cc.json:{}: cannot open file for writing\n", ccPath.c_str() );
                 return 1;
             }
         }
@@ -617,7 +617,7 @@ bool readTraceText( const std::string& src, std::string& text )
         return true;
     }
     std::FILE* f = std::fopen( src.c_str(), "rb" );
-    if( !f ) { rw::emitTo( stderr, "ripwire: --from-trace: cannot open '{}'\n", src.c_str()  ); return false; }
+    if( !f ) { rw::emitTo( stderr, "ripwire: --from-trace: cannot open '{}'\n", src.c_str() ); return false; }
     char buf[ 4096 ]; std::size_t n;
     while( ( n = std::fread( buf, 1, sizeof buf, f ) ) > 0 )
     {
@@ -673,7 +673,7 @@ std::optional<int> runFromTrace( const MainDispatch& d )
     if( !res.ok )
     {
         rw::emitTo( stderr, "ripwire: --from-trace: no stack-trace / sanitizer / compiler frames found in '{}' — nothing to map\n",
-                      src == "-" ? "<stdin>" : src.c_str()  );
+                      src == "-" ? "<stdin>" : src.c_str() );
         return 1;
     }
     std::fwrite( res.xml.data(), 1, res.xml.size(), stdout );
@@ -1083,12 +1083,12 @@ std::optional<int> runRunTrace( const MainDispatch& d )
     RunCapture cap = runCommandCapture( cmd, timeoutSec );
     if( cap.isSpawnFailed )
     {
-        rw::emitRaw( stderr, "ripwire: --run-trace: cannot spawn '/bin/sh -c' (pipe/fork failed) — nothing was executed\n"  );
+        rw::emitRaw( stderr, "ripwire: --run-trace: cannot spawn '/bin/sh -c' (pipe/fork failed) — nothing was executed\n" );
         return 1;
     }
     if( cap.isTimedOut )
     {
-        rw::emitTo( stderr, "ripwire: --run-trace: TIMEOUT — the command exceeded the {} s cap; its process group was killed\n", timeoutSec  );
+        rw::emitTo( stderr, "ripwire: --run-trace: TIMEOUT — the command exceeded the {} s cap; its process group was killed\n", timeoutSec );
     }
 
     const std::string                   text    = runCaptureText( cap );
@@ -1170,7 +1170,7 @@ std::optional<int> runMergeScout( const MainDispatch& d )
     {
         if( cfg.mergeScout.empty() )
         {
-            rw::emitRaw( stderr, "ripwire: --merge-scout needs REF[,REF...] (e.g. --merge-scout=branchA,branchB)\n"  );
+            rw::emitRaw( stderr, "ripwire: --merge-scout needs REF[,REF...] (e.g. --merge-scout=branchA,branchB)\n" );
             return 1;
         }
         const mergescout::ScoutResult result = mergescout::computeMergeScout( root, cfg.mergeScout, ing, cfg.excludes, cfg.maxFileBytes );
@@ -1180,11 +1180,11 @@ std::optional<int> runMergeScout( const MainDispatch& d )
             // ref ''" would be a confusing refusal for a completely different reason (no git history at all).
             if( result.nonGitRoot )
             {
-                rw::emitTo( stderr, "ripwire: --merge-scout: {} is not a git repository (or has no HEAD commit) — nothing to scout\n", root.c_str()  );
+                rw::emitTo( stderr, "ripwire: --merge-scout: {} is not a git repository (or has no HEAD commit) — nothing to scout\n", root.c_str() );
             }
             else
             {
-                rw::emitTo( stderr, "ripwire: --merge-scout: unknown ref '{}'\n", result.badRef.c_str()  );
+                rw::emitTo( stderr, "ripwire: --merge-scout: unknown ref '{}'\n", result.badRef.c_str() );
             }
             return 1;
         }
@@ -1282,14 +1282,14 @@ std::optional<int> runPlanLanes( const MainDispatch& d )
         brief = readBriefFile( briefPath );
         if( !brief.ok )
         {
-            rw::emitTo( stderr, "ripwire: --plan-lanes: cannot read --brief={}\n", briefPath.c_str()  );
+            rw::emitTo( stderr, "ripwire: --plan-lanes: cannot read --brief={}\n", briefPath.c_str() );
             return 1;
         }
         if( brief.lines.size() < lanes::kMinLanes || brief.lines.size() > lanes::kMaxLanes )
         {
             rw::emitTo( stderr, "ripwire: --plan-lanes --brief={} has {} non-blank line(s) — one line per lane, and the lane "
                                   "count must be {}..{} (1 is not a fan-out)\n",
-                          briefPath.c_str(), brief.lines.size(), lanes::kMinLanes, lanes::kMaxLanes  );
+                          briefPath.c_str(), brief.lines.size(), lanes::kMinLanes, lanes::kMaxLanes );
             return 1;
         }
         in.autoCarve = false;
@@ -1305,7 +1305,7 @@ std::optional<int> runPlanLanes( const MainDispatch& d )
 
     if( ing.symbols.empty() )
     {
-        rw::emitTo( stderr, "ripwire: --plan-lanes: no indexed symbols under {} — there is nothing to split into lanes\n", root.c_str()  );
+        rw::emitTo( stderr, "ripwire: --plan-lanes: no indexed symbols under {} — there is nothing to split into lanes\n", root.c_str() );
         return 1;
     }
 
@@ -1358,7 +1358,7 @@ rw::gitoracle::HistoryIndex buildHistoryIndex( const rw::Config& cfg, const std:
     rw::gitoracle::HistoryIndex idx = rw::gitoracle::probeNameHistory( root );
     if( idx.nonGitRoot )
     {
-        rw::emitTo( stderr, "ripwire: --with-history: {} has no git history — {}\n", root.c_str(), verbNote  );
+        rw::emitTo( stderr, "ripwire: --with-history: {} has no git history — {}\n", root.c_str(), verbNote );
     }
     return idx;
 }
@@ -1380,7 +1380,7 @@ int runFlip( const MainDispatch& d )
     if( d.multiRoot )
     {
         rw::emitRaw( stderr, "ripwire: --flip is single-root only (the gate harvest reads on-disk paths, which a merged "
-                              "workspace relabels) — run it once per root\n"  );
+                              "workspace relabels) — run it once per root\n" );
         return 1;
     }
 
@@ -1397,8 +1397,8 @@ int runFlip( const MainDispatch& d )
             }
             msg += "?)";
         }
-        rw::emitTo( stderr, "{}\n", msg.c_str()  );
-        rw::emitTo( stderr, "ripwire: run `ripwire {} --flags` for the gate table\n", root.c_str()  );
+        rw::emitTo( stderr, "{}\n", msg.c_str() );
+        rw::emitTo( stderr, "ripwire: run `ripwire {} --flags` for the gate table\n", root.c_str() );
         return 1;
     }
     flipimpact::writeFlip( stdout, result, d.ing, root, d.cfg.detail ? SIZE_MAX : flipimpact::kMaxFlipRows );
@@ -1420,7 +1420,7 @@ int runAbiCheck( const MainDispatch& d )
     {
         if( result.nonGitRoot )
         {
-            rw::emitTo( stderr, "ripwire: --abi: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str()  );
+            rw::emitTo( stderr, "ripwire: --abi: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str() );
         }
         else if( result.filterMatchedNothing )
         {
@@ -1428,7 +1428,7 @@ int runAbiCheck( const MainDispatch& d )
         }
         else
         {
-            rw::emitTo( stderr, "ripwire: --abi: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs  );
+            rw::emitTo( stderr, "ripwire: --abi: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs );
         }
         return 1;
     }
@@ -1477,7 +1477,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
     {
         if( d.multiRoot )
         {
-            rw::emitRaw( stderr, "ripwire: --plan is single-root only (one repo = one ref namespace) — run it per root\n"  );
+            rw::emitRaw( stderr, "ripwire: --plan is single-root only (one repo = one ref namespace) — run it per root\n" );
             return 1;
         }
         const landingplan::PlanResult result = landingplan::computePlan( root, cfg.strayFilter, d.ing, cfg.excludes, cfg.maxFileBytes,
@@ -1486,7 +1486,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
         {
             if( result.nonGitRoot )
             {
-                rw::emitTo( stderr, "ripwire: --plan: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str()  );
+                rw::emitTo( stderr, "ripwire: --plan: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str() );
             }
             else if( result.filterMatchedNothing )
             {
@@ -1494,7 +1494,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
             }
             else
             {
-                rw::emitTo( stderr, "ripwire: --plan: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs  );
+                rw::emitTo( stderr, "ripwire: --plan: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs );
             }
             return 1;
         }
@@ -1506,7 +1506,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
     {
         if( d.multiRoot )
         {
-            rw::emitRaw( stderr, "ripwire: --stray-content is single-root only (one repo = one ref namespace) — run it per root\n"  );
+            rw::emitRaw( stderr, "ripwire: --stray-content is single-root only (one repo = one ref namespace) — run it per root\n" );
             return 1;
         }
         if( cfg.abiFlag )
@@ -1518,7 +1518,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
         {
             if( result.nonGitRoot )
             {
-                rw::emitTo( stderr, "ripwire: --stray-content: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str()  );
+                rw::emitTo( stderr, "ripwire: --stray-content: {} is not a git repository (or has no HEAD commit) — no refs to compare\n", root.c_str() );
             }
             else if( result.filterMatchedNothing )
             {
@@ -1528,7 +1528,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
             }
             else
             {
-                rw::emitTo( stderr, "ripwire: --stray-content: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs  );
+                rw::emitTo( stderr, "ripwire: --stray-content: more than {} refs match — narrow it with --stray-content=SUBSTR\n", crossref::kMaxRefs );
             }
             return 1;
         }
@@ -1557,10 +1557,10 @@ std::optional<int> runCrossRef( const MainDispatch& d )
                 }
                 rw::emitTo( stderr, "ripwire: --eval-stray: {} labelled ref(s) do not exist in {} -- not merged, just "
                                       "absent: {} (fix the labels file or add the ref)\n",
-                              rep.badRefs.size(), root.c_str(), names.c_str()  );
+                              rep.badRefs.size(), root.c_str(), names.c_str() );
                 return 1;
             }
-            rw::emitTo( stderr, "ripwire: --eval-stray: cannot read '{}', or {} is not a git repository\n", std::string_view( cfg.evalStray.data(), cfg.evalStray.size() ), root.c_str()  );
+            rw::emitTo( stderr, "ripwire: --eval-stray: cannot read '{}', or {} is not a git repository\n", std::string_view( cfg.evalStray.data(), cfg.evalStray.size() ), root.c_str() );
             return 1;
         }
         crossref::writeStrayEval( stdout, rep );
@@ -1592,12 +1592,12 @@ std::optional<int> runCrossRef( const MainDispatch& d )
     {
         if( cfg.whereis.empty() )
         {
-            rw::emitRaw( stderr, "ripwire: --whereis needs a symbol (e.g. --whereis=adoptValidatedLowBandContours)\n"  );
+            rw::emitRaw( stderr, "ripwire: --whereis needs a symbol (e.g. --whereis=adoptValidatedLowBandContours)\n" );
             return 1;
         }
         if( d.multiRoot )
         {
-            rw::emitRaw( stderr, "ripwire: --whereis is single-root only (one repo = one ref namespace) — run it per root\n"  );
+            rw::emitRaw( stderr, "ripwire: --whereis is single-root only (one repo = one ref namespace) — run it per root\n" );
             return 1;
         }
         // H7 / lens 6 F5: the documented @FILE:LINE seed grammar is RESOLVED here, before anything is
@@ -1613,7 +1613,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
             const std::vector<NodeId> seeded = resolveAllByNameQualified( d.ing, whereisSel );
             if( seeded.empty() )
             {
-                rw::emitTo( stderr, "{}\n", selectorNotFoundMessage( d.ing, "ripwire: --whereis: ", cfg.whereis, "--whereis=" ).c_str()  );
+                rw::emitTo( stderr, "{}\n", selectorNotFoundMessage( d.ing, "ripwire: --whereis: ", cfg.whereis, "--whereis=" ).c_str() );
                 return 1;
             }
             whereisSeed = whereisSel;
@@ -1632,7 +1632,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
                                                                  crossref::WhereisEvidence{ cfg.withHistory ? &history : nullptr, indexDefs } );
         if( !result.ok )
         {
-            rw::emitTo( stderr, "ripwire: --whereis: {} is not a git repository (or has no HEAD commit) — no refs to search\n", root.c_str()  );
+            rw::emitTo( stderr, "ripwire: --whereis: {} is not a git repository (or has no HEAD commit) — no refs to search\n", root.c_str() );
             return 1;
         }
         result.seedSpec = std::move( whereisSeed );
@@ -1705,11 +1705,11 @@ std::optional<int> runPlanLint( const MainDispatch& d )
         // instead of the generic "cannot open" — the two causes are indistinguishable to a caller otherwise.
         if( !res.refuseReason.empty() )
         {
-            rw::emitTo( stderr, "ripwire: --plan-lint: '{}' {}\n", file.c_str(), res.refuseReason.c_str()  );
+            rw::emitTo( stderr, "ripwire: --plan-lint: '{}' {}\n", file.c_str(), res.refuseReason.c_str() );
         }
         else
         {
-            rw::emitTo( stderr, "ripwire: --plan-lint: cannot open '{}' (or it exceeds the size cap)\n", file.c_str()  );
+            rw::emitTo( stderr, "ripwire: --plan-lint: cannot open '{}' (or it exceeds the size cap)\n", file.c_str() );
         }
         return 1;
     }

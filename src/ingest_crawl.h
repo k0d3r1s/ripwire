@@ -1579,7 +1579,7 @@ TSQuery* compileQueryStandalone( const LangEntry& le )
     if( q == nullptr )
     {
         rw::emitTo( stderr, "[ripwire] tags.scm compile error for {} at byte {} (err {}) — skipping language\n",
-                      std::string( le.querySub ).c_str(), errOff, (int)errType  );
+                      std::string( le.querySub ).c_str(), errOff, (int)errType );
     }
     return q;
 }

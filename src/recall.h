@@ -716,7 +716,7 @@ inline std::string formatDemotedNote( docparse::GeneratedDocReason reason )
 inline std::string formatRecallSeparator( std::string_view path, float score, std::string_view demotedNote )
 {
     char scoreText[ 352 ];
-    rw::formatTo( scoreText, sizeof( scoreText ), "{:.3f}", double( score )  );
+    rw::formatTo( scoreText, sizeof( scoreText ), "{:.3f}", double( score ) );
 
     std::string line;
     line.reserve( 40 + path.size() + demotedNote.size() );
@@ -2047,7 +2047,7 @@ inline int emitRecallBudgeted( std::FILE* out, const RecallBundle& bundle, std::
         }
         std::fwrite( note.data(), 1, noteBytes, out );
         rw::emitTo( stderr, "ripwire: --token-budget exceeded: withheld_est_tokens={} > budget={}\n",
-                      bundle.shape.estTokens, budgetTokens  );
+                      bundle.shape.estTokens, budgetTokens );
         return 3;
     }
     // The honoured side needs nothing here: budget_tokens= is part of the header buildRecall already built

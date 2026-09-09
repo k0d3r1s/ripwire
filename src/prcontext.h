@@ -600,7 +600,7 @@ inline std::string prBudgetTail( std::size_t changedFiles, std::uint32_t skipped
 {
     char tail[ 256 ];
     rw::formatTo( tail, sizeof( tail ), " files=\"{}\" skipped_mode_only=\"{}\" budget_tokens=\"{}\" est_tokens=\"{}\" trim_level=\"{}\" truncated=\"{}\"",
-                   changedFiles, skippedModeOnly, budgetTokens, chosen.estTokens, chosen.level, truncatedEscaped.c_str()  );
+                   changedFiles, skippedModeOnly, budgetTokens, chosen.estTokens, chosen.level, truncatedEscaped.c_str() );
     return tail;
 }
 
@@ -988,7 +988,7 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
             // this file's defined symbols, in id order (== file/line order by the ingest sort).
             const FileSymbols& fileSyms = symsByFile[f];
 
-            rw::emitTo( o, "<file p=\"{}\" symbols=\"{}\">", ex( prPathRel( f ) ).c_str(), std::size_t( fileSyms.size() )  );
+            rw::emitTo( o, "<file p=\"{}\" symbols=\"{}\">", ex( prPathRel( f ) ).c_str(), std::size_t( fileSyms.size() ) );
 
             // (1) blast radius: transitive dependents of ALL this file's symbols. Reuse transitiveCallers.
             const std::vector<NodeId>  reach = transitiveCallers( g, fileSyms );
@@ -1047,33 +1047,33 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
             if( trim.impactCap > 0 )
             {
                 rw::emitTo( o, "<impact dependents=\"{}\" files=\"{}\" files_other=\"{}\" shown=\"{}\" capped=\"{}\">",
-                             reach.size(), totalReachFiles, radiusFiles.size(), fSc.shown, fSc.capped  );
+                             reach.size(), totalReachFiles, radiusFiles.size(), fSc.shown, fSc.capped );
                 for( std::size_t i = 0; i < fSc.shown; ++i )
                 {
-                    rw::emitTo( o, "<f p=\"{}\" deps=\"{}\"/>", ex( prPathRel( radiusFiles[i] ) ).c_str(), fileReachers[ radiusFiles[i] ]  );
+                    rw::emitTo( o, "<f p=\"{}\" deps=\"{}\"/>", ex( prPathRel( radiusFiles[i] ) ).c_str(), fileReachers[ radiusFiles[i] ] );
                 }
-                rw::emitRaw( o, "</impact>"  );
+                rw::emitRaw( o, "</impact>" );
             }
             else
             {
                 rw::emitTo( o, "<impact dependents=\"{}\" files=\"{}\" files_other=\"{}\" shown=\"{}\" capped=\"{}\"/>",
-                             reach.size(), totalReachFiles, radiusFiles.size(), fSc.shown, fSc.capped  );
+                             reach.size(), totalReachFiles, radiusFiles.size(), fSc.shown, fSc.capped );
             }
 
             // (4) affected tests to run. §B3: same shown=/capped= disclosure on <tests>' count=.
             const PrShownCap tSc = prShownCap( testFiles.size(), trim.testCap );
             if( trim.testCap > 0 )
             {
-                rw::emitTo( o, "<tests count=\"{}\" shown=\"{}\" capped=\"{}\">", testFiles.size(), tSc.shown, tSc.capped  );
+                rw::emitTo( o, "<tests count=\"{}\" shown=\"{}\" capped=\"{}\">", testFiles.size(), tSc.shown, tSc.capped );
                 for( std::size_t i = 0; i < tSc.shown; ++i )
                 {
-                    rw::emitTo( o, "<test p=\"{}\"{}/>", ex( prPathRel( testFiles[i] ) ).c_str(), runAttrDisclosed( prRunners, testFiles[i], ex ).c_str()  );   // §A9.5
+                    rw::emitTo( o, "<test p=\"{}\"{}/>", ex( prPathRel( testFiles[i] ) ).c_str(), runAttrDisclosed( prRunners, testFiles[i], ex ).c_str() );   // §A9.5
                 }
-                rw::emitRaw( o, "</tests>"  );
+                rw::emitRaw( o, "</tests>" );
             }
             else
             {
-                rw::emitTo( o, "<tests count=\"{}\" shown=\"{}\" capped=\"{}\"/>", testFiles.size(), tSc.shown, tSc.capped  );
+                rw::emitTo( o, "<tests count=\"{}\" shown=\"{}\" capped=\"{}\"/>", testFiles.size(), tSc.shown, tSc.capped );
             }
 
             // (5) per-symbol callers (1-hop in-edges) — the review anchor "who breaks if this symbol changes".
@@ -1084,7 +1084,7 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
 
             if( trim.emitSymbolRows )
             {
-                rw::emitTo( o, "<changed-symbols count=\"{}\"{}>", std::size_t( fileSyms.size() ), sectionsAttr.c_str()  );
+                rw::emitTo( o, "<changed-symbols count=\"{}\"{}>", std::size_t( fileSyms.size() ), sectionsAttr.c_str() );
                 for( NodeId s : rowSyms )
                 {
                     const Symbol& sy = ing.symbols[s];
@@ -1111,25 +1111,25 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
                     if( trim.callerCap > 0 )
                     {
                         rw::emitTo( o, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\" callers=\"{}\" shown=\"{}\" capped=\"{}\">",
-                                     symTag( sy.kind ), ex( sy.name ).c_str(), ex( prPathRel( sy.fileId ) ).c_str(), sy.line, callers.size(), cSc.shown, cSc.capped  );
+                                     symTag( sy.kind ), ex( sy.name ).c_str(), ex( prPathRel( sy.fileId ) ).c_str(), sy.line, callers.size(), cSc.shown, cSc.capped );
                         for( std::size_t i = 0; i < cSc.shown; ++i )
                         {
                             const Symbol& cs = ing.symbols[ callers[i] ];
-                            rw::emitTo( o, "<caller t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( cs.kind ), ex( cs.name ).c_str(), ex( prPathRel( cs.fileId ) ).c_str(), cs.line  );
+                            rw::emitTo( o, "<caller t=\"{}\" n=\"{}\" p=\"{}:{}\"/>", symTag( cs.kind ), ex( cs.name ).c_str(), ex( prPathRel( cs.fileId ) ).c_str(), cs.line );
                         }
-                        rw::emitRaw( o, "</s>"  );
+                        rw::emitRaw( o, "</s>" );
                     }
                     else
                     { // keep the row + its callers COUNT (the cheap structural fact), drop the caller list
                         rw::emitTo( o, "<s t=\"{}\" n=\"{}\" p=\"{}:{}\" callers=\"{}\" shown=\"{}\" capped=\"{}\"/>",
-                                     symTag( sy.kind ), ex( sy.name ).c_str(), ex( prPathRel( sy.fileId ) ).c_str(), sy.line, callers.size(), cSc.shown, cSc.capped  );
+                                     symTag( sy.kind ), ex( sy.name ).c_str(), ex( prPathRel( sy.fileId ) ).c_str(), sy.line, callers.size(), cSc.shown, cSc.capped );
                     }
                 }
-                rw::emitRaw( o, "</changed-symbols>"  );
+                rw::emitRaw( o, "</changed-symbols>" );
             }
             else
             {
-                rw::emitTo( o, "<changed-symbols count=\"{}\"{}/>", std::size_t( fileSyms.size() ), sectionsAttr.c_str()  );
+                rw::emitTo( o, "<changed-symbols count=\"{}\"{}/>", std::size_t( fileSyms.size() ), sectionsAttr.c_str() );
             }
 
             // (6) co-change partners NOT in the diff (gitmine). Degrades to an empty list without git. A4-P10:
@@ -1149,17 +1149,17 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
             const PrShownCap pSc = prShownCap( outside.size(), trim.cochangeCap );
             if( trim.cochangeCap > 0 )
             {
-                rw::emitTo( o, "<cochange window=\"{}\" commits=\"{}\" partners=\"{}\" shown=\"{}\" capped=\"{}\">", coWindow.c_str(), commits, outside.size(), pSc.shown, pSc.capped  );
+                rw::emitTo( o, "<cochange window=\"{}\" commits=\"{}\" partners=\"{}\" shown=\"{}\" capped=\"{}\">", coWindow.c_str(), commits, outside.size(), pSc.shown, pSc.capped );
                 for( std::size_t i = 0; i < pSc.shown; ++i )
                 {
                     rw::emitTo( o, "<partner p=\"{}\" deg=\"{:.2f}\"{}/>", ex( prPathRel( outside[i]->fileId ) ).c_str(),
                                  outside[i]->deg, coPairAttr( *outside[i] )  );   // §A9.3: surprising= or dep_capable="0"
                 }
-                rw::emitRaw( o, "</cochange>"  );
+                rw::emitRaw( o, "</cochange>" );
             }
             else
             {
-                rw::emitTo( o, "<cochange window=\"{}\" commits=\"{}\" partners=\"{}\" shown=\"{}\" capped=\"{}\"/>", coWindow.c_str(), commits, outside.size(), pSc.shown, pSc.capped  );
+                rw::emitTo( o, "<cochange window=\"{}\" commits=\"{}\" partners=\"{}\" shown=\"{}\" capped=\"{}\"/>", coWindow.c_str(), commits, outside.size(), pSc.shown, pSc.capped );
             }
 
             // (7) owners of this file (gitmine, recency-weighted). A4-P?: answered from the once-mined
@@ -1170,23 +1170,23 @@ inline int writePrContext( std::FILE* out, const std::string& root, const Ingest
             if( ow && trim.ownerCap > 0 )
             {
                 const PrShownCap aSc = prShownCap( ow->authors.size(), trim.ownerCap );
-                rw::emitTo( o, "<owners authors=\"{}\" bf=\"{}\" shown=\"{}\" capped=\"{}\">", ow->uniqueAuthors, ow->busFactor ? 1 : 0, aSc.shown, aSc.capped  );
+                rw::emitTo( o, "<owners authors=\"{}\" bf=\"{}\" shown=\"{}\" capped=\"{}\">", ow->uniqueAuthors, ow->busFactor ? 1 : 0, aSc.shown, aSc.capped );
                 for( std::size_t i = 0; i < aSc.shown; ++i )
                 {
-                    rw::emitTo( o, "<author email=\"{}\" share=\"{:.2f}\"/>", ex( ow->authors[i].email ).c_str(), ow->authors[i].share  );
+                    rw::emitTo( o, "<author email=\"{}\" share=\"{:.2f}\"/>", ex( ow->authors[i].email ).c_str(), ow->authors[i].share );
                 }
-                rw::emitRaw( o, "</owners>"  );
+                rw::emitRaw( o, "</owners>" );
             }
             else if( ow )
             { // trimmed: keep the author COUNT + bus-factor flag (cheap structural facts), drop the list
-                rw::emitTo( o, "<owners authors=\"{}\" bf=\"{}\" shown=\"0\" capped=\"{}\"/>", ow->uniqueAuthors, ow->busFactor ? 1 : 0, ow->authors.empty() ? 0u : 1u  );
+                rw::emitTo( o, "<owners authors=\"{}\" bf=\"{}\" shown=\"0\" capped=\"{}\"/>", ow->uniqueAuthors, ow->busFactor ? 1 : 0, ow->authors.empty() ? 0u : 1u );
             }
             else
             {
-                rw::emitRaw( o, "<owners authors=\"0\" bf=\"0\"/>"  );   // no git ownership data at all — not a capped listing, nothing to disclose
+                rw::emitRaw( o, "<owners authors=\"0\" bf=\"0\"/>" );   // no git ownership data at all — not a capped listing, nothing to disclose
             }
 
-            rw::emitRaw( o, "</file>"  );
+            rw::emitRaw( o, "</file>" );
         }
     };
 

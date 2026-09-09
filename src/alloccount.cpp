@@ -87,7 +87,7 @@ struct Reporter
                       (unsigned long long) g_allocCount.load( std::memory_order_relaxed ),
                       (unsigned long long) g_allocBytes.load( std::memory_order_relaxed ),
                       (unsigned long long) g_freeCount.load( std::memory_order_relaxed ),
-                      (unsigned long long) g_peakBytes.load( std::memory_order_relaxed )  );
+                      (unsigned long long) g_peakBytes.load( std::memory_order_relaxed ) );
     }
 };
 Reporter g_reporter;
