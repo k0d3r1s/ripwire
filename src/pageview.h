@@ -248,6 +248,11 @@ inline PageDisclosureValues computePageDisclosure( std::size_t rowsShown, std::s
 // once, and each surface supplies only its own punctuation.
 struct PageSyntax
 {
+    bool json;                // WHICH DIALECT. The three format members below are documentation now:
+                              // the emitters branch on this and pass a LITERAL, because a runtime
+                              // format string needs std::vformat + std::make_format_args, whose
+                              // signature changed in C++23 and whose behaviour has not been uniform.
+                              // A literal is checked at compile time and cannot vary by library.
     const char* capOnly;      // std::format: rowsShown, cappedLiteral
     const char* full;         // std::format: rowsShown, cappedLiteral, rowTotal, hasMoreLiteral, nextOffset, offset, limit
     const char* pagingOnly;   // std::format: rowTotal, hasMoreLiteral, nextOffset, offset, limit — rule 1's noun-prefixed
@@ -260,6 +265,7 @@ struct PageSyntax
 };
 inline constexpr PageSyntax kXmlPageSyntax
 {
+    false,
     " shown=\"{}\" capped=\"{}\"",
     " shown=\"{}\" capped=\"{}\" total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
     " total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
@@ -268,6 +274,7 @@ inline constexpr PageSyntax kXmlPageSyntax
 };
 inline constexpr PageSyntax kJsonPageSyntax
 {
+    true,
     ",\"shown\":{},\"capped\":{}",
     ",\"shown\":{},\"capped\":{},\"total\":{},\"has_more\":{},\"next_offset\":{},\"offset\":{},\"limit\":{}",
     ",\"total\":{},\"has_more\":{},\"next_offset\":{},\"offset\":{},\"limit\":{}",
@@ -295,12 +302,16 @@ inline const char* pageDisclosure( char* buf, std::size_t bufCap, std::size_t ro
     std::size_t written = 0;
     if( !v.paging )
     {
-        written = rw::formatToRuntime( buf, bufCap, syn.capOnly, rowsShown, isCapped );
+        written = syn.json ? rw::formatTo( buf, bufCap, ",\"shown\":{},\"capped\":{}", rowsShown, isCapped )
+                           : rw::formatTo( buf, bufCap, " shown=\"{}\" capped=\"{}\"", rowsShown, isCapped );
     }
     else
     {
-        written = rw::formatToRuntime( buf, bufCap, syn.full, rowsShown, isCapped, rowTotal, v.hasMore ? syn.yes : syn.no,
-                                       v.nextOrTotal, v.offsetOut, v.limitOut );
+        written = syn.json
+            ? rw::formatTo( buf, bufCap, ",\"shown\":{},\"capped\":{},\"total\":{},\"has_more\":{},\"next_offset\":{},\"offset\":{},\"limit\":{}",
+                            rowsShown, isCapped, rowTotal, v.hasMore ? syn.yes : syn.no, v.nextOrTotal, v.offsetOut, v.limitOut )
+            : rw::formatTo( buf, bufCap, " shown=\"{}\" capped=\"{}\" total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
+                            rowsShown, isCapped, rowTotal, v.hasMore ? syn.yes : syn.no, v.nextOrTotal, v.offsetOut, v.limitOut );
     }
     if( v.floor && written > 0 && written < bufCap )
     {
@@ -335,8 +346,18 @@ inline const char* pagingDisclosure( char* buf, std::size_t bufCap, std::size_t 
     const bool hasMore = windowEnd < rowTotal;
     if( limit <= 0 && offset <= 0 && !hasMore ) { buf[0] = '\0';  return buf; }
 
-    rw::formatToRuntime( buf, bufCap, syn.pagingOnly, rowTotal, hasMore ? syn.yes : syn.no,
-                         hasMore ? windowEnd : rowTotal, offset > 0 ? offset : 0, limit > 0 ? limit : 0 );
+    if( syn.json )
+    {
+        rw::formatTo( buf, bufCap, ",\"total\":{},\"has_more\":{},\"next_offset\":{},\"offset\":{},\"limit\":{}",
+                      rowTotal, hasMore ? syn.yes : syn.no,
+                      hasMore ? windowEnd : rowTotal, offset > 0 ? offset : 0, limit > 0 ? limit : 0 );
+    }
+    else
+    {
+        rw::formatTo( buf, bufCap, " total=\"{}\" has_more=\"{}\" next_offset=\"{}\" offset=\"{}\" limit=\"{}\"",
+                      rowTotal, hasMore ? syn.yes : syn.no,
+                      hasMore ? windowEnd : rowTotal, offset > 0 ? offset : 0, limit > 0 ? limit : 0 );
+    }
     return buf;
 }
 

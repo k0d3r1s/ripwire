@@ -25,7 +25,6 @@
 #include <cstring>
 #include <cstdio>
 #include <format>
-#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -67,60 +66,15 @@ template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A
 #endif
 
 
-// ── formatToRuntime — the one shape a consteval format cannot express ────────────────────────────────
-// A format string chosen at RUNTIME from a table. pageview.h is the case that needs it: ONE paging body
-// serves both the XML and the JSON dialect by selecting a PageSyntax row, deliberately, so that the two
-// spellings cannot drift into a clone pair. std::format_string is consteval and cannot hold that; the
-// standard's own answer is std::vformat_to, so this is not a workaround but the intended tool.
-//
-// WHAT IS AND IS NOT CHECKED HERE. Every other primitive in this header validates its format at COMPILE
-// time. This one cannot, by construction — so it keeps printf's old property that the format and the
-// arguments must agree by inspection. What it does NOT keep is printf's punishment for getting that wrong:
-// a mismatch there is undefined behaviour, whereas std::vformat_to throws std::format_error. That throw is
-// caught and degraded here, because the contract every emitting site in this tree has always had is that a
-// formatting failure is silent, never an escaping exception (CONTRIBUTING §3 "Self-check, don't throw").
-// Truncation, NUL-termination and the return value are formatTo's, so the two are interchangeable.
-template<class... A> inline std::size_t formatToRuntime( char* buf, std::size_t cap, std::string_view f, A&&... a )
-{
-    // There is no vformat_to_n: the standard bounds format_to_n but gives the runtime-format family only
-    // an UNBOUNDED vformat_to. So the bound is applied here, over a rendered string. That string is the one
-    // allocation in this header, and it is affordable precisely because this shape is rare — a paging
-    // disclosure is emitted once per REPORT, never once per row, which is why formatTo (no allocation) is
-    // the primitive for the per-symbol paths and this one is not.
-    try
-    {
-        const std::string rendered = std::vformat( f, std::make_format_args( a... ) );
-        if( cap == 0 )
-        {
-            return rendered.size();
-        }
-        const std::size_t fits = rendered.size() < cap - 1 ? rendered.size() : cap - 1;
-        std::memcpy( buf, rendered.data(), fits );
-        buf[ fits ] = '\0';
-        return rendered.size();   // snprintf's return: the length it WOULD have written
-    }
-    catch( const std::format_error& )
-    {
-        if( cap > 0 ) { buf[ 0 ] = '\0'; }
-        return 0;
-    }
-}
-
 // ── emitRaw — literal text, which is not a format string at all ──────────────────────────────────────
 // 353 of this tree's printf-family calls pass a string and NO arguments: help pages, legends, usage
 // banners, XML preambles. Routing those through emitTo would be worse than pointless — std::format_string
-// is CONSTEVAL, so every one of them would pay compile-time parsing for formatting that does not happen,
-// and the --help table proves the cost is not theoretical: at 114,985 characters it exceeds the
-// constant-evaluation budget outright and does not compile ("call to consteval function ... is not a
-// constant expression", measured 2026-09-09 with Apple clang 21).
+// is CONSTEVAL, so each would pay compile-time parsing for formatting that never happens, and the --help
+// table at 114,985 characters exceeds the constant-evaluation budget outright and does not compile.
 //
-// So literal text goes out as literal text. std::fputs is not a printf-family call — it has no format
-// string to get wrong — and it is what the std::format fallback arm above already writes through.
-//
-// THE TRAP WHEN CONVERTING INTO THIS: a printf format spells a literal percent as %%, and text passed to
-// fputs is no longer a format, so %% here would print TWO characters. Every %% must become a single % on
-// the way in. Braces are the mirror image: emitTo needs {{ and }} where this needs a bare { and }. Getting
-// either backwards is invisible at the call site and shows up in generated documentation.
+// THE TRAP WHEN CONVERTING INTO THIS: a printf format spells a literal percent %%, and text passed to
+// fputs is no longer a format, so %% here would print TWO characters and must become a single %. Braces
+// are the mirror image: emitTo needs {{ and }} where this needs a bare { and }.
 template<class S> inline void emitRaw( std::FILE* stream, const S& text )
 {
     std::fputs( text, stream );
