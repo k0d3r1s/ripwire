@@ -2964,7 +2964,7 @@ inline void packConnect( std::FILE* out, const IngestResult& ing, const Graph& g
     {
         estTokens = connectEstTokens( payload.size(), connectExtraBytes + std::strlen( connectOverAttr ) );
     }
-    rw::emitTo( out, "{}{}{}", kConnectHeader, graphUnindexedLegendComment( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( !rootArg.empty() ) );
+    rw::emitTo( out, "{}{}{}", rw::cstr( kConnectHeader ), graphUnindexedLegendComment( g.unindexedFiles > 0 ).c_str(), rootRelPathsLegend( !rootArg.empty() ) );
     rw::emitTo( out, "<connect terminals=\"{}\" nodes=\"{}\" edges=\"{}\" radius=\"{}\" groups=\"{}\" est_tokens=\"{}\" hub_floor=\"{}\"{}{}{}{}{}>",
                   res.terminals.size(), nodeTotal, edgeTotal, res.radius, connectedGroups, estTokens, hubFloor,
                   rw::cstr( connectCeiling ), connectOverAttr,

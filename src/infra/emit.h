@@ -22,6 +22,7 @@
 // copy would be a G3 regression.
 
 #include <cstddef>
+#include <type_traits>
 #include <cstring>
 #include <cstdio>
 #include <format>
@@ -44,6 +45,15 @@ inline constexpr const char* kEmitterName = "std::print";
 
 template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A...> f, A&&... a )
 {
+    // A fixed char[] must arrive as rw::cstr( buf ). printf's %s always meant "bytes to the first NUL";
+    // `{}` on a char[N] is a different question that library versions answer differently, and an
+    // implementation that formats the ARRAY emits the trailing NUL and the uninitialised bytes after it.
+    // A regex sweep missed sites twice, so the compiler enforces it instead of a reviewer.
+    // Only a MUTABLE char[N] is rejected. A string literal is const char[N]; every implementation formats
+    // that as a string, and the hazard here is the reusable buffer that was written short.
+    static_assert( ( ... && !( std::is_array_v<std::remove_reference_t<A>>
+                               && !std::is_const_v<std::remove_extent_t<std::remove_reference_t<A>>> ) ),
+                   "pass rw::cstr( buf ) for a fixed char buffer: {} on a char[N] is not printf's %s" );
     try
     {
         std::print( stream, f, std::forward<A>( a )... );
@@ -60,6 +70,15 @@ inline constexpr const char* kEmitterName = "std::format+fputs";
 
 template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A...> f, A&&... a )
 {
+    // A fixed char[] must arrive as rw::cstr( buf ). printf's %s always meant "bytes to the first NUL";
+    // `{}` on a char[N] is a different question that library versions answer differently, and an
+    // implementation that formats the ARRAY emits the trailing NUL and the uninitialised bytes after it.
+    // A regex sweep missed sites twice, so the compiler enforces it instead of a reviewer.
+    // Only a MUTABLE char[N] is rejected. A string literal is const char[N]; every implementation formats
+    // that as a string, and the hazard here is the reusable buffer that was written short.
+    static_assert( ( ... && !( std::is_array_v<std::remove_reference_t<A>>
+                               && !std::is_const_v<std::remove_extent_t<std::remove_reference_t<A>>> ) ),
+                   "pass rw::cstr( buf ) for a fixed char buffer: {} on a char[N] is not printf's %s" );
     std::fputs( std::format( f, std::forward<A>( a )... ).c_str(), stream );
 }
 
@@ -114,6 +133,15 @@ inline const char* cstr( const char* p ) noexcept { return p; }
 // class stops existing rather than being defended against site by site.
 template<class... A> inline std::size_t formatTo( char* buf, std::size_t cap, std::format_string<A...> f, A&&... a )
 {
+    // A fixed char[] must arrive as rw::cstr( buf ). printf's %s always meant "bytes to the first NUL";
+    // `{}` on a char[N] is a different question that library versions answer differently, and an
+    // implementation that formats the ARRAY emits the trailing NUL and the uninitialised bytes after it.
+    // A regex sweep missed sites twice, so the compiler enforces it instead of a reviewer.
+    // Only a MUTABLE char[N] is rejected. A string literal is const char[N]; every implementation formats
+    // that as a string, and the hazard here is the reusable buffer that was written short.
+    static_assert( ( ... && !( std::is_array_v<std::remove_reference_t<A>>
+                               && !std::is_const_v<std::remove_extent_t<std::remove_reference_t<A>>> ) ),
+                   "pass rw::cstr( buf ) for a fixed char buffer: {} on a char[N] is not printf's %s" );
     if( cap == 0 )
     {
         return std::formatted_size( f, std::forward<A>( a )... );

@@ -1170,7 +1170,7 @@ inline void writeTestGateReportJson( std::FILE* out, const IngestResult& ing, co
                  testRows, shownRows, shownRows < r.untested.size() ? "true" : "false",
                  scriptGatesUnmodelledCount( ing ), r.shellGates.registered, r.shellGates.mapped, r.shellGates.unresolvedDynamic, kTestGateCcxBarMirror,
                  graphCountFloorAttrJson( g ).c_str(),   // M15: the JSON twin's gauge + "counts_floor":true
-                 pageJson, atJson.c_str(), tgJRootJson.c_str(),   // M12: root= rides only when the document has rows (same gate as the XML twin)
+                 rw::cstr( pageJson ), atJson.c_str(), tgJRootJson.c_str(),   // M12: root= rides only when the document has rows (same gate as the XML twin)
                  nextFieldJson( testGateNextInvocation( ing, r, gateRunnersJ ) ).c_str()  );   // P3 (L7): the XML twin's next=
     const TestRunnerIndex gateRunners( ing );                       // §P11.4, the JSON sibling of the XML run=
     const auto            jesc = []( std::string_view s ) { return jsonStr( s ); };
