@@ -196,6 +196,7 @@ TABLE = {
 # A NEW row here still fails the gate until someone adds it, which is the point. When you add one, say which
 # set it belongs in and why: a string argument makes it a TABLE row, with real prose.
 NUMERIC_ONLY = {
+    ( "src/serialize.h", "p" ): 2,
     ( "src/degradedscan.h", "hit.errRatio" ): 1,
     ( "src/dmm.h", "value" ): 1,
     ( "src/editcheck.h", "callersOpen" ): 1,
@@ -249,7 +250,6 @@ NUMERIC_ONLY = {
     ( "src/serialize.h", "lineAttr" ): 1,
     ( "src/serialize.h", "nb" ): 2,
     ( "src/serialize.h", "precAttr" ): 1,
-    ( "src/serialize.h", "qp" ): 3,
     ( "src/serialize.h", "rankAttr" ): 1,
     ( "src/serialize.h", "rc" ): 2,
     ( "src/serialize.h", "rootsAttr" ): 1,
@@ -385,7 +385,11 @@ if not bad:
 #            file was reverted rather than the manifest re-pinned — which is this gate family's rule and the
 #            whole point of the fence. serialize.h is back on snprintf; its `p` row is a formatTo-only buffer
 #            and goes with it.
-EXPECTED = { "mentions": 309, "calls": 211, "sites": 211, "rows": 91, "widthforms": 0 }
+#            2026-09-09 (the appendf clamps stop reading a would-have-written length): calls 211 -> 210,
+#            mentions 309 -> 313, rows unchanged at 91. The three clamps now call std::format_to_n directly
+#            and bound themselves by its OUT POINTER, so they are no longer rw::formatTo call sites; the
+#            buffer they write through is `p` (two sites) and serialize.h's `qp` row leaves with them.
+EXPECTED = { "mentions": 313, "calls": 210, "sites": 210, "rows": 91, "widthforms": 0 }
 #            2026-09-04 (capture-audit L6, H9): +1 call/+1 mention, sites/rows UNCHANGED — re-read, not
 #            re-counted. packConnect gained ONE snprintf into a new `char connectCeiling[32]` for the
 #            H9 ` max_tokens="%d"` ceiling disclosure: a single %d of a caller-supplied INTEGER, no %s,

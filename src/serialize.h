@@ -3,6 +3,8 @@
 // serialize.h — minified, escaped XML serialization. Streamed through a 64 KB
 // buffer (no whole-document string), terse schema, every name/path XML-escaped.
 
+#include "infra/emit.h"  // rw::formatTo — snprintf's shape kept (stack buffer, snprintf's return)
+#include <format>          // std::format_to_n — the appendf lambdas append through it directly
 #include "model.h"
 #include "nextverb.h"   // P3 (L7): next= on the top-ranked <d> row
 #include "arch.h"        // P3: builtinLayer() — the file-node layer= tag
@@ -176,7 +178,7 @@ inline void writeMultiRootTable( std::FILE* out, const IngestResult& ing )
     std::vector<char> esc;
     for( std::size_t r = 0; r < ing.rootLabels.size(); ++r )
     {
-        std::fprintf( out, "<root label=\"%s\" p=\"%s\"/>",
+        rw::emitTo( out, "<root label=\"{}\" p=\"{}\"/>",
                       std::string( escapeXml( ing.rootLabels[r], esc ) ).c_str(),
                       std::string( escapeXml( r < ing.rootPaths.size() ? ing.rootPaths[r] : std::string(), esc ) ).c_str() );
     }
@@ -1004,22 +1006,8 @@ inline constexpr double bytesPerTokenFor( Lang l ) noexcept
 // to ~52x under). A formula per payload is exactly how that recurs, so no emitter estimates its own size
 // any more: each one MEASURES the bytes it actually wrote and converts them HERE, at the calibrated rate
 // for what those bytes ARE (a kTokenCalib / model-weighted rate for markup+signatures,
-// kBytesPerTokenBody for def bodies and raw source). Rounds to nearest (0.5 up).
-//
-// WHAT THE ROUNDING DOES NOT BUY, MEASURED (2026-09-09, bench/tokenaudit). This comment used to end
-// "so the number never systematically under-reads", and rounding to nearest does not deliver that — it
-// moves a number by at most half a token, and the error here is a RATE error worth tens of percent. The
-// signed error against real o200k_base, over 50 invocations on two live corpora plus 8 pinned ones on
-// test/estcalibfix, runs -18.4% to +41.7%: the small legend-heavy bundles OVER-read (the legend is
-// English prose measured at 3.1-4.7 B/tok, charged here at the ~2.5 B/tok signature rate), and --expand's
-// short dense bodies UNDER-read at kBytesPerTokenBody (-16.4% on the fixture, -18.4% on a 1500-file C++
-// tree). The direction is a property of the DOCUMENT SHAPE, not of the corpus language the rate is keyed
-// on, which is why one rate per language cannot fix it and why the number is a calibrated estimate rather
-// than a bound. It is now gated as an envelope rather than asserted as a direction:
-// test/tokenbudgetcheck.sh #18 holds every pinned invocation inside a measured band and the set's MAPE
-// under a ceiling, against counts bench/tokenaudit/pin.py writes into test/estcalib.manifest.
-//
-// VERIFY, not a clamp: a non-positive rate is a corrupt caller, never a runtime condition.
+// kBytesPerTokenBody for def bodies and raw source). Rounds to nearest so the number never systematically
+// under-reads. VERIFY, not a clamp: a non-positive rate is a corrupt caller, never a runtime condition.
 inline std::size_t tokensForEmittedBytes( std::size_t emittedBytes, double bytesPerToken ) noexcept
 {
     VERIFY( bytesPerToken > 0.0 );
@@ -1528,11 +1516,11 @@ inline void writeRecentRows( XmlWriter& w, const MapAnnotations& ann, const Path
         return;
     }
     char rc[ 64 ];
-    std::snprintf( rc, sizeof rc, "<recent n=\"%zu\" of=\"%zu\">", ann.recent->size(), ann.recentOf );
+    rw::formatTo( rc, sizeof rc, "<recent n=\"{}\" of=\"{}\">", ann.recent->size(), ann.recentOf );
     w.write( rc );
     for( const RecentFile& r : *ann.recent )
     {
-        std::snprintf( rc, sizeof rc, "\" age_d=\"%u\" w=\"%.3g\"/>", r.ageDays, r.weight );
+        rw::formatTo( rc, sizeof rc, "\" age_d=\"{}\" w=\"{:.3g}\"/>", r.ageDays, r.weight );
         w.write( "<rc p=\"" );  w.write( escapeXml( pathRel( r.fileId ), esc ) );  w.write( rc );
     }
     w.write( "</recent>" );
@@ -2128,14 +2116,14 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char precAttr[ 40 ];  precAttr[ 0 ] = '\0';                // emitted only when a SCIP overlay pinned something
     if( preciseTotal > 0 )
     {
-        std::snprintf( precAttr, sizeof( precAttr ), " precise=%zu", preciseTotal );
+        rw::formatTo( precAttr, sizeof( precAttr ), " precise={}", preciseTotal );
     }
     // Multi-root workspace (A13): `roots=N` joins the header gauges and a
     // `<root l="LABEL" p="PATH"/>` prologue opens <r> — ONLY when N≥2 (single-root output byte-unchanged).
     char rootsAttr[ 32 ];  rootsAttr[ 0 ] = '\0';
     if( ing.rootLabels.size() >= 2 )
     {
-        std::snprintf( rootsAttr, sizeof( rootsAttr ), " roots=%zu", ing.rootLabels.size() );
+        rw::formatTo( rootsAttr, sizeof( rootsAttr ), " roots={}", ing.rootLabels.size() );
     }
     // D6: --map-diff's teleport-seed file count, ONLY when the caller passes changedCount
     // (nullptr for every non-map-diff caller ⇒ zero token cost, byte-identical golden map). A clean
@@ -2144,7 +2132,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char changedAttr[ 40 ];  changedAttr[ 0 ] = '\0';
     if( changedCount )
     {
-        std::snprintf( changedAttr, sizeof( changedAttr ), " changed=%zu", *changedCount );
+        rw::formatTo( changedAttr, sizeof( changedAttr ), " changed={}", *changedCount );
     }
     // §P0.5d: how many otherwise-indexable files the crawl dropped for exceeding a per-file size ceiling —
     // --max-file-size, or (§B13.1) the .json lane's fixed 256 KB config ceiling that --max-file-size does not
@@ -2154,7 +2142,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char skippedAttr[ 48 ];  skippedAttr[ 0 ] = '\0';
     if( !ing.skippedOversize.empty() )
     {
-        std::snprintf( skippedAttr, sizeof( skippedAttr ), " skipped_oversize=%zu", ing.skippedOversize.size() );
+        rw::formatTo( skippedAttr, sizeof( skippedAttr ), " skipped_oversize={}", ing.skippedOversize.size() );
     }
     // §L1: the LANGUAGES this build could not read at all — buildUnindexedAttr carries the whole rule.
     const std::string unindexedAttr = buildUnindexedAttr( ing.crawlSkips );
@@ -2168,7 +2156,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
     char fitAttr[ 96 ];  fitAttr[ 0 ] = '\0';
     if( ann.maxTokensFit != nullptr )
     {
-        std::snprintf( fitAttr, sizeof( fitAttr ), " max_tokens=%zu fit_bytes=%zu%s",
+        rw::formatTo( fitAttr, sizeof( fitAttr ), " max_tokens={} fit_bytes={}{}",
                        ann.maxTokensFit->askedTokens, ann.maxTokensFit->ceilingBytes,
                        ann.maxTokensFit->isOverCeiling ? " over_ceiling=1" : "" );
     }
@@ -2254,7 +2242,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
         // needs was unreachable. Additive: the comment is kept, and this carries the SAME `estTokens` value
         // (one estimator). --stable omits it on the precedent of the k= rank attribute below: --stable buys a
         // byte-stable PREFIX, the root element is that prefix, and est_tokens is globally volatile.
-        if( !stable ) { char estAttr[ 40 ];  std::snprintf( estAttr, sizeof( estAttr ), " est_tokens=\"%zu\"", estTokens );  h += estAttr; }
+        if( !stable ) { char estAttr[ 40 ];  rw::formatTo( estAttr, sizeof( estAttr ), " est_tokens=\"{}\"", estTokens );  h += estAttr; }
         // W2-F: LAST on the root, after est_tokens — the same placement rule counts_floor= follows, so no
         // existing attribute-ADJACENCY assertion in test/ can break on it. Unlike est_tokens this is NOT
         // suppressed under --stable: the iteration count is a property of the CORPUS and the ranker, not of
@@ -2356,11 +2344,11 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             std::size_t ambLen = 0;               // amb= (≤ 17 B) then lpin= (≤ 18 B) in ONE buffer, each absent when 0
             if( const std::uint32_t ambK = counterAt( ambOut, id ); ambK > 0 )
             {
-                ambLen = std::size_t( std::snprintf( ambs, sizeof( ambs ), " amb=\"%u\"", ambK ) );
+                ambLen = std::size_t( rw::formatTo( ambs, sizeof( ambs ), " amb=\"{}\"", ambK  ) );
             }
             if( const std::uint32_t lpinK = counterAt( locPinOut, id ); lpinK > 0 )   // Phase 4: the disclosed locality pin
             {
-                std::snprintf( ambs + ambLen, sizeof( ambs ) - ambLen, " lpin=\"%u\"", lpinK );
+                rw::formatTo( ambs + ambLen, sizeof( ambs ) - ambLen, " lpin=\"{}\"", lpinK );
             }
 
             // PageRank k= is GLOBALLY volatile (any edit perturbs every rank) → omit it in --stable mode
@@ -2368,7 +2356,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             char kbuf[ 24 ];  kbuf[ 0 ] = '\0';
             if( !stable )
             {
-                std::snprintf( kbuf, sizeof( kbuf ), " k=\"%.4f\"", double( rank[id] ) );
+                rw::formatTo( kbuf, sizeof( kbuf ), " k=\"{:.4f}\"", double( rank[id] ) );
             }
 
             // Q-compute descriptive attrs (loc/params/nest/locals/cbo/lcom4/tested), built into a side buffer
@@ -2393,27 +2381,46 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
                 // qp to qe after every append (once full, further appends write nothing and stay clamped).
                 // fmt is always a string literal at every call site below — the non-literal warning is
                 // an artifact of routing it through the lambda parameter
-                const auto appendf = [ & ]( const char* fmt, auto... args )
+                // rw::formatTo reproduces snprintf's contract EXACTLY, so the A4-F8 clamp below is kept
+                // verbatim: it is applied to the same would-have-written length, and truncation therefore
+                // happens at the same byte it always did.
+                //
+                // The obvious-looking rewrite — `qp = std::format_to_n( qp, qe - qp, ... ).out` — is WRONG,
+                // and wrong in a way no fixture catches. snprintf( p, S, ... ) writes at most S-1 characters
+                // PLUS a NUL; format_to_n( p, S, ... ) writes up to S and terminates nothing. It buys one
+                // extra byte of room and drops the terminator. Measured 2026-09-09: that version emitted a
+                // row carrying amp="1" where every previous release truncated it away, on test/ as the
+                // corpus. The byte fence was green throughout — the fixture's attribute strings never reach
+                // this 80-byte buffer, so only a differential run against the pre-conversion binary on a
+                // REAL tree exposed it.
+                //
+                // What the conversion does keep: -Wformat-security is gone, because std::format_string
+                // preserves compile-time checking THROUGH the lambda parameter where a const char* fmt
+                // could not.
+                const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-security"
-                    const int r = std::snprintf( qp, std::size_t( qe - qp ), fmt, args... );
-#pragma clang diagnostic pop
-                    if( r > 0 )
+                    // Bound by the OUT POINTER, never by a would-have-written length. std::format_to_n's
+                    // `out` is clamped to the n it was given on any implementation; its `size` is a
+                    // would-have-written count that an implementation can get wrong, and this clamp used
+                    // to depend on it. n is (qe-qp)-1 so the NUL below always lands in bounds, which is
+                    // snprintf's "at most S-1 characters plus a terminator", byte for byte.
+                    if( qp < qe )
                     {
-                        qp = ( r < qe - qp ) ? qp + r : qe;
+                        const auto r = std::format_to_n( qp, ( qe - qp ) - 1, fmt, std::forward<A>( args )... );
+                        qp  = r.out;
+                        *qp = '\0';
                     }
                 };
                 // loc: physical line span — always meaningful (SIZE is the master variable — report it first).
                 if( s.loc > 0 )
                 {
-                    appendf( " loc=\"%u\"", s.loc );
+                    appendf( " loc=\"{}\"", s.loc );
                 }
                 const bool isFn = ( s.kind == SymKind::Function || s.kind == SymKind::Method );
                 if( isFn )
                 {
-                    appendf( " params=\"%u\"", unsigned( s.params ) );
-                    appendf( " nest=\"%u\"", unsigned( s.maxNest ) );
+                    appendf( " params=\"{}\"", unsigned( s.params ) );
+                    appendf( " nest=\"{}\"", unsigned( s.maxNest ) );
                     // The nesting PROFILE beside the max (model.h Symbol::humps/deepLoc). nest= alone cannot
                     // distinguish a long run of shallow scoped steps from a body that sustains depth — both
                     // report their deepest line and nothing about how much of the function is that deep.
@@ -2422,7 +2429,7 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
                     // truncation (test/nestprofilecheck.sh arm 5 pins the equivalence in both directions).
                     if( s.humps > 0 )
                     {
-                        appendf( " humps=\"%u\" deep=\"%u\" deep_floor=\"1\"", unsigned( s.humps ), unsigned( s.deepLoc ) );
+                        appendf( " humps=\"{}\" deep=\"{}\" deep_floor=\"1\"", unsigned( s.humps ), unsigned( s.deepLoc ) );
                     }
                     // Phase 1 (local-variable-indexing, docs/LOCALS_INDEXING.md): locals= is ABSENT — never
                     // a bare "0" — for every def outside model.h's localsCountedLang (MVP: C/C++ only), so a
@@ -2431,27 +2438,27 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
                     // declaration-statement, not two names (see cc_isCountableLocalDecl's own comment).
                     if( localsCountedLang( s.lang ) )
                     {
-                        appendf( " locals=\"%u\" locals_floor=\"1\"", unsigned( s.locals ) );
+                        appendf( " locals=\"{}\" locals_floor=\"1\"", unsigned( s.locals ) );
                     }
                     // ppalt disclosure: the body carries preproc branches that never coexist at compile
                     // time, so this row's structural metrics are sums over ALL of them (model.h Symbol::
                     // ppAlt). ABSENT when 0 — presence itself is the signal.
                     if( s.ppAlt > 0 )
                     {
-                        appendf( " ppalt=\"%u\"", unsigned( s.ppAlt ) );
+                        appendf( " ppalt=\"{}\"", unsigned( s.ppAlt ) );
                     }
                 }
                 if( cbo && id < cbo->size() )
                 {
-                    appendf( " cbo=\"%u\"", (*cbo)[id] );
+                    appendf( " cbo=\"{}\"", (*cbo)[id] );
                 }
                 if( lcom4 && id < lcom4->size() && ( *lcom4 )[id] != 0xFFFFFFFFu )
                 { // 0xFFFFFFFF = kLcom4NA (graph.h) ⇒ omit
-                    appendf( " lcom4=\"%u\"", (*lcom4)[id] );
+                    appendf( " lcom4=\"{}\"", (*lcom4)[id] );
                 }
                 if( amp && id < amp->size() )
                 {
-                    appendf( " amp=\"%u\"", (*amp)[id] );
+                    appendf( " amp=\"{}\"", (*amp)[id] );
                 }
                 if( tested && id < tested->size() && ( *tested )[id] )
                 { // omit when 0 (lean output)
@@ -2467,12 +2474,12 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             if( metrics && fanIn )
             {
                 const std::uint32_t in = ( id < fanIn->size() ) ? (*fanIn)[id] : 0u;
-                std::snprintf( attr, sizeof( attr ), " in=\"%u\" out=\"%u\" cx=\"%u\" ccx=\"%u\"%s%s%s%s",
+                rw::formatTo( attr, sizeof( attr ), " in=\"{}\" out=\"{}\" cx=\"{}\" ccx=\"{}\"{}{}{}{}",
                                in, out, s.cx, s.ccx, ( in >= 8 ? " role=\"hub\"" : "" ), qbuf, ambs, kbuf );
             }
             else
             {
-                std::snprintf( attr, sizeof( attr ), "%s%s", ambs, kbuf );
+                rw::formatTo( attr, sizeof( attr ), "{}{}", ambs, kbuf );
             }
             w.write( attr );
             // Essential complexity (model.h Symbol::ev), --metrics only. Emitted iff ev >= 2: ev >= 1 for any
@@ -3123,10 +3130,10 @@ inline void appendJsonStrField( std::string& out, const char* keyWithComma, std:
 inline void appendJsonMetricFields( std::string& out, const Symbol& s, NodeId id, const std::vector<std::uint32_t>* fanIn )
 {
     char num[ 64 ];
-    std::snprintf( num, sizeof( num ), ",\"cx\":%u,\"ccx\":%u", s.cx, s.ccx );
+    rw::formatTo( num, sizeof( num ), ",\"cx\":{},\"ccx\":{}", s.cx, s.ccx );
     out += num;
     if( fanIn && id < fanIn->size() )
-    { std::snprintf( num, sizeof( num ), ",\"in\":%u", ( *fanIn )[ id ] );  out += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"in\":{}", ( *fanIn )[ id ] );  out += num; }
 }
 
 // P2.3 — the canonical `path::scope::name` id, but ONLY when it ADDS an enclosing scope: a free function's
@@ -3190,7 +3197,7 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
 
     // declaration line, then identity (the chain key)
     char lineAttr[ 32 ];
-    std::snprintf( lineAttr, sizeof( lineAttr ), "<d l=\"%u\" n=\"", s.line );
+    rw::formatTo( lineAttr, sizeof( lineAttr ), "<d l=\"{}\" n=\"", s.line );
     std::string head = lineAttr;
     head += escapeXml( s.name, esc );          // escapeXml returns a view INTO esc — copy before the next call
     head += "\"";
@@ -3211,7 +3218,7 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
     char rankAttr[ 24 ];  rankAttr[ 0 ] = '\0';
     if( facts.rank > 0 )
     {
-        std::snprintf( rankAttr, sizeof( rankAttr ), " r=\"%u\"", facts.rank );
+        rw::formatTo( rankAttr, sizeof( rankAttr ), " r=\"{}\"", facts.rank );
     }
     char tail[ 224 ];
     if( facts.metrics )
@@ -3219,13 +3226,13 @@ inline std::string sigRowHead( const IngestResult& ing, NodeId id, const SigRowF
         char inAttr[ 24 ];  inAttr[ 0 ] = '\0';
         if( facts.fanIn && id < facts.fanIn->size() )
         {
-            std::snprintf( inAttr, sizeof( inAttr ), " in=\"%u\"", ( *facts.fanIn )[ id ] );
+            rw::formatTo( inAttr, sizeof( inAttr ), " in=\"{}\"", ( *facts.fanIn )[ id ] );
         }
-        std::snprintf( tail, sizeof( tail ), " cx=\"%u\" ccx=\"%u\"%s%s%s%s>", s.cx, s.ccx, inAttr, facts.lens, facts.pure, rankAttr );
+        rw::formatTo( tail, sizeof( tail ), " cx=\"{}\" ccx=\"{}\"{}{}{}{}>", s.cx, s.ccx, inAttr, facts.lens, facts.pure, rankAttr );
     }
     else
     {
-        std::snprintf( tail, sizeof( tail ), "%s%s%s>", facts.lens, facts.pure, rankAttr );
+        rw::formatTo( tail, sizeof( tail ), "{}{}{}>", facts.lens, facts.pure, rankAttr );
     }
     head += tail;
     // P3 (L7, nextverb.h): the TOP-ranked row hands the agent the body to read — --expand=FILE:NAME, the
@@ -3307,7 +3314,7 @@ inline RelevanceFloorCut relevanceFloorCut( const std::vector<float>& rank, int 
         return { topN, {} };
     }
     char nb[ 200 ];
-    std::snprintf( nb, sizeof( nb ), " [relevance floor: kept %zu of %d - the other %zu scored zero on this query, so the bundle shrank instead of padding]",
+    rw::formatTo( nb, sizeof( nb ), " [relevance floor: kept {} of {} - the other {} scored zero on this query, so the bundle shrank instead of padding]",
                    positiveCount, topN, std::size_t( topN ) - positiveCount );
     return { int( positiveCount ), std::string( nb ) };
 }
@@ -3676,24 +3683,25 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
                 char qbuf[ 80 ];  qbuf[ 0 ] = '\0';
                 {
                     char* qp = qbuf; char* const qe = qbuf + sizeof( qbuf );
-                    const auto appendf = [ & ]( const char* fmt, auto... args )
+                    // see the sibling appendf above — including why the clamp is kept rather than replaced
+                    // by format_to_n's .out, which silently widens the buffer by one byte.
+                    const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                     {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-security"
-                        const int r = std::snprintf( qp, std::size_t( qe - qp ), fmt, args... );
-#pragma clang diagnostic pop
-                        if( r > 0 )
+                        // see the sibling appendf: clamp by out-pointer, never by would-have-written size.
+                        if( qp < qe )
                         {
-                            qp = ( r < qe - qp ) ? qp + r : qe;
+                            const auto r = std::format_to_n( qp, ( qe - qp ) - 1, fmt, std::forward<A>( args )... );
+                            qp  = r.out;
+                            *qp = '\0';
                         }
                     };
                     if( churnPerFile && f < churnPerFile->size() && (*churnPerFile)[f] > 0 )
                     {
-                        appendf( " churn=\"%u\"", (*churnPerFile)[f] );
+                        appendf( " churn=\"{}\"", (*churnPerFile)[f] );
                     }
                     if( amp && id < amp->size() && (*amp)[id] > 0 )
                     {
-                        appendf( " amp=\"%u\"", (*amp)[id] );
+                        appendf( " amp=\"{}\"", (*amp)[id] );
                     }
                     if( cloneMember && id < cloneMember->size() && (*cloneMember)[id] )
                     {
@@ -3814,7 +3822,7 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
             std::size_t shownRows = 0;
             for( const SigEntry& e : entries ) { if( !e.dropped ) { ++shownRows; } }
             char open[ 80 ];
-            std::snprintf( open, sizeof( open ), "<sigs shown=\"%zu\" total=\"%zu\" capped=\"1\">", shownRows, entries.size() );
+            rw::formatTo( open, sizeof( open ), "<sigs shown=\"{}\" total=\"{}\" capped=\"1\">", shownRows, entries.size() );
             w.write( open );
         }
         else
@@ -3917,24 +3925,43 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
                 // truncation (the next size_t(qe-qp) underflows into an unbounded stack write). See site #1.
                 // fmt is always a string literal at every call site below — the non-literal warning is
                 // an artifact of routing it through the lambda parameter
-                const auto appendf = [ & ]( const char* fmt, auto... args )
+                // rw::formatTo reproduces snprintf's contract EXACTLY, so the A4-F8 clamp below is kept
+                // verbatim: it is applied to the same would-have-written length, and truncation therefore
+                // happens at the same byte it always did.
+                //
+                // The obvious-looking rewrite — `qp = std::format_to_n( qp, qe - qp, ... ).out` — is WRONG,
+                // and wrong in a way no fixture catches. snprintf( p, S, ... ) writes at most S-1 characters
+                // PLUS a NUL; format_to_n( p, S, ... ) writes up to S and terminates nothing. It buys one
+                // extra byte of room and drops the terminator. Measured 2026-09-09: that version emitted a
+                // row carrying amp="1" where every previous release truncated it away, on test/ as the
+                // corpus. The byte fence was green throughout — the fixture's attribute strings never reach
+                // this 80-byte buffer, so only a differential run against the pre-conversion binary on a
+                // REAL tree exposed it.
+                //
+                // What the conversion does keep: -Wformat-security is gone, because std::format_string
+                // preserves compile-time checking THROUGH the lambda parameter where a const char* fmt
+                // could not.
+                const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                 {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-security"
-                    const int r = std::snprintf( qp, std::size_t( qe - qp ), fmt, args... );
-#pragma clang diagnostic pop
-                    if( r > 0 )
+                    // Bound by the OUT POINTER, never by a would-have-written length. std::format_to_n's
+                    // `out` is clamped to the n it was given on any implementation; its `size` is a
+                    // would-have-written count that an implementation can get wrong, and this clamp used
+                    // to depend on it. n is (qe-qp)-1 so the NUL below always lands in bounds, which is
+                    // snprintf's "at most S-1 characters plus a terminator", byte for byte.
+                    if( qp < qe )
                     {
-                        qp = ( r < qe - qp ) ? qp + r : qe;
+                        const auto r = std::format_to_n( qp, ( qe - qp ) - 1, fmt, std::forward<A>( args )... );
+                        qp  = r.out;
+                        *qp = '\0';
                     }
                 };
                 if( churnPerFile && f < churnPerFile->size() && (*churnPerFile)[f] > 0 )
                 {
-                    appendf( " churn=\"%u\"", (*churnPerFile)[f] );
+                    appendf( " churn=\"{}\"", (*churnPerFile)[f] );
                 }
                 if( amp && id < amp->size() && (*amp)[id] > 0 )
                 {
-                    appendf( " amp=\"%u\"", (*amp)[id] );
+                    appendf( " amp=\"{}\"", (*amp)[id] );
                 }
                 if( cloneMember && id < cloneMember->size() && (*cloneMember)[id] )
                 {
@@ -4096,12 +4123,12 @@ inline void packCandidates( std::FILE* out, const IngestResult& ing, const std::
         }
         const std::string canon = canonicalIdForEmit( ing, s, rootArg );   // R-R
 
-        char hb[ 96 ];  std::snprintf( hb, sizeof( hb ), "<cand r=\"%zu\" s=\"%.6g\" n=\"", r + 1, double( rank[id] ) );
+        char hb[ 96 ];  rw::formatTo( hb, sizeof( hb ), "<cand r=\"{}\" s=\"{:.6g}\" n=\"", r + 1, double( rank[id] ) );
         w.write( hb );  w.write( escapeXml( s.name, esc ) );
         w.write( "\" id=\"" );  w.write( escapeXml( canon, esc ) );
         w.write( "\" k=\"" );   w.write( symTag( s.kind ) );
         w.write( "\" p=\"" );   w.write( escapeXml( pathRel( s.fileId ), esc ) );   // R-R
-        char lb[ 24 ];  std::snprintf( lb, sizeof( lb ), "\" l=\"%u\">", s.line );
+        char lb[ 24 ];  rw::formatTo( lb, sizeof( lb ), "\" l=\"{}\">", s.line );
         w.write( lb );
         w.write( "<sig>" );  w.write( escapeXml( sig, esc ) );  w.write( "</sig></cand>" );
     }
@@ -4310,11 +4337,11 @@ inline void appendCallsBlock( std::string& out, std::uint32_t total, int shown, 
     char callsHdr[ 64 ];
     if( static_cast<std::uint32_t>( shown ) < total )
     {
-        std::snprintf( callsHdr, sizeof( callsHdr ), "<calls total=\"%u\" shown=\"%d\" capped=\"1\">", total, shown );
+        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\" shown=\"{}\" capped=\"1\">", total, shown );
     }
     else
     {
-        std::snprintf( callsHdr, sizeof( callsHdr ), "<calls total=\"%u\">", total );
+        rw::formatTo( callsHdr, sizeof( callsHdr ), "<calls total=\"{}\">", total );
     }
     out += callsHdr;
     out += rows;
@@ -4360,7 +4387,7 @@ inline void appendCalleeNameRow( std::string& callsBody, const Symbol& cs, std::
                                  std::size_t& used, const CalleeCallsSink& sink )
 {
     char nb[ 32 ];
-    std::snprintf( nb, sizeof( nb ), "\" l=\"%u\"/>", cs.line );
+    rw::formatTo( nb, sizeof( nb ), "\" l=\"{}\"/>", cs.line );
     callsBody += "<c n=\"";
     callsBody += escapeXml( cs.name, esc );
     callsBody += nb;
@@ -4426,7 +4453,7 @@ inline void emitCalleeCallsBlock( std::string& out, NodeId id, const std::vector
         {
             continue;
         }
-        char hb[ 32 ];  std::snprintf( hb, sizeof( hb ), "\" l=\"%u\">", cs.line );
+        char hb[ 32 ];  rw::formatTo( hb, sizeof( hb ), "\" l=\"{}\">", cs.line );
         callsBody += "<c n=\"";  callsBody += escapeXml( cs.name, esc );  callsBody += hb;
         callsBody += escapeXml( sig, esc );  callsBody += "</c>";
         used += sig.size() + 24;
@@ -4820,7 +4847,7 @@ inline void packBodies( std::FILE* out, const IngestResult& ing, const std::vect
             // predicate re-derivation, so the flag cannot disagree with the scrub that produced them.
             const bool bodyScrubbed = ( safe.size() != body.size() ) || xmlScrubIsLossy( body );
 
-            char hdr[ 64 ];  std::snprintf( hdr, sizeof( hdr ), "<b t=\"%s\" l=\"%u\" p=\"", symTag( s.kind ), s.line );
+            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<b t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line );
             children += hdr;  children += escapeXml( pathRel( f ), esc );
             children += "\" n=\"";  children += escapeXml( s.name, esc );  children += "\"";
             children += partAttr;                                 // octocode partial-fetch: lines="lo-hi/total" (empty on the whole-body path)
@@ -4879,7 +4906,7 @@ inline void packBodies( std::FILE* out, const IngestResult& ing, const std::vect
     // absence is the flagless byte-identity contract (test/forcompresscheck.sh arm 6). The two hand-formatted
     // <bodies> wrappers in packtask.h restate it for the same reason they restate shown=/total=.
     char open[ 112 ];
-    std::snprintf( open, sizeof( open ), "<bodies shown=\"%zu\" total=\"%zu\" capped=\"%d\"%s>",
+    rw::formatTo( open, sizeof( open ), "<bodies shown=\"{}\" total=\"{}\" capped=\"{}\"{}>",
                    shownCount, requestedCount, shownCount < requestedCount ? 1 : 0,
                    compress ? " compress=\"1\"" : "" );
     // §L10: sibs=/inc=/<calls> are only ever emitted when withFileContext is on (--expand's own call sites),
@@ -5003,7 +5030,7 @@ inline void packHops( std::FILE* out, const IngestResult& ing, const std::vector
         const Symbol& s = ing.symbols[ id ];
         std::string   row;
         char          hdr[ 64 ];
-        std::snprintf( hdr, sizeof( hdr ), "<h l=\"%u\" p=\"", s.line );
+        rw::formatTo( hdr, sizeof( hdr ), "<h l=\"{}\" p=\"", s.line );
         row += hdr;
         row += escapeXml( pathRel( s.fileId ), esc );
         row += "\" n=\"";
@@ -5027,12 +5054,12 @@ inline void packHops( std::FILE* out, const IngestResult& ing, const std::vector
     char open[ 128 ];
     if( noEdgeCount > 0 )
     {
-        std::snprintf( open, sizeof( open ), "<hops shown=\"%zu\" total=\"%zu\" capped=\"%d\" noedge=\"%zu\">",
+        rw::formatTo( open, sizeof( open ), "<hops shown=\"{}\" total=\"{}\" capped=\"{}\" noedge=\"{}\">",
                        shownCount, requestedCount, shownCount + noEdgeCount < requestedCount ? 1 : 0, noEdgeCount );
     }
     else
     {
-        std::snprintf( open, sizeof( open ), "<hops shown=\"%zu\" total=\"%zu\" capped=\"%d\">",
+        rw::formatTo( open, sizeof( open ), "<hops shown=\"{}\" total=\"{}\" capped=\"{}\">",
                        shownCount, requestedCount, shownCount < requestedCount ? 1 : 0 );
     }
     w.write( open );
@@ -5444,7 +5471,7 @@ inline void packOutline( std::FILE* out, const IngestResult& ing, const std::vec
 
             std::string safe;  safe.reserve( sk.size() );              // split ]]>; scrub C0 controls (G4) + invalid UTF-8 (A4-F20)
             appendCdataSafe( sk, safe );
-            char hdr[ 64 ];  std::snprintf( hdr, sizeof( hdr ), "<o t=\"%s\" l=\"%u\" p=\"", symTag( s.kind ), s.line );
+            char hdr[ 64 ];  rw::formatTo( hdr, sizeof( hdr ), "<o t=\"{}\" l=\"{}\" p=\"", symTag( s.kind ), s.line );
             w.write( hdr );  w.write( escapeXml( pathRel( f ), esc ) );
             w.write( "\" n=\"" );  w.write( escapeXml( s.name, esc ) );  w.write( "\"><![CDATA[" );
             w.write( safe );  w.write( "]]></o>" );
@@ -5628,7 +5655,7 @@ inline void packGraphBlock( std::FILE* out, const IngestResult& ing, const std::
                 continue; // 1-hop among the top-N only — not the whole graph
             }
             char eb[ 32 ];
-            std::snprintf( eb, sizeof( eb ), "n%zu --> n%zu\n", i, j );
+            rw::formatTo( eb, sizeof( eb ), "n{} --> n{}\n", i, j );
             body += eb;
         }
     }
@@ -5898,12 +5925,12 @@ inline void packLego( std::FILE* out, const IngestResult& ing, const std::vector
         char hdr[ 64 ];
         if( focusId != kNoNode )
         {
-            std::snprintf( hdr, sizeof( hdr ), "\" defs=\"%zu\" implementors=\"%zu\">",
+            rw::formatTo( hdr, sizeof( hdr ), "\" defs=\"{}\" implementors=\"{}\">",
                            definitionCountOfName( ing, id ), implementors[id].size() );
         }
         else
         {
-            std::snprintf( hdr, sizeof( hdr ), "\" implementors=\"%zu\">", implementors[id].size() );
+            rw::formatTo( hdr, sizeof( hdr ), "\" implementors=\"{}\">", implementors[id].size() );
         }
         w.write( "<iface n=\"" );  w.write( escapeXml( isym.name, esc ) );
         if( withPaths ) { w.write( "\" p=\"" );  w.write( escapeXml( pathRel( isym.fileId ), esc ) ); }
@@ -6068,7 +6095,7 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
     // paging half still appears only when --limit/--offset is active.
     {
         char db[ 64 + rw::kPageDisclosureCap ], pd[ rw::kPageDisclosureCap ];
-        std::snprintf( db, sizeof( db ), "<deps files=\"%zu\"%s", order.size(),
+        rw::formatTo( db, sizeof( db ), "<deps files=\"{}\"{}", order.size(),
                        rw::pageDisclosure( pd, sizeof( pd ), end - begin, order.size(), end, pageLimit, pageOffset, true ) );
         w.write( db );
         // R-E: root= is unbounded (a deep absolute path), so it is NOT folded into the fixed `db` buffer above
@@ -6088,13 +6115,13 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
     // it is the SAME predicate --arch's propagation_cost N and --cochange's dep_capable= are built on.
     const std::string depLangs = rw::dependencyCapableLangTags();
     char hb[ 176 ];
-    std::snprintf( hb, sizeof( hb ), "<health files=\"%zu\" dep_files=\"%zu\" ccd=\"%llu\" acd=\"%.1f\" nccd=\"%.2f\" shape=\"%s\"",
+    rw::formatTo( hb, sizeof( hb ), "<health files=\"{}\" dep_files=\"{}\" ccd=\"{}\" acd=\"{:.1f}\" nccd=\"{:.2f}\" shape=\"{}\"",
                    ing.files.size(), depFiles, static_cast<unsigned long long>( ccd ), acd, nccd,
                    nccd < 1.0 ? "horizontal" : ( nccd > 2.0 ? "tangled" : "vertical" ) );
     w.write( hb );
     if( lazyEdges > 0 )   // absent exactly when nothing was left out — never a hidden 0, and byte-identical for every corpus without a lazy directive
     {
-        char lb[ 40 ];  std::snprintf( lb, sizeof( lb ), " lazy_edges=\"%llu\"", static_cast<unsigned long long>( lazyEdges ) );
+        char lb[ 40 ];  rw::formatTo( lb, sizeof( lb ), " lazy_edges=\"{}\"", static_cast<unsigned long long>( lazyEdges ) );
         w.write( lb );
     }
     w.write( " dep_langs=\"" );  w.write( escapeXml( depLangs, esc ) );  w.write( "\"/>" );
@@ -6119,12 +6146,12 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
             // --report's own god-files section (main.cpp) says "showing N of M" for the SAME population —
             // src/pageview.h, THE TRUNCATION VOCABULARY, rules 1-3, applied here too.
             char gfb[ 64 ];
-            std::snprintf( gfb, sizeof( gfb ), "<godfiles total=\"%zu\" shown=\"%zu\" capped=\"%d\">",
+            rw::formatTo( gfb, sizeof( gfb ), "<godfiles total=\"{}\" shown=\"{}\" capped=\"{}\">",
                            byAff.size(), capG, capG < byAff.size() ? 1 : 0 );
             w.write( gfb );   // ranked by afferent = # files that #include this one
             for( std::size_t i = 0; i < capG; ++i )
             {
-                char gb[ 48 ];  std::snprintf( gb, sizeof( gb ), "\" afferent=\"%u\"/>", afferent[ byAff[i] ] );
+                char gb[ 48 ];  rw::formatTo( gb, sizeof( gb ), "\" afferent=\"{}\"/>", afferent[ byAff[i] ] );
                 w.write( "<f p=\"" );  w.write( escapeXml( pathRel( byAff[i] ), esc ) );  w.write( gb );
             }
             w.write( "</godfiles>" );
@@ -6159,11 +6186,11 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         const std::size_t capS = sv.size() < 12 ? sv.size() : 12;
         if( capS )
         {
-            char sh[ 56 ];  std::snprintf( sh, sizeof( sh ), "<stabledeps violations=\"%zu\">", sv.size() );
+            char sh[ 56 ];  rw::formatTo( sh, sizeof( sh ), "<stabledeps violations=\"{}\">", sv.size() );
             w.write( sh );
             for( std::size_t i = 0; i < capS; ++i )
             {
-                char vb[ 32 ];  std::snprintf( vb, sizeof( vb ), "\" gap=\"%.2f\"/>", sv[i].gap );
+                char vb[ 32 ];  rw::formatTo( vb, sizeof( vb ), "\" gap=\"{:.2f}\"/>", sv[i].gap );
                 w.write( "<v from=\"" );  w.write( escapeXml( pathRel( sv[i].from ), esc ) );
                 w.write( "\" to=\"" );    w.write( escapeXml( pathRel( sv[i].to ), esc ) );  w.write( vb );
             }
@@ -6178,7 +6205,7 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         for( std::size_t c = 0; c < capC; ++c )
         {
             char cb[ 56 ];   // cost = k² = this cycle's contribution to CCD (Lakos: a k-cycle costs k²)
-            std::snprintf( cb, sizeof( cb ), "<cycle size=\"%zu\" cost=\"%zu\"", cycles[c].size(), cycles[c].size() * cycles[c].size() );
+            rw::formatTo( cb, sizeof( cb ), "<cycle size=\"{}\" cost=\"{}\"", cycles[c].size(), cycles[c].size() * cycles[c].size() );
             w.write( cb );
 
             // weakest-link cut suggestion: among the cycle's INTERNAL edges (both endpoints members of
@@ -6253,12 +6280,12 @@ inline void packDeps( std::FILE* out, const IngestResult& ing, int topN,
         char hdr[ 144 ];
         if( lazyHere > 0 )   // the resolved pairs this row's directives make that the structure leaves out (parser version 83)
         {
-            std::snprintf( hdr, sizeof( hdr ), "\" includes=\"%zu\" lazy_edges=\"%u\" afferent=\"%u\" instab=\"%.2f\" transitive=\"%u\">",
+            rw::formatTo( hdr, sizeof( hdr ), "\" includes=\"{}\" lazy_edges=\"{}\" afferent=\"{}\" instab=\"{:.2f}\" transitive=\"{}\">",
                            byFile[f].size(), lazyHere, f < afferent.size() ? afferent[f] : 0u, inst, trans( f ) );
         }
         else
         {
-            std::snprintf( hdr, sizeof( hdr ), "\" includes=\"%zu\" afferent=\"%u\" instab=\"%.2f\" transitive=\"%u\">",
+            rw::formatTo( hdr, sizeof( hdr ), "\" includes=\"{}\" afferent=\"{}\" instab=\"{:.2f}\" transitive=\"{}\">",
                            byFile[f].size(), f < afferent.size() ? afferent[f] : 0u, inst, trans( f ) );
         }
         w.write( "<f p=\"" );  w.write( escapeXml( pathRel( f ), esc ) );  w.write( hdr );
@@ -6347,7 +6374,7 @@ inline void emitImportRowsXml( std::FILE* out, const IngestResult& ing,
         const std::string_view raw = ing.files[ files[i] ];
         const std::string_view rel = rootPrefix.empty() ? raw : rw::sarif::rootRelativeUri( raw, rootPrefix );
         const bool              isLazy = i < lazy.size() && lazy[i] != 0;
-        std::fprintf( out, "<f via=\"import\" p=\"%s\" lazy=\"%s\"/>", std::string( escapeXml( rel, esc ) ).c_str(), isLazy ? "1" : "0" );
+        rw::emitTo( out, "<f via=\"import\" p=\"{}\" lazy=\"{}\"/>", std::string( escapeXml( rel, esc ) ).c_str(), isLazy ? "1" : "0" );
     }
 }
 
@@ -6359,7 +6386,7 @@ inline void emitImportRowsJson( std::FILE* out, const IngestResult& ing,
         const std::string_view raw = ing.files[ files[i] ];
         const std::string_view rel = rootPrefix.empty() ? raw : rw::sarif::rootRelativeUri( raw, rootPrefix );
         const bool              isLazy = i < lazy.size() && lazy[i] != 0;
-        std::fprintf( out, "%s{\"via\":\"import\",\"p\":\"%s\",\"lazy\":%s}", i ? "," : "", jsonStr( rel ).c_str(), isLazy ? "true" : "false" );
+        rw::emitTo( out, "{}{{\"via\":\"import\",\"p\":\"{}\",\"lazy\":{}}}", i ? "," : "", jsonStr( rel ).c_str(), isLazy ? "true" : "false" );
     }
 }
 
@@ -6384,10 +6411,10 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
     const Symbol& s = q.sym;
     char          num[ 96 ];
 
-    if( s.loc > 0 ) { std::snprintf( num, sizeof( num ), ",\"loc\":%u", s.loc );  w.write( num ); }
+    if( s.loc > 0 ) { rw::formatTo( num, sizeof( num ), ",\"loc\":{}", s.loc );  w.write( num ); }
     if( s.kind == SymKind::Function || s.kind == SymKind::Method )
     {
-        std::snprintf( num, sizeof( num ), ",\"params\":%u,\"nest\":%u", unsigned( s.params ), unsigned( s.maxNest ) );
+        rw::formatTo( num, sizeof( num ), ",\"params\":{},\"nest\":{}", unsigned( s.params ), unsigned( s.maxNest ) );
         w.write( num );
         // Phase 1 (local-variable-indexing, docs/LOCALS_INDEXING.md): the JSON sibling of the XML
         // locals=/locals_floor= pair — omitted key (never a fabricated 0) outside model.h's
@@ -6395,14 +6422,14 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
         // as JSON `true`, matching how `tested` is spelled two lines below.
         if( localsCountedLang( s.lang ) )
         {
-            std::snprintf( num, sizeof( num ), ",\"locals\":%u,\"locals_floor\":true", s.locals );
+            rw::formatTo( num, sizeof( num ), ",\"locals\":{},\"locals_floor\":true", s.locals );
             w.write( num );
         }
         // ppalt disclosure — the JSON sibling of the XML ppalt= attribute (model.h Symbol::ppAlt):
         // omitted key when 0, mirroring locals/tested (absent-unless-measured).
         if( s.ppAlt > 0 )
         {
-            std::snprintf( num, sizeof( num ), ",\"ppalt\":%u", unsigned( s.ppAlt ) );
+            rw::formatTo( num, sizeof( num ), ",\"ppalt\":{}", unsigned( s.ppAlt ) );
             w.write( num );
         }
         // The JSON sibling of the XML humps=/deep=/deep_floor= triple — same omission rule (absent exactly
@@ -6410,7 +6437,7 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
         // NOT language-gated: cc_walk computes nesting for every grammar.
         if( s.humps > 0 )
         {
-            std::snprintf( num, sizeof( num ), ",\"humps\":%u,\"deep\":%u,\"deep_floor\":true", unsigned( s.humps ), unsigned( s.deepLoc ) );
+            rw::formatTo( num, sizeof( num ), ",\"humps\":{},\"deep\":{},\"deep_floor\":true", unsigned( s.humps ), unsigned( s.deepLoc ) );
             w.write( num );
         }
         // The JSON sibling of the XML ev=/ev_floor=/ev_why= triple — same omission rule (absent means
@@ -6426,10 +6453,10 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
             w.write( "\"" );
         }
     }
-    if( q.cbo && q.id < q.cbo->size() ) { std::snprintf( num, sizeof( num ), ",\"cbo\":%u", (*q.cbo)[q.id] );  w.write( num ); }
+    if( q.cbo && q.id < q.cbo->size() ) { rw::formatTo( num, sizeof( num ), ",\"cbo\":{}", (*q.cbo)[q.id] );  w.write( num ); }
     if( q.lcom4 && q.id < q.lcom4->size() && (*q.lcom4)[q.id] != 0xFFFFFFFFu )   // 0xFFFFFFFF = kLcom4NA (graph.h) ⇒ omit
-    { std::snprintf( num, sizeof( num ), ",\"lcom4\":%u", (*q.lcom4)[q.id] );  w.write( num ); }
-    if( q.amp && q.id < q.amp->size() ) { std::snprintf( num, sizeof( num ), ",\"amp\":%u", (*q.amp)[q.id] );  w.write( num ); }
+    { rw::formatTo( num, sizeof( num ), ",\"lcom4\":{}", (*q.lcom4)[q.id] );  w.write( num ); }
+    if( q.amp && q.id < q.amp->size() ) { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*q.amp)[q.id] );  w.write( num ); }
     if( q.tested && q.id < q.tested->size() && ( *q.tested )[q.id] )
     {
         w.write( ",\"tested\":true" );
@@ -6440,7 +6467,7 @@ inline void writeJsonQMetrics( JsonWriter& w, const JsonQMetrics& q )
     }
 
     const std::uint32_t in = ( q.id < q.fanIn->size() ) ? (*q.fanIn)[q.id] : 0u;
-    std::snprintf( num, sizeof( num ), ",\"in\":%u,\"out\":%u,\"cx\":%u,\"ccx\":%u", in, q.outDegree, s.cx, s.ccx );
+    rw::formatTo( num, sizeof( num ), ",\"in\":{},\"out\":{},\"cx\":{},\"ccx\":{}", in, q.outDegree, s.cx, s.ccx );
     w.write( num );
     if( in >= 8 )
     {
@@ -6542,7 +6569,7 @@ inline void writeJsonMapStamp( JsonWriter& w, std::string& esc, const MapAnnotat
     if( ann->maxTokensFit != nullptr )
     {
         char fit[ 160 ];
-        std::snprintf( fit, sizeof( fit ), ",\"max_tokens\":%zu,\"fit_bytes\":%zu,\"fit_measured_in\":\"xml\"%s",
+        rw::formatTo( fit, sizeof( fit ), ",\"max_tokens\":{},\"fit_bytes\":{},\"fit_measured_in\":\"xml\"{}",
                        ann->maxTokensFit->askedTokens, ann->maxTokensFit->ceilingBytes,
                        ann->maxTokensFit->isOverCeiling ? ",\"over_ceiling\":true" : "" );
         w.write( fit );
@@ -6574,16 +6601,16 @@ inline void writeJsonUnindexed( JsonWriter& w, std::string& esc, const CrawlSkip
             w.write( "," );
         }
         writeJsonStr( w, bare, esc );
-        std::snprintf( num, sizeof( num ), ":%llu", ( unsigned long long ) ue.files );
+        rw::formatTo( num, sizeof( num ), ":{}", ( unsigned long long ) ue.files );
         w.write( num );
     }
     if( skips.unindexedExts.size() > shown )
     {
-        std::snprintf( num, sizeof( num ), "},\"unindexed_exts\":%zu,", skips.unindexedExts.size() );
+        rw::formatTo( num, sizeof( num ), "}},\"unindexed_exts\":{},", skips.unindexedExts.size() );
     }
     else
     {
-        std::snprintf( num, sizeof( num ), "}," );   // complete list ⇒ no cap to disclose
+        rw::formatTo( num, sizeof( num ), "}}," );   // complete list ⇒ no cap to disclose
     }
     w.write( num );
 }
@@ -6591,19 +6618,19 @@ inline void writeJsonUnindexed( JsonWriter& w, std::string& esc, const CrawlSkip
 inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHeader& h )
 {
     char hdr[ 256 ];   // the gauge line has 7 size_t fields — wider than the per-symbol scratch
-    std::snprintf( hdr, sizeof( hdr ), "{\"files\":%zu,\"symbols\":%zu,\"edges\":%zu,\"shown\":%zu,\"est_tokens\":%zu,\"ambiguous\":%zu,\"unresolved\":%zu,",
+    rw::formatTo( hdr, sizeof( hdr ), "{{\"files\":{},\"symbols\":{},\"edges\":{},\"shown\":{},\"est_tokens\":{},\"ambiguous\":{},\"unresolved\":{},",
                    h.ing.files.size(), h.symbolCount, h.edgeCount, h.shownCount, h.estTokens, h.ambiguousCount, h.unresolvedCount );
     w.write( hdr );
     // Phase 4: the S6-C locality-pin gauge — same absent-when-zero rule as the XML `locality_pinned=`.
     if( h.localityPinnedCount > 0 )
     {
-        std::snprintf( hdr, sizeof( hdr ), "\"locality_pinned\":%zu,", h.localityPinnedCount );
+        rw::formatTo( hdr, sizeof( hdr ), "\"locality_pinned\":{},", h.localityPinnedCount );
         w.write( hdr );
     }
     // Phase 5: the external-name veto gauge — the JSON twin of the XML `external=`, same absent-when-zero rule.
     if( h.externalCount > 0 )
     {
-        std::snprintf( hdr, sizeof( hdr ), "\"external\":%zu,", h.externalCount );
+        rw::formatTo( hdr, sizeof( hdr ), "\"external\":{},", h.externalCount );
         w.write( hdr );
     }
 
@@ -6612,7 +6639,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
     // still shown the survivors as if they were the corpus. Same absent-when-zero rule as the XML side.
     if( !h.ing.skippedOversize.empty() )
     {
-        std::snprintf( hdr, sizeof( hdr ), "\"skipped_oversize\":%zu,", h.ing.skippedOversize.size() );
+        rw::formatTo( hdr, sizeof( hdr ), "\"skipped_oversize\":{},", h.ing.skippedOversize.size() );
         w.write( hdr );
     }
 
@@ -6630,7 +6657,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
         }
         if( preciseTotal > 0 )
         {
-            std::snprintf( hdr, sizeof( hdr ), "\"precise\":%zu,", preciseTotal );
+            rw::formatTo( hdr, sizeof( hdr ), "\"precise\":{},", preciseTotal );
             w.write( hdr );
         }
     }
@@ -6662,7 +6689,7 @@ inline void writeJsonMapHeader( JsonWriter& w, std::string& esc, const JsonMapHe
         return;
     }
 
-    std::snprintf( hdr, sizeof( hdr ), ",\"roots_count\":%zu,\"roots\":[", h.ing.rootLabels.size() );
+    rw::formatTo( hdr, sizeof( hdr ), ",\"roots_count\":{},\"roots\":[", h.ing.rootLabels.size() );
     w.write( hdr );
     for( std::size_t r = 0; r < h.ing.rootLabels.size(); ++r )
     {
@@ -6849,19 +6876,19 @@ inline void serializeJson( std::FILE* out, const IngestResult& ing, const std::v
             if( canon != s.name ) { w.write( ",\"id\":" );  writeJsonStr( w, canon, esc ); }
 
             if( rows.overloads[ rowIndex ] > 1 )
-            { std::snprintf( num, sizeof( num ), ",\"overloads\":%u", rows.overloads[ rowIndex ] );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"overloads\":{}", rows.overloads[ rowIndex ] );  w.write( num ); }
 
             if( bind && id < bind->size() && !(*bind)[id].empty() )
             { w.write( ",\"bind\":" );  writeJsonStr( w, (*bind)[id], esc ); }
 
             if( const std::uint32_t ambK = counterAt( ambOut, id ); ambK > 0 )
-            { std::snprintf( num, sizeof( num ), ",\"amb\":%u", ambK );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"amb\":{}", ambK );  w.write( num ); }
 
             if( const std::uint32_t lpinK = counterAt( locPinOut, id ); lpinK > 0 )   // Phase 4: the XML lpin= twin
-            { std::snprintf( num, sizeof( num ), ",\"lpin\":%u", lpinK );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"lpin\":{}", lpinK );  w.write( num ); }
 
             if( !stable )
-            { std::snprintf( num, sizeof( num ), ",\"k\":%.4f", double( rank[id] ) );  w.write( num ); }
+            { rw::formatTo( num, sizeof( num ), ",\"k\":{:.4f}", double( rank[id] ) );  w.write( num ); }
 
             if( metrics )
             {
@@ -7056,7 +7083,7 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
     char          num[ 64 ];
     std::string   head;
 
-    std::snprintf( num, sizeof( num ), "{\"l\":%u", s.line );
+    rw::formatTo( num, sizeof( num ), "{{\"l\":{}", s.line );
     head += num;
     // P2.3: the chain key — "n" always, "id" only when the canonical form adds an enclosing scope
     // (the XML sibling's rule, scopedCanonicalId above), so a JSON consumer can chain onward too.
@@ -7076,9 +7103,9 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
         appendJsonMetricFields( head, s, id, lens.fanIn );
     }
     if( lens.churnPerFile && fileId < lens.churnPerFile->size() && (*lens.churnPerFile)[fileId] > 0 )
-    { std::snprintf( num, sizeof( num ), ",\"churn\":%u", (*lens.churnPerFile)[fileId] );  head += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"churn\":{}", (*lens.churnPerFile)[fileId] );  head += num; }
     if( lens.amp && id < lens.amp->size() && (*lens.amp)[id] > 0 )
-    { std::snprintf( num, sizeof( num ), ",\"amp\":%u", (*lens.amp)[id] );  head += num; }
+    { rw::formatTo( num, sizeof( num ), ",\"amp\":{}", (*lens.amp)[id] );  head += num; }
     if( lens.cloneMember && id < lens.cloneMember->size() && ( *lens.cloneMember )[id] )
     {
         head += ",\"clone\":true";
@@ -7095,7 +7122,7 @@ inline std::string jsonSigRowHead( const IngestResult& ing, NodeId id, std::uint
     // run — appended last so every existing key adjacency a text-grep consumer relies on stays byte-stable.
     if( globalRank > 0 )
     {
-        std::snprintf( num, sizeof( num ), ",\"r\":%u", globalRank );
+        rw::formatTo( num, sizeof( num ), ",\"r\":{}", globalRank );
         head += num;
     }
     return head;
@@ -7480,7 +7507,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
         first = false;
 
         w.write( "{\"t\":" );  writeJsonStr( w, symTag( s.kind ), esc );
-        std::snprintf( num, sizeof( num ), ",\"l\":%u,", s.line );
+        rw::formatTo( num, sizeof( num ), ",\"l\":{},", s.line );
         w.write( num );
         // R-E follow-up (2026-08-19): the LAST `p` in the pack-task bundle that was still absolute. Every
         // other row of both dialects had been relativized; this one was invisible because the gate row that
@@ -7510,7 +7537,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
 
         // calls: the rows the XML <calls> block actually printed, with its own total= as the denominator.
         // calls_capped is pageview.h rule 3 in this dialect — the bit that always rides with a shown count.
-        std::snprintf( num, sizeof( num ), ",\"calls_total\":%u,\"calls_capped\":%s,\"calls\":[",
+        rw::formatTo( num, sizeof( num ), ",\"calls_total\":{},\"calls_capped\":{},\"calls\":[",
                        e.callsTotal, ( e.calls.size() < std::size_t( e.callsTotal ) ) ? "true" : "false" );
         w.write( num );
         bool firstC = true;
@@ -7522,7 +7549,7 @@ inline void packBodiesJson( std::FILE* out, const IngestResult& ing, const Emitt
             }
             firstC = false;
             w.write( "{\"n\":" );  writeJsonStr( w, c.name, esc );
-            std::snprintf( num, sizeof( num ), ",\"l\":%u", c.line );
+            rw::formatTo( num, sizeof( num ), ",\"l\":{}", c.line );
             w.write( num );
             w.write( ",\"sig\":" );  writeJsonStr( w, c.sig, esc );
             w.write( "}" );

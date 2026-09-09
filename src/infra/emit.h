@@ -37,7 +37,9 @@
 namespace rw
 {
 
-#if defined( __cpp_lib_print ) && __cpp_lib_print >= 202207L
+// EMIT_FORCE_FALLBACK selects the std::format+fputs arm on a toolchain that would otherwise
+// take the <print> one, so both arms can be diffed locally instead of only in one CI job.
+#if defined( __cpp_lib_print ) && __cpp_lib_print >= 202207L && !defined( EMIT_FORCE_FALLBACK )
 
 inline constexpr const char* kEmitterName = "std::print";
 
