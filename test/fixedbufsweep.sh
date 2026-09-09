@@ -248,7 +248,6 @@ NUMERIC_ONLY = {
     ( "src/serialize.h", "lb" ): 2,
     ( "src/serialize.h", "lineAttr" ): 1,
     ( "src/serialize.h", "nb" ): 2,
-    ( "src/serialize.h", "p" ): 2,
     ( "src/serialize.h", "precAttr" ): 1,
     ( "src/serialize.h", "qp" ): 3,
     ( "src/serialize.h", "rankAttr" ): 1,
@@ -380,7 +379,13 @@ if not bad:
 #            that counted them now has nothing to count. Re-derived, then read: of the 29 hand-classified
 #            rows ZERO vanished in the conversion, so no dangerous site was lost -- only the cheap way of
 #            spotting one was.
-EXPECTED = { "mentions": 314, "calls": 213, "sites": 213, "rows": 92, "widthforms": 0 }
+#            2026-09-09 (serialize.h REVERTED per the parity fence): -2 calls/-5 mentions/-1 row. Six labels
+#            (flagless expand around connect pack_signatures pack_task) moved on the macOS CI legs and NOT on
+#            Linux, all of them map-shaped and all sharing serialize.h's attribute buffers, so the converting
+#            file was reverted rather than the manifest re-pinned — which is this gate family's rule and the
+#            whole point of the fence. serialize.h is back on snprintf; its `p` row is a formatTo-only buffer
+#            and goes with it.
+EXPECTED = { "mentions": 309, "calls": 211, "sites": 211, "rows": 91, "widthforms": 0 }
 #            2026-09-04 (capture-audit L6, H9): +1 call/+1 mention, sites/rows UNCHANGED — re-read, not
 #            re-counted. packConnect gained ONE snprintf into a new `char connectCeiling[32]` for the
 #            H9 ` max_tokens="%d"` ceiling disclosure: a single %d of a caller-supplied INTEGER, no %s,
