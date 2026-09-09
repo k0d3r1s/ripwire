@@ -80,9 +80,7 @@ hashfile(){
 #   src/verbs_navigate.h (113 sites)  expand callees around uses path connect  (+ callers/impact, held)
 #   src/verbs_grep.h      (41 sites)  grep                                     (+ match/pattern, held)
 #   src/serialize.h       (84 sites)  pack_signatures pack_task                (+ flagless, held)
-#   src/htmlexport.h      (53 sites)  html
 #   src/verbs_report.h   (147 sites)  arch seams skipped                       (+ clones, held)
-#   src/verbs_quality.h   (67 sites)  test_gate
 #   src/recall.h/exemplar/lego/notes  recall exemplar lego notes
 #   src/cli.h            (101 sites)  bad_flag — the refusal path, which is a STDERR fence: cli.h's
 #                                     diagnostics are printf sites too and no other label reaches them
@@ -101,7 +99,7 @@ hashfile(){
 # --pack-task is INCLUDED but routes through --for's ranker; it was probed across a commit before being
 # admitted, and if it ever flakes it is the first label to suspect and drop.
 LABELS="flagless lint lint_sarif lint_select lint_naming lint_catalog match pattern callers impact clones help \
-expand callees around uses path connect grep pack_signatures pack_task html arch seams skipped test_gate recall exemplar lego notes bad_flag"
+expand callees around uses path connect grep pack_signatures pack_task arch seams skipped recall exemplar lego notes bad_flag"
 
 # needsCorpus: 1 = prepend "test/fixture --no-cache"; 0 = a global verb that takes no positional path.
 needsCorpusFor(){
@@ -134,11 +132,9 @@ argvFor(){
         grep)            ARGV=( --grep=distance );;
         pack_signatures) ARGV=( --pack-signatures );;
         pack_task)       ARGV=( '--pack-task=compute the distance between points' );;
-        html)            ARGV=( --html );;
         arch)            ARGV=( --arch=test/parity_arch_rules.txt );;
         seams)           ARGV=( --seams );;
         skipped)         ARGV=( --skipped );;
-        test_gate)       ARGV=( --test-gate );;
         recall)          ARGV=( --recall=geometry );;
         exemplar)        ARGV=( '--exemplar=compute a distance' );;
         lego)            ARGV=( --lego=Point );;
@@ -171,12 +167,50 @@ runVerb(){
     fi
     return $?
 }
+# ── the stamp screen (pin time) ──────────────────────────────────────────────────────────────────────
+# A verb that embeds the git stamp can NEVER hold a pin, and the reason is structural rather than a
+# quirk of any one verb: `at="<sha>"` moves on the very commit that carries the manifest, and the
+# `+dirty` suffix moves the moment anyone edits a file in the tree. --version was excluded from this
+# corpus for exactly that, and the reasoning generalises — so it is enforced MECHANICALLY here instead
+# of being left to whoever widens the corpus next to remember.
+#
+# Measured 2026-09-09 while widening 12 -> 29: --html and --test-gate both stamp `at=`, and BOTH passed
+# THREE consecutive byte-identical runs before this screen caught them. Repeat-run stability does not
+# detect this class at all — only committing and re-running does, which is not something a widener would
+# think to try. That is the whole argument for screening at pin time.
+#
+# To admit a stamped verb later, normalise the stamp out of the captured stream before hashing (the
+# technique --doctor's own legend already prescribes for its VOLATILE fields) rather than deleting this
+# screen. Doing so would unlock htmlexport.h (53 sites) and verbs_quality.h (67), which are otherwise
+# unfenced and therefore unconvertible.
+gitStamp(){ ( cd "$ROOT" && git rev-parse --short=9 HEAD 2>/dev/null ); }
+
+screenStamp(){
+    # $1 = label. Fails the PIN if the verb's own output embeds this checkout's HEAD sha.
+    local stamp; stamp="$( gitStamp )"
+    [ -n "$stamp" ] || return 0            # no git (tarball build): nothing to screen against
+    if grep -q "$stamp" "$TMP/out" "$TMP/err" 2>/dev/null; then
+        printf 'REFUSED  %s: output embeds the git stamp (%s) — this verb cannot hold a pin.\n' "$1" "$stamp"
+        printf '         The sha moves on the commit that carries this manifest and +dirty moves on any edit.\n'
+        printf '         Drop the label, or normalise the stamp out before hashing. See the stamp screen above.\n'
+        return 1
+    fi
+    return 0
+}
+
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
     : >"$MANIFEST"
+    screenFail=0
     for label in $LABELS; do
         runVerb "$label"; rc=$?
+        screenStamp "$label" || screenFail=1
         printf '%s %s %s %s\n' "$label" "$rc" "$( hashfile "$TMP/out" )" "$( hashfile "$TMP/err" )" >>"$MANIFEST"
     done
+    if [ "$screenFail" != 0 ]; then
+        echo "printffmtparitycheck: REFUSING to pin — one or more labels embed the git stamp (see above)."
+        echo "  $MANIFEST was written anyway so you can see the damage, but DO NOT COMMIT IT."
+        exit 3
+    fi
     echo "UPDATE_GOLDEN: wrote $MANIFEST ($( wc -l <"$MANIFEST" | tr -d ' ' ) verbs) — review the diff before committing"
     exit 0
 fi
