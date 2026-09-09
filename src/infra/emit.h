@@ -21,6 +21,7 @@
 // both arms and reaches neither.) fmt is NOT vendored: the standard library has the feature, so a vendored
 // copy would be a G3 regression.
 
+#include <cstddef>
 #include <cstdio>
 #include <format>
 #include <system_error>
@@ -59,5 +60,38 @@ template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A
 }
 
 #endif
+
+
+// ── formatTo — snprintf's SHAPE, kept ────────────────────────────────────────────────────────────────
+// std::snprintf's other half of this tree renders into a CALLER-OWNED char buffer rather than a stream,
+// so emitTo is the wrong tool for it: routing those sites through std::format and a std::string would
+// put an allocation on serialize.h's per-symbol path, which is a G2 regression, not a modernisation.
+// std::format_to_n keeps the stack buffer and adds nothing.
+//
+// The contract is snprintf's, exactly, so the call sites need no reasoning about the difference:
+//   - writes at most cap-1 characters and ALWAYS NUL-terminates when cap > 0;
+//   - returns the length the output WOULD have had, untruncated — snprintf's return, which is what the
+//     truncation-detecting call sites read;
+//   - cap == 0 writes nothing and still reports that length.
+//
+// Only ONE arm, unlike emitTo: std::format_to_n is <format> (C++20), present on every toolchain that
+// builds this tree, so there is nothing to feature-test and nothing to disclose.
+//
+// WHY THIS IS A SAFETY FIX AND NOT ONLY A STYLE ONE: snprintf returns the would-have-written length, so
+// the append idiom `p += snprintf( p, e - p, ... )` walks p PAST e on truncation and the next
+// size_t( e - p ) underflows into an unbounded write. Three lambdas in serialize.h carry a hand-written
+// clamp against exactly that (see their A4-F8 comments). format_to_n returns the ACTUAL end of the
+// written region, already bounded by the n it was given, so the clamp becomes structural and the bug
+// class stops existing rather than being defended against site by site.
+template<class... A> inline std::size_t formatTo( char* buf, std::size_t cap, std::format_string<A...> f, A&&... a )
+{
+    if( cap == 0 )
+    {
+        return std::formatted_size( f, std::forward<A>( a )... );
+    }
+    const auto r = std::format_to_n( buf, static_cast<std::ptrdiff_t>( cap - 1 ), f, std::forward<A>( a )... );
+    *r.out = '\0';
+    return static_cast<std::size_t>( r.size );
+}
 
 }   // namespace rw
