@@ -118,7 +118,7 @@ jobs:
       - name: The emitter the shipped binary compiled in is std::print
         run: |
           ./build/ripwire --version
-          ./build/ripwire --version | grep -q 'emit=std::vprint_nonunicode'
+          ./build/ripwire --version | grep -q 'emit=std::print'
 
       - name: Smoke-test the freshly built binary
         run: |

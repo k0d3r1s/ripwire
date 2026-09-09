@@ -131,7 +131,7 @@ fi
 # Its control strips the token from a copy of the same line and requires the identical extraction to fail.
 emitToken="$( printf '%s' "$OUT_LONG" | grep -oE 'emit=[^,)]+' | head -1 )"
 case "$emitToken" in
-    "emit=std::vprint_nonunicode"|"emit=std::format+fputs") ok "--version discloses the emitter it compiled in ($emitToken)";;
+    "emit=std::print"|"emit=std::format+fputs") ok "--version discloses the emitter it compiled in ($emitToken)";;
     "") no "--version carries no emit= token — which emitter built this binary is undisclosed: $OUT_LONG";;
     *)  no "--version's emit= value is outside the closed vocabulary {std::print, std::format+fputs}: $emitToken";;
 esac
