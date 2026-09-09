@@ -226,7 +226,7 @@ NUMERIC_ONLY = {
     ( "src/packtask.h", "b" ): 10,
     ( "src/packtask.h", "callersAttr" ): 1,
     ( "src/packtask.h", "farAttr" ): 1,
-    ( "src/pageview.h", "buf" ): 3,
+    ( "src/pageview.h", "buf" ): 6,
     ( "src/partition.h", "b" ): 1,
     ( "src/partition.h", "nb" ): 1,
     ( "src/quality.h", "b" ): 1,
@@ -392,7 +392,12 @@ if not bad:
 #            reported, so a count an implementation computed rather than wrote placed lpin= inside the
 #            half-written amb=. It now cursors by std::format_to_n's out pointer, so `ambs` and
 #            `ambs + ambLen` are no longer rw::formatTo call sites and their rows leave with them.
-EXPECTED = { "mentions": 311, "calls": 208, "sites": 208, "rows": 89, "widthforms": 0 }
+#            2026-09-09 (pageview's runtime format becomes two literals): calls 208 -> 211, mentions -> 314,
+#            rows unchanged. pageDisclosure/pagingDisclosure each branched into an XML and a JSON call, so
+#            the same buffer is now written from six sites rather than three. formatToRuntime is gone with
+#            them: it was the only format in the tree not checked at compile time, and the only one that
+#            could fail at runtime and return an empty buffer.
+EXPECTED = { "mentions": 314, "calls": 211, "sites": 211, "rows": 89, "widthforms": 0 }
 #            2026-09-04 (capture-audit L6, H9): +1 call/+1 mention, sites/rows UNCHANGED — re-read, not
 #            re-counted. packConnect gained ONE snprintf into a new `char connectCeiling[32]` for the
 #            H9 ` max_tokens="%d"` ceiling disclosure: a single %d of a caller-supplied INTEGER, no %s,
