@@ -37,15 +37,33 @@
 namespace rw
 {
 
-#if defined( __cpp_lib_print ) && __cpp_lib_print >= 202207L
+// RIPWIRE_FORCE_FALLBACK_EMITTER selects the std::format+fputs arm on a toolchain that would otherwise
+// take the <print> one. Without it that arm is reachable only from the single `fallback-emitter` CI job,
+// which makes it the least-tested code in the emitter; with it, anyone can check both arms agree before
+// pushing:  cmake -S . -B buildfb -DCMAKE_CXX_FLAGS=-DRIPWIRE_FORCE_FALLBACK_EMITTER
+#if defined( __cpp_lib_print ) && __cpp_lib_print >= 202207L && !defined( RIPWIRE_FORCE_FALLBACK_EMITTER )
 
-inline constexpr const char* kEmitterName = "std::print";
+inline constexpr const char* kEmitterName = "std::vprint_nonunicode";
 
+// WHY NOT std::print. std::print is the UNICODE-aware member of the family: it is specified through
+// vprint_unicode, and what it does with bytes that are not valid UTF-8 is implementation-defined. This
+// tool's output is not guaranteed to be valid UTF-8 — it carries raw source bytes through CDATA and paths,
+// and the scrubbers are deliberately narrow — so "implementation-defined" is not a property it can hold.
+// std::vprint_nonunicode is the standard's byte-transparent variant: the formatted bytes reach the stream
+// unexamined, which is exactly printf's old contract and exactly what a byte-exact output surface needs.
+//
+// MEASURED, 2026-09-09: with ~1,000 sites routed through std::print, the macOS CI legs (AppleClang 16)
+// failed ~55 gates per shard with "invalid UTF-8 in output" and malformed XML on payload shapes, while
+// the Linux legs (libstdc++), this developer's AppleClang 21, and the std::format+fputs fallback arm all
+// passed the same gates on the same commit. main was green through the same legs while it was still
+// printf-family. The common factor is std::print on one libc++ version; the fix is to stop asking the
+// Unicode path to carry bytes it never promised to carry, on every implementation rather than the ones
+// that happen to be transparent today.
 template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A...> f, A&&... a )
 {
     try
     {
-        std::print( stream, f, std::forward<A>( a )... );
+        std::vprint_nonunicode( stream, f.get(), std::make_format_args( a... ) );
     }
     catch( const std::system_error& )
     {

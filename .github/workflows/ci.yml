@@ -227,7 +227,7 @@ jobs:
       - name: The emitter this leg compiled in is std::print
         run: |
           ./build/ripwire --version
-          ./build/ripwire --version | grep -q 'emit=std::print'
+          ./build/ripwire --version | grep -q 'emit=std::vprint_nonunicode'
 
       # test/pargates.py runs the SAME authoritative gate list regression.sh holds (manifestcheck.sh
       # keeps that list honest) in parallel, with the timing-sensitive edit-check budget isolated via
@@ -374,7 +374,7 @@ jobs:
       - name: The emitter this leg compiled in is std::print (gcc-toolset-14's libstdc++ has <print>)
         run: |
           ./build/ripwire --version
-          ./build/ripwire --version | grep -q 'emit=std::print'
+          ./build/ripwire --version | grep -q 'emit=std::vprint_nonunicode'
 
       - name: Self-run on the fixture (it parses and ranks under RHEL userland)
         run: ./build/ripwire test/fixture --no-cache | head -c 400; echo
@@ -456,7 +456,7 @@ jobs:
       - name: The emitter this leg compiled in is std::print
         run: |
           ./asan/ripwire --version
-          ./asan/ripwire --version | grep -q 'emit=std::print'
+          ./asan/ripwire --version | grep -q 'emit=std::vprint_nonunicode'
 
       - name: G1 fixture self-run (ripwire_asan_fixture)
         run: cmake --build asan --target ripwire_asan_fixture
