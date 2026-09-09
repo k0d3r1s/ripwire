@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // dmm.h — `--dmm`: the Delta Maintainability Model, one comparable scalar per change.
 //
@@ -379,9 +382,9 @@ inline void printScoreAttr( const char* name, bool available, double score )
     char value[16] = "UNAVAILABLE";
     if( available )
     {
-        std::snprintf( value, sizeof value, "%.3f", score );
+        rw::formatTo( value, sizeof value, "{:.3f}", score  );
     }
-    std::printf( " %s=\"%s\"", name, value );
+    rw::emitTo( stdout, " {}=\"{}\"", name, value  );
 }
 
 // Emit the report. Returns the process exit code — always 0. This is a MEASUREMENT, not a gate: it has no
@@ -402,35 +405,35 @@ inline int writeDmmReport( const Result& r )
     if( r.status != Status::Ok )
     {
         const std::string reason( escapeXml( r.reason, escReason ) );
-        std::printf( " available=\"0\" dmm=\"UNAVAILABLE\" reason=\"%s\"%s/>", reason.c_str(), atAttrStr.c_str() );
+        rw::emitTo( stdout, " available=\"0\" dmm=\"UNAVAILABLE\" reason=\"{}\"{}/>", reason.c_str(), atAttrStr.c_str()  );
         return 0;
     }
 
     const std::string base( escapeXml( r.baseSha, escBase ) );
     const std::string target( escapeXml( r.targetIsWorkingTree ? std::string( "working-tree" ) : r.targetSha, escTarget ) );
     // P8 (L7): the three low-risk thresholds beside the numbers they judge (PyDriller's, verbatim — see the constants)
-    std::printf( " base=\"%s\" target=\"%s\"%s available=\"%d\" combine=\"pooled\" size_metric=\"physical-loc\" low_loc=\"%u\" low_cx=\"%u\" low_params=\"%u\"",
-                 base.c_str(), target.c_str(), atAttrStr.c_str(), r.available ? 1 : 0, kUnitSizeLowRiskMax, kUnitComplexityLowRiskMax, kUnitInterfacingLowRiskMax );
+    rw::emitTo( stdout, " base=\"{}\" target=\"{}\"{} available=\"{}\" combine=\"pooled\" size_metric=\"physical-loc\" low_loc=\"{}\" low_cx=\"{}\" low_params=\"{}\"",
+                 base.c_str(), target.c_str(), atAttrStr.c_str(), r.available ? 1 : 0, kUnitSizeLowRiskMax, kUnitComplexityLowRiskMax, kUnitInterfacingLowRiskMax  );
     printScoreAttr( "dmm", r.available, r.score );
-    std::printf( " good=\"%llu\" bad=\"%llu\"", static_cast<unsigned long long>( r.good ), static_cast<unsigned long long>( r.bad ) );
-    std::printf( " base_units=\"%llu\" base_volume=\"%llu\" target_units=\"%llu\" target_volume=\"%llu\"",
+    rw::emitTo( stdout, " good=\"{}\" bad=\"{}\"", static_cast<unsigned long long>( r.good ), static_cast<unsigned long long>( r.bad )  );
+    rw::emitTo( stdout, " base_units=\"{}\" base_volume=\"{}\" target_units=\"{}\" target_volume=\"{}\"",
                  static_cast<unsigned long long>( r.base.unitCount ), static_cast<unsigned long long>( r.base.volume ),
-                 static_cast<unsigned long long>( r.target.unitCount ), static_cast<unsigned long long>( r.target.volume ) );
+                 static_cast<unsigned long long>( r.target.unitCount ), static_cast<unsigned long long>( r.target.volume )  );
     if( !r.available )
     {
         const std::string reason( escapeXml( r.reason, escReason ) );
-        std::printf( " reason=\"%s\"", reason.c_str() );
+        rw::emitTo( stdout, " reason=\"{}\"", reason.c_str()  );
     }
     std::fputs( ">", stdout );
 
     for( std::size_t propIndex = 0; propIndex < kPropCount; ++propIndex )
     {
         const PropScore& p = r.props[propIndex];
-        std::printf( "<p k=\"%s\"", kPropNames[propIndex] );
+        rw::emitTo( stdout, "<p k=\"{}\"", kPropNames[propIndex]  );
         printScoreAttr( "dmm", p.available, p.score );
-        std::printf( " good=\"%llu\" bad=\"%llu\" d_low=\"%lld\" d_high=\"%lld\"/>",
+        rw::emitTo( stdout, " good=\"{}\" bad=\"{}\" d_low=\"{}\" d_high=\"{}\"/>",
                      static_cast<unsigned long long>( p.good ), static_cast<unsigned long long>( p.bad ),
-                     static_cast<long long>( p.deltaLow ), static_cast<long long>( p.deltaHigh ) );
+                     static_cast<long long>( p.deltaLow ), static_cast<long long>( p.deltaHigh )  );
     }
     std::fputs( "</dmm>", stdout );
     return 0;

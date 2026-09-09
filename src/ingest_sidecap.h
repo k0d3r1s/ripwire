@@ -3,6 +3,8 @@
 #error "ingest_sidecap.h is a SECTION of src/ingest.cpp's translation unit - include it only from ingest.cpp (see the ingest-family split note there)"
 #endif
 
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 // ingest_sidecap.h — parse infrastructure + the fused side-capture passes, moved VERBATIM from
 // ingest.cpp in the 2026-08-29 split: ParserGuard/grammarAbiOk (the block that sat between the
 // metrics and relations families; its only users are here and downstream, so it travels with its
@@ -1054,8 +1056,8 @@ bool prepareParserFor( TSParser* parser, const LangEntry& le )
     if( !ts_parser_set_language( parser, lang ) || !grammarAbiOk( lang ) )
     {
         // never emit a silently-empty tree — say which language we dropped.
-        std::fprintf( stderr, "[ripwire] grammar ABI mismatch or set_language failed for %s — skipping language\n",
-                      std::string( le.querySub ).c_str() );
+        rw::emitTo( stderr, "[ripwire] grammar ABI mismatch or set_language failed for {} — skipping language\n",
+                      std::string( le.querySub ).c_str()  );
         return false;
     }
     return true;

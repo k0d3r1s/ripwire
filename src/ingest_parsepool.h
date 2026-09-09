@@ -3,6 +3,8 @@
 #error "ingest_parsepool.h is a SECTION of src/ingest.cpp's translation unit - include it only from ingest.cpp (see the ingest-family split note there)"
 #endif
 
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 // ingest_parsepool.h — the parallel parse pool, moved VERBATIM out of ingest() in the 2026-08-30
 // decomposition: the per-thread raw-fact accumulators (one RawFacts each), the cold-path reserve
 // calibration, the lock-free work-stealing worker (cache-hit reuse, hostile-input guards, the
@@ -424,8 +426,8 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
             // the skip is a degrade with a one-line stderr note, matching the house skip style.
             if( le->lang == Lang::Json && jsonNestsTooDeep( bytes ) )
             {
-                std::fprintf( stderr, "[ripwire] %s: json nesting > %u levels — treated as data, not config (skipped)\n",
-                              path.c_str(), kMaxJsonNestDepth );
+                rw::emitTo( stderr, "[ripwire] {}: json nesting > {} levels — treated as data, not config (skipped)\n",
+                              path.c_str(), kMaxJsonNestDepth  );
                 continue;
             }
 
@@ -436,8 +438,8 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
             // Same house skip style as the JSON guard above: refuse BEFORE the parse, one stderr line.
             if( le->lang == Lang::Yaml && yamlNestsTooDeep( bytes ) )
             {
-                std::fprintf( stderr, "[ripwire] %s: yaml nesting > %u levels — treated as data, not config (skipped)\n",
-                              path.c_str(), kMaxYamlNestDepth );
+                rw::emitTo( stderr, "[ripwire] {}: yaml nesting > {} levels — treated as data, not config (skipped)\n",
+                              path.c_str(), kMaxYamlNestDepth  );
                 continue;
             }
 
@@ -450,8 +452,8 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
                 // third_party/patches/markdown/, so this is the FIRST of two independent layers.
                 if( mdNestsTooDeep( bytes ) )
                 {
-                    std::fprintf( stderr, "[ripwire] %s: markdown blockquote/list nesting > %u levels — treated as data, not a doc (skipped)\n",
-                                  path.c_str(), kMaxMdBlockDepth );
+                    rw::emitTo( stderr, "[ripwire] {}: markdown blockquote/list nesting > {} levels — treated as data, not a doc (skipped)\n",
+                                  path.c_str(), kMaxMdBlockDepth  );
                     continue;
                 }
                 if( !prepareParserFor( pg.p, *le ) )
@@ -782,9 +784,9 @@ inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::st
         if( std::getenv( "RIPWIRE_CACHE_STATS" ) != nullptr )
         {
             const std::size_t reparsed = reparsedCount.load( std::memory_order_relaxed );
-            std::fprintf( stderr, "ripwire: cache-stats reparsed=%zu reused=%zu files=%zu cached_records=%zu blob_entries=%zu\n",
+            rw::emitTo( stderr, "ripwire: cache-stats reparsed={} reused={} files={} cached_records={} blob_entries={}\n",
                           reparsed, ( nfiles >= reparsed ? nfiles - reparsed : std::size_t( 0 ) ), nfiles,
-                          cacheStats.recordsRead, cacheStats.blobEntries );
+                          cacheStats.recordsRead, cacheStats.blobEntries  );
         }
 
         // Win 2: rewrite cache only when at least one file changed (dirty flag set by workers above).

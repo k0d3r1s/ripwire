@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // mcpedit.h — the shared symbol-addressed EDIT engine for CLI and MCP: replace_symbol_body /
 // insert_before_symbol / insert_after_symbol. The mcpedit namespace (resolve → per-file advisory
@@ -628,7 +631,7 @@ namespace mcpedit
         std::uint64_t h = 1469598103934665603ULL;      // FNV-1a-64 of the target path → a stable per-file lock name
         for( char c : targetPath ) { h ^= static_cast<unsigned char>( c ); h = hashutil::fnv1aMultiply( h ); }
         char name[ 64 ];
-        std::snprintf( name, sizeof( name ), "ripwire-edit-%016llx.lock", (unsigned long long)h );
+        rw::formatTo( name, sizeof( name ), "ripwire-edit-{:016x}.lock", (unsigned long long)h  );
         const std::string lockDir = quality::cacheDirLadder() + "/locks";
         ::mkdir( lockDir.c_str(), 0700 );
         ::chmod( lockDir.c_str(), 0700 );
@@ -1294,8 +1297,8 @@ inline mcpedit::Outcome runEditVerb( const std::string& root, mcpedit::Op op, co
     // 5. force the cached index stale so the next verb rebuilds (belt-and-braces on top of the mtime watch),
     //    and report the applied span + the OLD index stamp with a note that it will refresh.
     char oldStamp[ 96 ];
-    std::snprintf( oldStamp, sizeof( oldStamp ), "[index: files=%zu symbols=%zu hash=%08x]",
-                   ing.files.size(), ing.symbols.size(), (unsigned)( ix.contentHash & 0xFFFFFFFFu ) );
+    rw::formatTo( oldStamp, sizeof( oldStamp ), "[index: files={} symbols={} hash={:08x}]",
+                   ing.files.size(), ing.symbols.size(), (unsigned)( ix.contentHash & 0xFFFFFFFFu )  );
     invalidateMcpIndex();
 
     const char* opName = ( op == mcpedit::Op::ReplaceBody ) ? "replace_symbol_body"

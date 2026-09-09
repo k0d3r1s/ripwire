@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // tracelocus.h — the shared trace-to-locus bundle assembler behind --from-trace (CLI, L2) and the MCP
 // from_trace verb (L4). tracein.h owns PURE frame extraction (no corpus
@@ -691,17 +694,17 @@ inline std::string renderTestHopBlock( const IngestResult& ing, const TestHop& h
 
     const Symbol&     fromSym  = ing.symbols[ hop.fromSymbolId ];
     const std::string pairPath = hop.pairFileId == kNoTraceFile ? std::string() : ex( pathRel( hop.pairFileId ) );
-    std::fprintf( m, "<test_hop heuristic=\"1\" from=\"%s\" from_p=\"%s:%u\" pair=\"%s\" callee=\"%zu\" basename=\"%zu\" rows=\"%zu\" capped=\"%zu\">",
+    rw::emitTo( m, "<test_hop heuristic=\"1\" from=\"{}\" from_p=\"{}:{}\" pair=\"{}\" callee=\"{}\" basename=\"{}\" rows=\"{}\" capped=\"{}\">",
         ex( fromSym.name ).c_str(), ex( pathRel( fromSym.fileId ) ).c_str(), fromSym.line, pairPath.c_str(),
-        hop.calleeCandidateCount, hop.basenameCandidateCount, hop.rows.size(), hop.cappedCount );
+        hop.calleeCandidateCount, hop.basenameCandidateCount, hop.rows.size(), hop.cappedCount  );
     for( std::size_t i = 0; i < hop.rows.size(); ++i )
     {
         const Symbol& s = ing.symbols[ hop.rows[i].symbolId ];
-        std::fprintf( m, "<hop rank=\"%zu\" n=\"%s\" t=\"%s\" p=\"%s:%u\" via=\"%s\"/>",
+        rw::emitTo( m, "<hop rank=\"{}\" n=\"{}\" t=\"{}\" p=\"{}:{}\" via=\"{}\"/>",
             i + 1, ex( s.name ).c_str(), symTag( s.kind ), ex( pathRel( s.fileId ) ).c_str(), s.line,
-            hop.rows[i].via == TestHopVia::Callee ? "callee" : "basename" );
+            hop.rows[i].via == TestHopVia::Callee ? "callee" : "basename"  );
     }
-    std::fprintf( m, "</test_hop>" );
+    rw::emitRaw( m, "</test_hop>"  );
     std::fflush( m );  std::fclose( m );
 
     std::string out;
@@ -727,9 +730,9 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
         DEGRADED_PATH_ALERT( "renderTraceBlock: open_memstream failed — trace block omitted" );
         return {};
     }
-    std::fprintf( m, "<trace src=\"%s\" format=\"%s\" frame_lines=\"%zu\" parsed=\"%zu\" in_corpus=\"%u\" skipped=\"%zu\" merged=\"%u\" unresolved=\"%zu\" suspects=\"%zu\">",
+    rw::emitTo( m, "<trace src=\"{}\" format=\"{}\" frame_lines=\"{}\" parsed=\"{}\" in_corpus=\"{}\" skipped=\"{}\" merged=\"{}\" unresolved=\"{}\" suspects=\"{}\">",
         ex( srcNote ).c_str(), tracein::formatSpec( dominant ).label, part.frameLinesSeen, part.parsedCount, part.inCorpusCount,
-        part.skipped.size(), part.mergedCount, part.unresolved.size(), part.suspects.size() );
+        part.skipped.size(), part.mergedCount, part.unresolved.size(), part.suspects.size()  );
     for( std::size_t i = 0; i < part.suspects.size(); ++i )
     {
         const TraceSuspect& sus = part.suspects[i];
@@ -742,9 +745,9 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
             encloses = " line_encloses=\"" + ex( ing.symbols[ sus.lineEnclosesId ].name ) + "\"";
         }
 
-        std::fprintf( m, "<frame rank=\"%zu\" n=\"%s\" t=\"%s\" p=\"%s:%u\" resolved_by=\"%s\"%s%s/>",
+        rw::emitTo( m, "<frame rank=\"{}\" n=\"{}\" t=\"{}\" p=\"{}:{}\" resolved_by=\"{}\"{}{}/>",
             i + 1, ex( s.name ).c_str(), symTag( s.kind ), ex( sus.frame->path ).c_str(), sus.frame->line,
-            sus.isResolvedByName ? "name" : "line", encloses.c_str(), i == 0 ? " innermost=\"1\"" : "" );
+            sus.isResolvedByName ? "name" : "line", encloses.c_str(), i == 0 ? " innermost=\"1\"" : ""  );
     }
     for( const tracein::ParsedFrame* ur : part.unresolved )
     {
@@ -753,13 +756,13 @@ inline std::string renderTraceBlock( const IngestResult& ing, tracein::FrameForm
         {
             named = " n=\"" + ex( ur->func ) + "\"";
         }
-        std::fprintf( m, "<unresolved p=\"%s:%u\"%s/>", ex( ur->path ).c_str(), ur->line, named.c_str() );
+        rw::emitTo( m, "<unresolved p=\"{}:{}\"{}/>", ex( ur->path ).c_str(), ur->line, named.c_str()  );
     }
     for( const tracein::ParsedFrame* sk : part.skipped )
     {
-        std::fprintf( m, "<skipped p=\"%s\" line=\"%u\"/>", ex( sk->path ).c_str(), sk->line );
+        rw::emitTo( m, "<skipped p=\"{}\" line=\"{}\"/>", ex( sk->path ).c_str(), sk->line  );
     }
-    std::fprintf( m, "</trace>" );
+    rw::emitRaw( m, "</trace>"  );
     std::fflush( m );  std::fclose( m );
     std::string out;
     if( buf ) { out.assign( buf, sz );  std::free( buf ); }

@@ -503,7 +503,7 @@ inline void writeSituation( std::FILE* out, const std::string& root, const Inges
         std::size_t gaugeAmb = 0, gaugeUnresolved = 0;
         for( std::uint32_t k : g.ambOut )        { gaugeAmb        += k; }
         for( std::uint32_t k : g.unresolvedOut ) { gaugeUnresolved += k; }
-        std::fprintf( out, kGraphCountFloorTextLine, gaugeAmb, gaugeUnresolved, graphUnindexedTextClause( g.unindexedFiles ).c_str() );
+        rw::emitTo( out, kGraphCountFloorTextLine, gaugeAmb, gaugeUnresolved, graphUnindexedTextClause( g.unindexedFiles ).c_str() );
     }
     for( std::size_t i = 0; i < affected.size() && i < kSituBlastFilesShown; ++i )
     {

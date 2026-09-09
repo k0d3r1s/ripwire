@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // mcp.h — --mcp: expose ripwire as an MCP tool over stdio. Newline-delimited
 // JSON-RPC 2.0; three methods (initialize / tools/list / tools/call). Hand-rolled minimal
@@ -976,9 +979,9 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
             {
                 const McpIndex& mix = getIndex( root );
                 char buf[ 96 ];
-                std::snprintf( buf, sizeof( buf ), "[index: files=%zu symbols=%zu hash=%08x]",
+                rw::formatTo( buf, sizeof( buf ), "[index: files={} symbols={} hash={:08x}]",
                                 mix.ing.files.size(), mix.ing.symbols.size(),
-                                (unsigned)( mix.contentHash & 0xFFFFFFFFu ) );
+                                (unsigned)( mix.contentHash & 0xFFFFFFFFu )  );
                 return buf;
             };
 
@@ -1989,8 +1992,8 @@ inline int runMcp( int topK, bool stable = false, bool noRedact = false,
             const double wallMs = std::chrono::duration< double, std::milli >(
                                       std::chrono::steady_clock::now() - t0 ).count();
             const unsigned rebuilt = ( mcpRebuildCounter().load( std::memory_order_relaxed ) != rebuildAtStart ) ? 1u : 0u;
-            std::fprintf( stderr, "ripwire-timing verb=%s wall_ms=%.3f rebuilt=%u\n",
-                          r.timingVerb.c_str(), wallMs, rebuilt );
+            rw::emitTo( stderr, "ripwire-timing verb={} wall_ms={:.3f} rebuilt={}\n",
+                          r.timingVerb.c_str(), wallMs, rebuilt  );
             std::fflush( stderr );
         }
     }

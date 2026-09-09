@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // graphlegend.h — the ONE floor marker and the ONE shared legend wording for the five GRAPH-COUNT verbs
 // (--uses, --callers, --callees, --impact, --edit-check).
@@ -74,11 +76,11 @@ inline std::string graphGaugeAttrXml( const std::vector<std::uint32_t>& ambOut, 
     char buf[160];
     if( unindexedFiles > 0 )
     {
-        std::snprintf( buf, sizeof( buf ), " graph_ambiguous=\"%zu\" graph_unresolved=\"%zu\" graph_unindexed=\"%zu\"", amb, unresolved, unindexedFiles );
+        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\" graph_unindexed=\"{}\"", amb, unresolved, unindexedFiles  );
     }
     else
     {
-        std::snprintf( buf, sizeof( buf ), " graph_ambiguous=\"%zu\" graph_unresolved=\"%zu\"", amb, unresolved );
+        rw::formatTo( buf, sizeof( buf ), " graph_ambiguous=\"{}\" graph_unresolved=\"{}\"", amb, unresolved  );
     }
     return buf;
 }
@@ -89,11 +91,11 @@ inline std::string graphGaugeAttrJson( const std::vector<std::uint32_t>& ambOut,
     char buf[160];
     if( unindexedFiles > 0 )
     {
-        std::snprintf( buf, sizeof( buf ), ",\"graph_ambiguous\":%zu,\"graph_unresolved\":%zu,\"graph_unindexed\":%zu", amb, unresolved, unindexedFiles );
+        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{},\"graph_unindexed\":{}", amb, unresolved, unindexedFiles  );
     }
     else
     {
-        std::snprintf( buf, sizeof( buf ), ",\"graph_ambiguous\":%zu,\"graph_unresolved\":%zu", amb, unresolved );
+        rw::formatTo( buf, sizeof( buf ), ",\"graph_ambiguous\":{},\"graph_unresolved\":{}", amb, unresolved  );
     }
     return buf;
 }
@@ -158,7 +160,7 @@ inline std::string graphCountFloorBrief( bool hasUnindexed )
 // keeps the same omit-at-zero reading as the XML/JSON attribute rather than printing a bare "0" the other
 // two dialects never print. Rendered through graphUnindexedTextClause() below, never spelled at the site.
 inline constexpr const char* kGraphCountFloorTextLine =
-    "        counts_floor=1: every count above is a FLOOR, never a total (call edges are name-based; dynamic dispatch, callbacks and macros can be missing) — read a zero as \"none found\", never as \"none exists\"; graph_ambiguous=%zu graph_unresolved=%zu is the whole graph's resolver gauge (calls split over several defs / calls whose in-repo defs were all language-filtered), the map header's ambiguous=/unresolved=%s\n"; // printf FORMAT: two gauge totals + the clause
+    "        counts_floor=1: every count above is a FLOOR, never a total (call edges are name-based; dynamic dispatch, callbacks and macros can be missing) — read a zero as \"none found\", never as \"none exists\"; graph_ambiguous={} graph_unresolved={} is the whole graph's resolver gauge (calls split over several defs / calls whose in-repo defs were all language-filtered), the map header's ambiguous=/unresolved={}\n"; // std::format FORMAT: two gauge totals + the clause
 
 // The #66 clause for the prose dialect. "" at zero — the absence IS the confident case, same as the attribute.
 inline std::string graphUnindexedTextClause( std::size_t unindexedFiles )
@@ -168,9 +170,9 @@ inline std::string graphUnindexedTextClause( std::size_t unindexedFiles )
         return {};
     }
     char buf[256]; // literal ~180 B + one %zu at 20 digits = ~198 B worst case; snprintf truncates regardless
-    std::snprintf( buf, sizeof( buf ),
-                   "; graph_unindexed=%zu is a third gauge — files no grammar in this build could read at all (the map header's unindexed=), whose calls produce no reference and so raise neither gauge above",
-                   unindexedFiles );
+    rw::formatTo( buf, sizeof( buf ),
+                   "; graph_unindexed={} is a third gauge — files no grammar in this build could read at all (the map header's unindexed=), whose calls produce no reference and so raise neither gauge above",
+                   unindexedFiles  );
     return buf;
 }
 

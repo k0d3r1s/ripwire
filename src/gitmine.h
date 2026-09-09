@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // gitmine.h — git-history mining shared by the CLI (main.cpp) and the MCP server (mcp.h): shell-quoting,
 // per-commit changed-file sets, and the co-change (logical-coupling) core. popen-based; no git library.
@@ -1003,7 +1006,7 @@ inline void noteGitJoinDegradeOnce( std::atomic<bool>& hasReported, const std::s
     {
         return;
     }
-    std::fprintf( stderr, "ripwire: %s\n", humanSentence.c_str() );
+    rw::emitTo( stderr, "ripwire: {}\n", humanSentence.c_str()  );
     DEGRADED_PATH_ALERT( "gitmine: a git-history path join was left unmade — see the stderr line naming the state and the path" );
 }
 

@@ -22,8 +22,11 @@
 // copy would be a G3 regression.
 
 #include <cstddef>
+#include <cstring>
 #include <cstdio>
 #include <format>
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <version>
@@ -61,6 +64,45 @@ template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A
 
 #endif
 
+
+// ── formatToRuntime — the one shape a consteval format cannot express ────────────────────────────────
+// A format string chosen at RUNTIME from a table. pageview.h is the case that needs it: ONE paging body
+// serves both the XML and the JSON dialect by selecting a PageSyntax row, deliberately, so that the two
+// spellings cannot drift into a clone pair. std::format_string is consteval and cannot hold that; the
+// standard's own answer is std::vformat_to, so this is not a workaround but the intended tool.
+//
+// WHAT IS AND IS NOT CHECKED HERE. Every other primitive in this header validates its format at COMPILE
+// time. This one cannot, by construction — so it keeps printf's old property that the format and the
+// arguments must agree by inspection. What it does NOT keep is printf's punishment for getting that wrong:
+// a mismatch there is undefined behaviour, whereas std::vformat_to throws std::format_error. That throw is
+// caught and degraded here, because the contract every emitting site in this tree has always had is that a
+// formatting failure is silent, never an escaping exception (CONTRIBUTING §3 "Self-check, don't throw").
+// Truncation, NUL-termination and the return value are formatTo's, so the two are interchangeable.
+template<class... A> inline std::size_t formatToRuntime( char* buf, std::size_t cap, std::string_view f, A&&... a )
+{
+    // There is no vformat_to_n: the standard bounds format_to_n but gives the runtime-format family only
+    // an UNBOUNDED vformat_to. So the bound is applied here, over a rendered string. That string is the one
+    // allocation in this header, and it is affordable precisely because this shape is rare — a paging
+    // disclosure is emitted once per REPORT, never once per row, which is why formatTo (no allocation) is
+    // the primitive for the per-symbol paths and this one is not.
+    try
+    {
+        const std::string rendered = std::vformat( f, std::make_format_args( a... ) );
+        if( cap == 0 )
+        {
+            return rendered.size();
+        }
+        const std::size_t fits = rendered.size() < cap - 1 ? rendered.size() : cap - 1;
+        std::memcpy( buf, rendered.data(), fits );
+        buf[ fits ] = '\0';
+        return rendered.size();   // snprintf's return: the length it WOULD have written
+    }
+    catch( const std::format_error& )
+    {
+        if( cap > 0 ) { buf[ 0 ] = '\0'; }
+        return 0;
+    }
+}
 
 // ── emitRaw — literal text, which is not a format string at all ──────────────────────────────────────
 // 353 of this tree's printf-family calls pass a string and NO arguments: help pages, legends, usage

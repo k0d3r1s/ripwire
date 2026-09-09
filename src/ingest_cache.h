@@ -3,6 +3,9 @@
 #error "ingest_cache.h is a SECTION of src/ingest.cpp's translation unit - include it only from ingest.cpp (see the ingest-family split note there)"
 #endif
 
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 // ingest_cache.h — the raw-facts model + incremental cache, moved VERBATIM from ingest.cpp in the
 // 2026-08-29 split: RawDef (the pre-id-assignment definition record), the extraction identity
 // (kCacheVersion + kParserVer + parserVerFor), content/blob hashing, FileFacts, the ByteW/ByteR
@@ -1753,8 +1756,8 @@ inline HashMap<std::string, FileFacts> loadCache( const std::string& path, std::
         // ordinary cold-start miss (absent) stays silent; anything else says what it found, once per run.
         if( frame.reason != CacheReject::Absent )
         {
-            std::fprintf( stderr, "ripwire: cache %s: %s — not used; this run parses from source and rewrites it\n",
-                          path.c_str(), cacheRejectName( frame.reason ) );
+            rw::emitTo( stderr, "ripwire: cache {}: {} — not used; this run parses from source and rewrites it\n",
+                          path.c_str(), cacheRejectName( frame.reason )  );
         }
         return out;
     }
@@ -2296,8 +2299,8 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
     if( !fp )
     {
         DEGRADED_PATH_ALERT( "ingest: saveCache could not open temp file for write — cache left unchanged" );
-        std::fprintf( stderr, "ripwire: cache %s: cannot write (%s) — every run parses from source until this is fixed\n",
-                      path.c_str(), std::strerror( errno ) );   // 2026-09-06: Release kept no signal for this
+        rw::emitTo( stderr, "ripwire: cache {}: cannot write ({}) — every run parses from source until this is fixed\n",
+                      path.c_str(), std::strerror( errno )  );   // 2026-09-06: Release kept no signal for this
         return;
     }
     const std::size_t wrote = std::fwrite( w.b.data(), 1, w.b.size(), fp );
@@ -2306,15 +2309,15 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
     {
         std::remove( tmp.c_str() );   // never rename a short/torn write over a good cache
         DEGRADED_PATH_ALERT( "ingest: saveCache write failed (short write or fclose error) — old cache preserved" );
-        std::fprintf( stderr, "ripwire: cache %s: write failed (short write; disk full?) — old cache kept, this run was parsed from source\n", path.c_str() );
+        rw::emitTo( stderr, "ripwire: cache {}: write failed (short write; disk full?) — old cache kept, this run was parsed from source\n", path.c_str()  );
         return;
     }
     if( std::rename( tmp.c_str(), path.c_str() ) != 0 )
     {
         std::remove( tmp.c_str() );   // clean up on failure
         DEGRADED_PATH_ALERT( "ingest: saveCache rename(tmp -> cache) failed — old cache preserved" );
-        std::fprintf( stderr, "ripwire: cache %s: cannot replace (%s) — old cache kept, this run was parsed from source\n",
-                      path.c_str(), std::strerror( errno ) );
+        rw::emitTo( stderr, "ripwire: cache {}: cannot replace ({}) — old cache kept, this run was parsed from source\n",
+                      path.c_str(), std::strerror( errno )  );
         return;
     }
 

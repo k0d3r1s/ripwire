@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // mcpserver.h — the OPTIONAL remote MCP transport: Streamable HTTP per the 2026
 // MCP spec, plain request/response only (SSE is CUT — §2b). A single hand-rolled HTTP/1.1 reader over
@@ -447,7 +449,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     }
     if( port <= 0 || port > 65535 )
     {
-        std::fprintf( stderr, "ripwire: --listen: could not parse a port from '%s' (want HOST:PORT or PORT, 1..65535)\n", cfg.listenSpec.c_str() );
+        rw::emitTo( stderr, "ripwire: --listen: could not parse a port from '{}' (want HOST:PORT or PORT, 1..65535)\n", cfg.listenSpec.c_str()  );
         return 1;
     }
 
@@ -457,20 +459,20 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     // (§2.3) a non-loopback bind needs BOTH an explicit host (the operator spelled it) AND a shared token.
     if( !loopback && cfg.token.empty() )
     {
-        std::fprintf( stderr,
-            "ripwire: REFUSING to bind %s:%d — a non-loopback MCP listener requires a shared bearer token.\n"
+        rw::emitTo( stderr,
+            "ripwire: REFUSING to bind {}:{} — a non-loopback MCP listener requires a shared bearer token.\n"
             "         Set one with --mcp-token=SECRET or the RIPWIRE_MCP_TOKEN env var, and put ripwire behind\n"
             "         your own reverse proxy for TLS + real auth (the token is a tripwire, not a security boundary).\n",
-            host.c_str(), port );
+            host.c_str(), port  );
         return 1;
     }
     // (§2.4) --allow-remote-edits turns a read-only map server into a remote FILE-WRITER; force the token
     // even on loopback so an opt-in write surface is never reachable without the shared secret.
     if( cfg.allowRemoteEdits && cfg.token.empty() )
     {
-        std::fprintf( stderr,
+        rw::emitRaw( stderr,
             "ripwire: REFUSING to start — --allow-remote-edits enables remote file WRITES and therefore requires\n"
-            "         a shared bearer token (--mcp-token=SECRET or RIPWIRE_MCP_TOKEN), even on loopback.\n" );
+            "         a shared bearer token (--mcp-token=SECRET or RIPWIRE_MCP_TOKEN), even on loopback.\n"  );
         return 1;
     }
 
@@ -480,7 +482,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     {
         std::string wsErr;
         const std::string key = mcpWorkspaceKey( cfg.roots, wsErr );
-        if( key.empty() ) { std::fprintf( stderr, "ripwire: --listen: %s\n", wsErr.c_str() ); return 1; }
+        if( key.empty() ) { rw::emitTo( stderr, "ripwire: --listen: {}\n", wsErr.c_str()  ); return 1; }
         pinnedRoot = mcpCanonRoot( key );   // a real path if the dedupe collapsed to one root; else the opaque key (realpath fails → returned as-is)
     }
     else
@@ -509,7 +511,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
 
     // ── 4) open the listening socket ───────────────────────────────────────────────────────────────────
     const int listenFd = ::socket( AF_INET, SOCK_STREAM, 0 );
-    if( listenFd < 0 ) { std::fprintf( stderr, "ripwire: --listen: socket() failed: %s\n", std::strerror( errno ) ); return 1; }
+    if( listenFd < 0 ) { rw::emitTo( stderr, "ripwire: --listen: socket() failed: {}\n", std::strerror( errno )  ); return 1; }
     int one = 1;
     ::setsockopt( listenFd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof( one ) );
 
@@ -519,19 +521,19 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     const std::string bindHost = ( host == "localhost" ) ? std::string( "127.0.0.1" ) : host;
     if( ::inet_pton( AF_INET, bindHost.c_str(), &addr.sin_addr ) != 1 )
     {
-        std::fprintf( stderr, "ripwire: --listen: '%s' is not a valid IPv4 bind address (IPv6 is not supported; reverse-proxy for that)\n", host.c_str() );
+        rw::emitTo( stderr, "ripwire: --listen: '{}' is not a valid IPv4 bind address (IPv6 is not supported; reverse-proxy for that)\n", host.c_str()  );
         ::close( listenFd );
         return 1;
     }
     if( ::bind( listenFd, reinterpret_cast<sockaddr*>( &addr ), sizeof( addr ) ) != 0 )
     {
-        std::fprintf( stderr, "ripwire: --listen: bind %s:%d failed: %s\n", host.c_str(), port, std::strerror( errno ) );
+        rw::emitTo( stderr, "ripwire: --listen: bind {}:{} failed: {}\n", host.c_str(), port, std::strerror( errno )  );
         ::close( listenFd );
         return 1;
     }
     if( ::listen( listenFd, 16 ) != 0 )
     {
-        std::fprintf( stderr, "ripwire: --listen: listen() failed: %s\n", std::strerror( errno ) );
+        rw::emitTo( stderr, "ripwire: --listen: listen() failed: {}\n", std::strerror( errno )  );
         ::close( listenFd );
         return 1;
     }
@@ -539,20 +541,20 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     // ── 5) startup banner. LOUD + explicit on any non-loopback bind (§2.3.4: an accidental 0.0.0.0 is never silent) ──
     if( loopback )
     {
-        std::fprintf( stderr, "ripwire: MCP HTTP listener on http://%s:%d/mcp (loopback only)%s%s\n",
+        rw::emitTo( stderr, "ripwire: MCP HTTP listener on http://{}:{}/mcp (loopback only){}{}\n",
                       host.c_str(), port,
                       cfg.token.empty() ? "" : " [token required]",
-                      cfg.allowRemoteEdits ? " [remote edits ENABLED]" : "" );
+                      cfg.allowRemoteEdits ? " [remote edits ENABLED]" : ""  );
     }
     else
     {
-        std::fprintf( stderr,
+        rw::emitTo( stderr,
             "ripwire: ****************************************************************************\n"
-            "ripwire: *  MCP HTTP listener bound to %s:%d — REACHABLE OFF-HOST.\n"
+            "ripwire: *  MCP HTTP listener bound to {}:{} — REACHABLE OFF-HOST.\n"
             "ripwire: *  Bearer token REQUIRED. No TLS — put this behind a reverse proxy for TLS\n"
-            "ripwire: *  and real auth. The token is a tripwire, not a security boundary.%s\n"
+            "ripwire: *  and real auth. The token is a tripwire, not a security boundary.{}\n"
             "ripwire: ****************************************************************************\n",
-            host.c_str(), port, cfg.allowRemoteEdits ? "  [remote edits ENABLED]" : "" );
+            host.c_str(), port, cfg.allowRemoteEdits ? "  [remote edits ENABLED]" : ""  );
     }
 
     // warm the pinned index once so the first client request is fast (and any parse issue surfaces now, on
@@ -665,7 +667,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
                 const double wallMs = std::chrono::duration< double, std::milli >(
                                           std::chrono::steady_clock::now() - t0 ).count();
                 const unsigned rebuilt = ( mcpRebuildCounter().load( std::memory_order_relaxed ) != rebuildAtStart ) ? 1u : 0u;
-                std::fprintf( stderr, "ripwire-timing verb=%s wall_ms=%.3f rebuilt=%u\n", r.timingVerb.c_str(), wallMs, rebuilt );
+                rw::emitTo( stderr, "ripwire-timing verb={} wall_ms={:.3f} rebuilt={}\n", r.timingVerb.c_str(), wallMs, rebuilt  );
                 std::fflush( stderr );
             }
         }

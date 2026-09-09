@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // lexical.h — subtoken (camelCase / snake_case) BM25 over symbols, for `--query` / `--for` retrieval.
 // The eval-at-scale showed lexical name-overlap beats pure graph structure for "find related code", so the
@@ -731,7 +733,7 @@ inline std::vector<float> lexicalScoresTiered( const IngestResult& ing, const st
             }
             catch( ... )   // a throw escaping a worker thread is std::terminate — degrade to partial counts instead
             {
-                std::fprintf( stderr, "ripwire: lexical scan worker degraded (exception swallowed)\n" );
+                rw::emitRaw( stderr, "ripwire: lexical scan worker degraded (exception swallowed)\n"  );
             }
         };
         const std::size_t hwThreadCount = std::thread::hardware_concurrency();
@@ -779,9 +781,9 @@ inline std::vector<float> lexicalScoresTiered( const IngestResult& ing, const st
         {
             for( std::size_t v = 0; v < variantCount; ++v )
             {
-                std::fprintf( stderr, "qstem-guard: \"%s\" df=%u cap=%u %s\n",
+                rw::emitTo( stderr, "qstem-guard: \"{}\" df={} cap={} {}\n",
                               matchToks[ uniqueCount + v ].tok.c_str(), dfVariant[v], variantCap,
-                              dfVariant[v] <= variantCap ? "admitted" : "rejected" );
+                              dfVariant[v] <= variantCap ? "admitted" : "rejected"  );
             }
         }
         std::vector<int> tfFolded( S * uniqueCount, 0 );
@@ -909,11 +911,11 @@ inline std::vector<float> lexicalScoresTiered( const IngestResult& ing, const st
                         verdict = "kept (name-separates)";
                     }
                 }
-                std::fprintf( stderr, "term-margin: \"%s\" df=%d/%zu nameDf=%d bits=%d %s\n",
-                              uniqueToks[u].c_str(), dfMargin[u], S, nameDf[u], marginBits, verdict );
+                rw::emitTo( stderr, "term-margin: \"{}\" df={}/{} nameDf={} bits={} {}\n",
+                              uniqueToks[u].c_str(), dfMargin[u], S, nameDf[u], marginBits, verdict  );
             }
-            std::fprintf( stderr, "term-margin: %zu present, %zu survive, suppression %s\n",
-                          presentCount, survivorCount, applySuppression ? "applied" : "withheld (sole-anchor)" );
+            rw::emitTo( stderr, "term-margin: {} present, {} survive, suppression {}\n",
+                          presentCount, survivorCount, applySuppression ? "applied" : "withheld (sole-anchor)"  );
         }
     }
 
@@ -2097,7 +2099,7 @@ inline ForConfidence deriveForConfidence( const rw::AdaptiveCut& cut, int served
     out.level     = ( !cut.hitCeiling || servedComplete ) ? "high" : "low";
     out.marginPct = cut.hitCeiling ? 0 : cut.dropPct;
     char attrBuf[ 48 ];
-    std::snprintf( attrBuf, sizeof( attrBuf ), " confidence=\"%s\" margin_pct=\"%d\"", out.level, out.marginPct );
+    rw::formatTo( attrBuf, sizeof( attrBuf ), " confidence=\"{}\" margin_pct=\"{}\"", out.level, out.marginPct  );
     out.attrs = attrBuf;
     // no "--" anywhere (rides inside an XML comment, where "--" is ill-formed — G4). TERSE on purpose:
     // this rides EVERY --for header and its bytes are charged under an explicit budget, so each word

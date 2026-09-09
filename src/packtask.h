@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // packtask.h — the shared task-bundle assembler behind --pack-task (CLI) and the MCP explore/pack_task verb
 // (L4). ONE function builds the fixed 5-section budget-shared bundle (routed lens
@@ -283,9 +286,8 @@ inline PackTaskSection packTaskListSection( std::string_view tag, std::string_vi
         return out;
     }
     char open[ 160 ];
-    std::snprintf( open, sizeof( open ), "<%.*s%.*s shown=\"%zu\" total=\"%zu\" capped=\"%d\">",
-                   int( tag.size() ), tag.data(), int( extraAttr.size() ), extraAttr.data(), out.kept, entries.size(),
-                   out.kept < entries.size() ? 1 : 0 );
+    rw::formatTo( open, sizeof( open ), "<{}{} shown=\"{}\" total=\"{}\" capped=\"{}\">", std::string_view( tag.data(), tag.size() ), std::string_view( extraAttr.data(), extraAttr.size() ), out.kept, entries.size(),
+                   out.kept < entries.size() ? 1 : 0  );
     out.xml = open;
     for( std::size_t i = 0; i < out.kept; ++i )
     {
@@ -765,7 +767,7 @@ inline RankingSection renderRankingWithFar( const IngestResult& ing, const Ranki
     }
 
     const std::vector<std::string> farRows = renderNameOnlyRows( ing, *ri.d2plusIds, ex, ri.in->rootArg );
-    char farAttr[ 32 ];  std::snprintf( farAttr, sizeof( farAttr ), " of_top=\"%zu\"", ri.topRanked->size() );
+    char farAttr[ 32 ];  rw::formatTo( farAttr, sizeof( farAttr ), " of_top=\"{}\"", ri.topRanked->size()  );
     const std::size_t     sigsLeftover = ri.sigsBudget > out.sigsStr.size() ? ri.sigsBudget - out.sigsStr.size() : 0;
     const PackTaskSection far          = packTaskListSection( "far", farAttr, farRows, sigsLeftover, kPackTaskWrapReserve );
     out.farTotal = farRows.size();
@@ -955,8 +957,8 @@ inline std::string restatePackTaskBodiesWrapper( const IngestResult& ing, const 
     // per-bundle compression disclosure (serialize.h packBodies) must survive the rewrite or the restated
     // bundle would silently claim uncompressed bodies (test/forcompresscheck.sh arm 5).
     char open[ 112 ];
-    std::snprintf( open, sizeof( open ), "<bodies shown=\"%zu\" total=\"%zu\" capped=\"1\"%s>", emitted.kept.size(), bodyIds.size(),
-                   compress ? " compress=\"1\"" : "" );
+    rw::formatTo( open, sizeof( open ), "<bodies shown=\"{}\" total=\"{}\" capped=\"1\"{}>", emitted.kept.size(), bodyIds.size(),
+                   compress ? " compress=\"1\"" : ""  );
     std::string out = open;
     out += bodiesXml.substr( openEnd + 1, bodiesXml.size() - 9 - ( openEnd + 1 ) );
     out += markers;
@@ -1240,7 +1242,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
     const D1Rows d1Rendered = renderD1CallerRows( ing, d1, ex, in.redact, in.rootArg );
     const std::vector<std::string>& callerRows = d1Rendered.xml;
     const std::vector<std::string>& d1SigRaw   = d1Rendered.rawSig;   // unescaped — the L2 --json tail reuses these verbatim
-    char callersAttr[ 32 ];  std::snprintf( callersAttr, sizeof( callersAttr ), " of_top=\"%zu\"", bodiesTotal );
+    char callersAttr[ 32 ];  rw::formatTo( callersAttr, sizeof( callersAttr ), " of_top=\"{}\"", bodiesTotal  );
     std::size_t       callersBudget = sectionBudget( kPackTaskQuotaCallersPct, carry );
     PackTaskSection   callers       = packTaskListSection( "callers", callersAttr, callerRows, callersBudget, kPackTaskWrapReserveWide );
     const std::size_t callersTotal  = callerRows.size();
@@ -1409,8 +1411,8 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         // same shape restatePackTaskBodiesWrapper hand-formats a few lines below for the same reason
         // (it cannot call packBodies again either) — so it is safe to emit unconditionally here.
         char tag[ 112 ];
-        std::snprintf( tag, sizeof( tag ), "<bodies shown=\"0\" total=\"%zu\" capped=\"%d\"%s></bodies>",
-                       bodyIds.size(), bodyIds.empty() ? 0 : 1, in.compress ? " compress=\"1\"" : "" );
+        rw::formatTo( tag, sizeof( tag ), "<bodies shown=\"0\" total=\"{}\" capped=\"{}\"{}></bodies>",
+                       bodyIds.size(), bodyIds.empty() ? 0 : 1, in.compress ? " compress=\"1\"" : ""  );
         bodiesStr = tag;
         // bodiesKept stays 0 (its declared default) — matches shown="0" exactly.
     }
@@ -1497,8 +1499,8 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         // implies, which is what a consumer checks the bundle against; budget_bytes is the WORKING budget
         // after the headroom factor, and is always the smaller of the two. Same expression as the XML line
         // below, so the two serializations cannot report different ceilings.
-        { char b[ 128 ];  std::snprintf( b, sizeof( b ), ",\"budget_tokens\":%zu,\"budget_bytes\":%zu,\"budget_ceiling_bytes\":%zu",
-                                         budgetTokens, bundleBudget, std::size_t( double( budgetTokens ) * rw::kMinBytesPerToken ) );  j += b; }
+        { char b[ 128 ];  rw::formatTo( b, sizeof( b ), ",\"budget_tokens\":{},\"budget_bytes\":{},\"budget_ceiling_bytes\":{}",
+                                         budgetTokens, bundleBudget, std::size_t( double( budgetTokens ) * rw::kMinBytesPerToken )  );  j += b; }
 
         // R2: the SAME distance mask the XML <sigs> used (eligibleIds only) — one eligibility decision, two shapes.
         j += std::string( ",\"ranking_capped\":" ) + ( sigsCapped ? "true" : "false" ) + ",\"ranking\":";
@@ -1514,8 +1516,8 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
 
         // R2: d2plus — the topRanked members NOT within 1 hop of an anchor, name-only (mirrors XML's <far>).
         const std::size_t farShown = std::min( farKept, d2plusIds.size() );
-        { char b[ 128 ];  std::snprintf( b, sizeof( b ), ",\"far_total\":%zu,\"far_kept\":%zu,\"far_of_top\":%zu,\"far\":[",
-                                         farTotal, farShown, topRanked.size() );  j += b; }
+        { char b[ 128 ];  rw::formatTo( b, sizeof( b ), ",\"far_total\":{},\"far_kept\":{},\"far_of_top\":{},\"far\":[",
+                                         farTotal, farShown, topRanked.size()  );  j += b; }
         for( std::size_t i = 0; i < farShown; ++i )
         {
             const Symbol& s = ing.symbols[ d2plusIds[i] ];
@@ -1530,14 +1532,14 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         // the two dialects reported different SETS under one bodies_kept — and packBodiesJson emitted each body
         // WHOLE, against no budget at all (MEASURED: XML 8 100 B vs JSON 42 200 B under a stated 11 800 B
         // ceiling). Both halves are gone by construction: there is one selection, and this is its record.
-        { char b[ 96 ];  std::snprintf( b, sizeof( b ), ",\"bodies_total\":%zu,\"bodies_kept\":%zu,\"bodies\":",
-                                        bodiesTotal, emittedBodies.kept.size() );  j += b; }
+        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"bodies_total\":{},\"bodies_kept\":{},\"bodies\":",
+                                        bodiesTotal, emittedBodies.kept.size()  );  j += b; }
         j += packTaskRenderToString( [ & ]( std::FILE* m ) { packBodiesJson( m, ing, emittedBodies, in.rootArg ); } );
         j += packTaskOmittedBodiesJson( ing, emittedBodies );   // §H5 — see its header
 
         const std::size_t callersShown = std::min( callersKept, d1.ids.size() );
-        { char b[ 128 ];  std::snprintf( b, sizeof( b ), ",\"callers_total\":%zu,\"callers_kept\":%zu,\"callers_of_top\":%zu,\"callers\":[",
-                                         callersTotal, callersShown, bodiesTotal );  j += b; }
+        { char b[ 128 ];  rw::formatTo( b, sizeof( b ), ",\"callers_total\":{},\"callers_kept\":{},\"callers_of_top\":{},\"callers\":[",
+                                         callersTotal, callersShown, bodiesTotal  );  j += b; }
         for( std::size_t i = 0; i < callersShown; ++i )
         {
             const Symbol& s = ing.symbols[ d1.ids[i] ];
@@ -1558,7 +1560,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         j += "]";
 
         const std::size_t notesShown = std::min( notesKept, noteEntriesData.size() );
-        { char b[ 96 ];  std::snprintf( b, sizeof( b ), ",\"notes_total\":%zu,\"notes_kept\":%zu,\"notes\":[", notesTotal, notesShown );  j += b; }
+        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"notes_total\":{},\"notes_kept\":{},\"notes\":[", notesTotal, notesShown  );  j += b; }
         for( std::size_t i = 0; i < notesShown; ++i )
         {
             j += ( i == 0 ? "" : "," );
@@ -1573,7 +1575,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         j += "]";
 
         const std::size_t testsShown = std::min( testsKept, testFiles.size() );
-        { char b[ 96 ];  std::snprintf( b, sizeof( b ), ",\"tests_total\":%zu,\"tests_kept\":%zu,\"tests_to_run\":[", testsTotal, testsShown );  j += b; }
+        { char b[ 96 ];  rw::formatTo( b, sizeof( b ), ",\"tests_total\":{},\"tests_kept\":{},\"tests_to_run\":[", testsTotal, testsShown  );  j += b; }
         // §A9.5: the JSON sibling of the XML run= above — situ's tests_to_run already carries it, and one
         // computation path must not serialize two different obligations.
         const rw::TestRunnerIndex jsonRunners( ing );
@@ -1603,12 +1605,15 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
         char b[ 64 ];
         if( total == 0 )       { return "none"; }
         if( body.empty() )     { return "omitted (budget)"; }
-        std::snprintf( b, sizeof( b ), kept < total ? "kept %zu of %zu" : "%zu of %zu", kept, total );
+        // Split from a ternary over two format strings: std::format_string is consteval, so each format
+        // has to be a literal at its own call site. Same bytes on both branches.
+        if( kept < total ) { rw::formatTo( b, sizeof( b ), "kept {} of {}", kept, total ); }
+        else               { rw::formatTo( b, sizeof( b ), "{} of {}", kept, total ); }
         return b;
     };
     std::string report = "budget=";
-    { char b[ 160 ];  std::snprintf( b, sizeof( b ), "%zu bytes (%zu-token target, ceiling %zu) | ",
-                                    bundleBudget, budgetTokens, std::size_t( double( budgetTokens ) * rw::kMinBytesPerToken ) );  report += b; }
+    { char b[ 160 ];  rw::formatTo( b, sizeof( b ), "{} bytes ({}-token target, ceiling {}) | ",
+                                    bundleBudget, budgetTokens, std::size_t( double( budgetTokens ) * rw::kMinBytesPerToken )  );  report += b; }
     report += std::string( "ranking: " ) + ( sigsCapped ? "capped" : "full" ) + " | ";
     report += "bodies: "  + listStatus( bodiesTotal,  bodiesStr,  bodiesKept )  + ( bodiesTotal > 0 && !bodiesStr.empty() && bodiesKept < bodiesTotal ? " (capped)" : "" ) + " | ";
     report += "callers: " + listStatus( callersTotal, callersStr, callersKept ) + " | ";
@@ -1633,7 +1638,7 @@ inline std::string packTaskBundleText( const IngestResult& ing, const Graph& g, 
     std::string droppedPositiveAttr;
     if( rankOut.droppedPositive > 0 )
     {
-        char b[ 96 ];  std::snprintf( b, sizeof( b ), " dropped_positive=\"%zu\"", rankOut.droppedPositive );
+        char b[ 96 ];  rw::formatTo( b, sizeof( b ), " dropped_positive=\"{}\"", rankOut.droppedPositive  );
         droppedPositiveAttr = b;
     }
 

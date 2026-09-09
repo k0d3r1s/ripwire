@@ -688,8 +688,11 @@ src = sys.argv[1]
 # not the member row the communities listing prints under the same tag).
 # `<uses` (fielduses.h / columnar.h) and `<edit-check` (editcheck.h) are 40-line `out +=` builders whose marker
 # lands far past any statement window; arm (1) pins them LIVE, so they are deliberately not re-derived here.
+# NOTE: these are SOURCE literals, so the std::print conversion respelled the conversion specifiers
+# inside them (`blast radius: %zu symbols` -> `blast radius: {} symbols`). A pattern that stops
+# matching after a conversion is this guard working, not noise -- re-pin it to the new spelling.
 PATTERNS = [ r'"<path ', r'"<connect ', r'"<affected ', r'"<exercises ', r'"<seams ', r'"<dead-code ', r'"<communities ',
-             r'"<community id=', r'"<zoom ', r'"<lego', r'\\"dependent_symbols\\"', r'blast radius: %zu symbols',
+             r'"<community id=', r'"<zoom ', r'"<lego', r'\\"dependent_symbols\\"', r'blast radius: {} symbols',
              r'"<impact of=', r'"<query ', r'"<pr-context" \+', r'"<safe-delete ', r'"<test-gate' ]
 fail, found = 0, { p: 0 for p in PATTERNS }
 for fn in sorted( os.listdir( src ) ):

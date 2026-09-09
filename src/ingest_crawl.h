@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 #if !defined( RIPWIRE_INGEST_TU )
 #error "ingest_crawl.h is a SECTION of src/ingest.cpp's translation unit - include it only from ingest.cpp (see the ingest-family split note there)"
 #endif
@@ -1576,8 +1578,8 @@ TSQuery* compileQueryStandalone( const LangEntry& le )
     TSQuery*      q       = ts_query_new( le.grammar(), scm.data(), static_cast<std::uint32_t>( scm.size() ), &errOff, &errType );
     if( q == nullptr )
     {
-        std::fprintf( stderr, "[ripwire] tags.scm compile error for %s at byte %u (err %d) — skipping language\n",
-                      std::string( le.querySub ).c_str(), errOff, (int)errType );
+        rw::emitTo( stderr, "[ripwire] tags.scm compile error for {} at byte {} (err {}) — skipping language\n",
+                      std::string( le.querySub ).c_str(), errOff, (int)errType  );
     }
     return q;
 }

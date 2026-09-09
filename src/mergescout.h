@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // mergescout.h — L1: --merge-scout=REF[,REF...], the read-only
 // cross-branch overlap oracle. Evidence: a 2026-07-14 round hand-computed a landing order for 5
@@ -716,11 +719,11 @@ inline void writeSymRows( std::FILE* out, const char* tag, const std::vector<Cha
         // whole-file content diff, not a symbol attribution. Ordinary rows are byte-identical to before.
         if( s.fileLevel )
         {
-            std::fprintf( out, "<%s p=\"%s\" id=\"%s\" anchoring=\"file-level\"/>", tag, ex( s.file ).c_str(), ex( s.id ).c_str() );
+            rw::emitTo( out, "<{} p=\"{}\" id=\"{}\" anchoring=\"file-level\"/>", tag, ex( s.file ).c_str(), ex( s.id ).c_str()  );
         }
         else
         {
-            std::fprintf( out, "<%s p=\"%s\" id=\"%s\"/>", tag, ex( s.file ).c_str(), ex( s.id ).c_str() );
+            rw::emitTo( out, "<{} p=\"{}\" id=\"{}\"/>", tag, ex( s.file ).c_str(), ex( s.id ).c_str()  );
         }
     }
 }
@@ -730,8 +733,8 @@ inline void writeScoutArm( std::FILE* out, const Arm& arm, const XmlEscaper& ex 
     // §A10.4: base= is display-only here — 9-hex-char width, matching the at=/head= convention
     // (gitstamp.h) every other sha-bearing attribute in the tool uses. arm.baseSha itself stays full-length
     // (it is still used as a TreeIndexMemo key elsewhere); only the printed attribute is truncated.
-    std::fprintf( out, "<arm ref=\"%s\" base=\"%s\" ok=\"%d\" changed=\"%zu\" head_conflicts=\"%zu\">",
-                  ex( arm.ref ).c_str(), ex( arm.baseSha.substr( 0, 9 ) ).c_str(), arm.ok ? 1 : 0, arm.changed.size(), arm.headConflicts.size() );
+    rw::emitTo( out, "<arm ref=\"{}\" base=\"{}\" ok=\"{}\" changed=\"{}\" head_conflicts=\"{}\">",
+                  ex( arm.ref ).c_str(), ex( arm.baseSha.substr( 0, 9 ) ).c_str(), arm.ok ? 1 : 0, arm.changed.size(), arm.headConflicts.size()  );
     // §P11.13: a changed="0" arm has no divergent work to LAND — it used to get a landing slot anyway
     // (landingOrder() below drops it now, see there), with nothing on this row saying why it's absent from
     // the list an agent would otherwise expect it in. A meaningfully-named child element carrying a `note=`
@@ -745,28 +748,28 @@ inline void writeScoutArm( std::FILE* out, const Arm& arm, const XmlEscaper& ex 
     // compared; DEGRADED_PATH_ALERT already says so on stderr, but nothing said so in-band before this.
     if( arm.changed.empty() && arm.ok )
     {
-        std::fprintf( out, "<no-work note=\"no divergent work vs merge-base — see --stray-content\"/>" );
+        rw::emitRaw( out, "<no-work note=\"no divergent work vs merge-base — see --stray-content\"/>"  );
     }
     writeSymRows( out, "sym", arm.changed, ex );
 
     // r26: the live line changed these too, while this arm sat unmerged — a merge fight no pairwise ARM
     // comparison can see (HEAD is not an arm). Listed after the <sym> rows, never mixed into them.
     writeSymRows( out, "head-conflict", arm.headConflicts, ex );
-    std::fprintf( out, "</arm>" );
+    rw::emitRaw( out, "</arm>"  );
 }
 
 inline void writeScoutPair( std::FILE* out, const std::vector<Arm>& arms, const PairOverlap& p, const XmlEscaper& ex )
 {
-    std::fprintf( out, "<pair a=\"%s\" b=\"%s\" conflicts=\"%zu\" risks=\"%zu\"",
-                  ex( arms[ p.a ].ref ).c_str(), ex( arms[ p.b ].ref ).c_str(), p.conflicts.size(), p.risks.size() );
-    if( p.conflicts.empty() && p.risks.empty() ) { std::fprintf( out, "/>" ); return; }
-    std::fprintf( out, ">" );
+    rw::emitTo( out, "<pair a=\"{}\" b=\"{}\" conflicts=\"{}\" risks=\"{}\"",
+                  ex( arms[ p.a ].ref ).c_str(), ex( arms[ p.b ].ref ).c_str(), p.conflicts.size(), p.risks.size()  );
+    if( p.conflicts.empty() && p.risks.empty() ) { rw::emitRaw( out, "/>"  ); return; }
+    rw::emitRaw( out, ">"  );
     writeSymRows( out, "conflict", p.conflicts, ex );
     for( const RiskPair& r : p.risks )
     {
-        std::fprintf( out, "<risk p=\"%s\" a=\"%s\" b=\"%s\"/>", ex( r.a.file ).c_str(), ex( r.a.id ).c_str(), ex( r.b.id ).c_str() );
+        rw::emitTo( out, "<risk p=\"{}\" a=\"{}\" b=\"{}\"/>", ex( r.a.file ).c_str(), ex( r.a.id ).c_str(), ex( r.b.id ).c_str()  );
     }
-    std::fprintf( out, "</pair>" );
+    rw::emitRaw( out, "</pair>"  );
 }
 
 inline void writeScoutLanding( std::FILE* out, const std::vector<Arm>& arms, const std::vector<PairOverlap>& pairs, const XmlEscaper& ex )
@@ -785,7 +788,7 @@ inline void writeScoutLanding( std::FILE* out, const std::vector<Arm>& arms, con
         }
         joined += arms[order[idx]].ref;
     }
-    std::fprintf( out, "<landing order=\"%s\"/>", ex( joined ).c_str() );
+    rw::emitTo( out, "<landing order=\"{}\"/>", ex( joined ).c_str()  );
 }
 
 inline void writeMergeScout( std::FILE* out, const ScoutResult& result )
@@ -795,7 +798,7 @@ inline void writeMergeScout( std::FILE* out, const ScoutResult& result )
 
     // G4: an XML comment may not contain a double hyphen, so this text names flags and attributes WITHOUT
     // their leading dashes (the same constraint crossref.h's own comments call out). Keep it that way.
-    std::fprintf( out, "<!-- ripwire merge-scout: read-only cross-branch overlap for %zu arm(s) — same-symbol change "
+    rw::emitTo( out, "<!-- ripwire merge-scout: read-only cross-branch overlap for {} arm(s) — same-symbol change "
                        "on two arms = conflict, same-file/different-symbol = textual risk. landing = "
                        "fewest-conflicts-first greedy (ties: ref name asc). Every tree is a git-archive TEMP COPY "
                        "(read-only); the real working tree/refs are never touched. ANCHORING: every arm is diffed "
@@ -808,7 +811,7 @@ inline void writeMergeScout( std::FILE* out, const ScoutResult& result )
                        "tree-sitter symbol spans it) — counted and conflict-checked like any other row, just not "
                        "attributed to a symbol inside it. at= is the git commit these numbers were computed at; a "
                        "trailing +shallow means the clone's history is truncated (a depth-limited clone: churn counts only the commits present), and a trailing +dirty means the working tree differed from that commit (head= is the same commit, "
-                       "bare sha, kept for compatibility). -->", result.arms.size() );
+                       "bare sha, kept for compatibility). -->", result.arms.size()  );
     // §P8: head= was a FULL 40 here vs 9 hex in <abi>/<stray-content>/<landing-plan>/<history> — one name,
     // two widths. Aligned to the majority; nothing reads this one. (`base=` on the <arm> rows is still full
     // against <stray-content>'s 9-char base= — a second split, documented, not widened into this change.)
@@ -816,7 +819,7 @@ inline void writeMergeScout( std::FILE* out, const ScoutResult& result )
     // elsewhere in this family) — at= is the NEW attribute, carrying the +dirty bit this verb already
     // computes (the `dirty` local above) but never disclosed.
     const std::string atAttrStr = result.atStamp.empty() ? std::string() : ( " at=\"" + result.atStamp + "\"" );
-    std::fprintf( out, "<merge-scout arms=\"%zu\" head=\"%.9s\"%s>", result.arms.size(), ex( result.headSha ).c_str(), atAttrStr.c_str() );
+    rw::emitTo( out, "<merge-scout arms=\"{}\" head=\"{:.9}\"{}>", result.arms.size(), ex( result.headSha ).c_str(), atAttrStr.c_str()  );
 
     for( const Arm& arm : result.arms )
     {
@@ -831,7 +834,7 @@ inline void writeMergeScout( std::FILE* out, const ScoutResult& result )
 
     writeScoutLanding( out, result.arms, pairs, ex );
 
-    std::fprintf( out, "</merge-scout>" );
+    rw::emitRaw( out, "</merge-scout>"  );
 }
 
 }}   // namespace rw::mergescout

@@ -127,14 +127,14 @@ std::optional<int> runAffected( const MainDispatch& d )
         // over the same argument string and return different counts, so which one fired is a fact about the
         // measurement, not a detail. seeds= is the resolved seed-symbol count (1 for a lone function, ~84
         // for a header), which is what makes the two readings comparable at a glance.
-        std::printf( "<!-- ripwire affected: test files that transitively reach the changed files/symbols (run these); seeded_by= says which reading the argument took. "
+        rw::emitTo( stdout, "<!-- ripwire affected: test files that transitively reach the changed files/symbols (run these); seeded_by= says which reading the argument took. "
                      "seed_test_files= how many of the matched files are TEST files: a test cannot reach a change it is part of, so its own symbols are not seeds of the "
                      "caller walk and its row carries seed_kind=\"test\" — it is listed because the argument matched it (it changed, run it), not because it reaches the change. "
                      "script_gates_unmodelled= counts test/*.sh runners in the corpus (a path count; not every one invokes the binary) — "
                      "script-to-binary edges are NOT modelled, so those gates are invisible to this walk and never counted in tests=/reached=. "
-                     "%.*s"   // H2H-Graft F1: the evidence-order clause, testmap.h's ONE wording (changed= is spelled seed_kind=\"test\" here: the argument matched it)
+                     "{}"     // H2H-Graft F1: the evidence-order clause, testmap.h's ONE wording (changed= is spelled seed_kind="test" here: the argument matched it)
                      "order=evidence says so on the root; partners= counts the partner rows. "
-                     "%s-->%s", int( rw::kTestRowEvidenceLegend.size() ), rw::kTestRowEvidenceLegend.data(),
+                     "{}-->{}", rw::kTestRowEvidenceLegend,
                      rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::rootRelPathsLegend( afSingleRoot ) );
         rw::emitTo( stdout, "<affected changed=\"{}\" seeded_by=\"{}\" seeds=\"{}\" seed_test_files=\"{}\" tests=\"{}\" reached=\"{}\" script_gates_unmodelled=\"{}\""
                      " order=\"evidence\" partners=\"{}\"{}{}>",

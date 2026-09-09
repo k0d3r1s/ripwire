@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // docparse.h — P1-B document ingest. Turns non-code documents that live IN a repo
 // (Jupyter notebooks, HTML, CSV — and, via a bridge, PDF/DOCX/PPTX/XLSX) into plain text so `--recall` /
@@ -575,7 +577,7 @@ inline std::string parseDocFile( const std::string& path, std::string_view extLo
             if( !detail::readWholeFile( path, bytes ) )
             {
                 DEGRADED_PATH_ALERT( "docparse: cannot read document file" );
-                std::fprintf( stderr, "ripwire: doc %s: cannot read — omitted from the index (the skipped verb counts it as unmeasured)\n", path.c_str() );   // 2026-09-06
+                rw::emitTo( stderr, "ripwire: doc {}: cannot read — omitted from the index (the skipped verb counts it as unmeasured)\n", path.c_str()  );   // 2026-09-06
                 return {};
             }
             switch( docKindOf( extLower ) )

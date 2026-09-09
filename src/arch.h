@@ -1,4 +1,7 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+#include <string_view>       // %.*s (precision, pointer) collapses to one view
+
 
 // arch.h — architectural fitness functions (layering rules) for --arch.
 // The rules are the USER's, declared in a small text file; ripwire imposes no architecture of its own —
@@ -349,7 +352,7 @@ inline ArchRules parseArchRules( const std::string& path )
     // mirroring parseLintRuleFile's badLine/"file skipped" contract exactly.
     const auto badLine = [ & ]( std::size_t lineNo, const char* why ) -> bool
     {
-        std::fprintf( stderr, "ripwire: --arch: %s:%zu: %s — rules file rejected\n", path.c_str(), lineNo, why );
+        rw::emitTo( stderr, "ripwire: --arch: {}:{}: {} — rules file rejected\n", path.c_str(), lineNo, why  );
         DEGRADED_PATH_ALERT( "arch: malformed rules line — rules file rejected" );
         return false;
     };
@@ -683,10 +686,10 @@ inline bool archWriteBaseline( const std::string&                         sideca
     {
         return false;
     }
-    std::fprintf( f, "# ripwire arch baseline — do not edit by hand. Regenerate with --baseline or --baseline-update.\n" );
+    rw::emitRaw( f, "# ripwire arch baseline — do not edit by hand. Regenerate with --baseline or --baseline-update.\n"  );
     for( std::uint64_t h : sorted )
     {
-        std::fprintf( f, "%016llx\n", static_cast<unsigned long long>( h ) );
+        rw::emitTo( f, "{:016x}\n", static_cast<unsigned long long>( h )  );
     }
     std::fclose( f );
     return true;

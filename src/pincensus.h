@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // pincensus.h — the S6-C SILENT-PIN CENSUS: an eval-only, flag-gated record of WHICH mechanism decided
 // each resolved call site, and WHICH target it decided on, by canonical identity.
@@ -291,14 +293,14 @@ inline void writePinCensusDecisionRows( std::FILE* f, const PinCensus& pc, const
             // file. Derived from the roster now, so a mechanism added below cannot be dropped again.
             ++mechCount[ m ];
         }
-        std::fprintf( f, "C\t%s\t%u\t%u\t%s\t%s\t%s\t", pinMechName( m ), unsigned( pc.preTier[ i ] ), unsigned( pc.postReal[ i ] ),
-                      pinFlagString( pc.flags[ i ] ).c_str(), pinCensusIdOf( canon, pc.fromSym[ i ] ), pc.nameAt( pc.nameOff[ i ] ) );
+        rw::emitTo( f, "C\t{}\t{}\t{}\t{}\t{}\t{}\t", pinMechName( m ), unsigned( pc.preTier[ i ] ), unsigned( pc.postReal[ i ] ),
+                      pinFlagString( pc.flags[ i ] ).c_str(), pinCensusIdOf( canon, pc.fromSym[ i ] ), pc.nameAt( pc.nameOff[ i ] )  );
         const std::uint32_t end = pc.rowEnd( i );
         for( std::uint32_t t = pc.tgtStart[ i ]; t < end; ++t )
         {
-            std::fprintf( f, "%s%s", ( t > pc.tgtStart[ i ] ) ? "|" : "", pinCensusIdOf( canon, pc.tgtIds[ t ] ) );
+            rw::emitTo( f, "{}{}", ( t > pc.tgtStart[ i ] ) ? "|" : "", pinCensusIdOf( canon, pc.tgtIds[ t ] )  );
         }
-        std::fprintf( f, "\t%u\n", unsigned( pc.line[ i ] ) );
+        rw::emitTo( f, "\t{}\n", unsigned( pc.line[ i ] )  );
     }
 }
 
@@ -307,7 +309,7 @@ inline void writePinCensusOracleRows( std::FILE* f, const PinCensus& pc, const s
 {
     for( std::size_t i = 0; i < pc.oraRows(); ++i )
     {
-        std::fprintf( f, "O\t%s\t%s\t", pinCensusIdOf( canon, pc.oraFrom[ i ] ), pc.nameAt( pc.oraNameOff[ i ] ) );
+        rw::emitTo( f, "O\t{}\t{}\t", pinCensusIdOf( canon, pc.oraFrom[ i ] ), pc.nameAt( pc.oraNameOff[ i ] )  );
         const std::uint8_t sentinel = ( i < pc.oraSentinel.size() ) ? pc.oraSentinel[ i ] : std::uint8_t( 0 );
         if( sentinel != 0 )
         {
@@ -316,7 +318,7 @@ inline void writePinCensusOracleRows( std::FILE* f, const PinCensus& pc, const s
         const std::uint32_t end = pc.oraRowEnd( i );
         for( std::uint32_t t = pc.oraStart[ i ]; t < end; ++t )
         {
-            std::fprintf( f, "%s%s", ( t > pc.oraStart[ i ] ) ? "|" : "", pinCensusIdOf( canon, pc.oraTo[ t ] ) );
+            rw::emitTo( f, "{}{}", ( t > pc.oraStart[ i ] ) ? "|" : "", pinCensusIdOf( canon, pc.oraTo[ t ] )  );
         }
         std::fputc( '\n', f );
     }
@@ -327,7 +329,7 @@ inline void writePinCensusSymbolRows( std::FILE* f, const IngestResult& ing, con
 {
     for( std::size_t i = 0; i < ing.symbols.size(); ++i )
     {
-        std::fprintf( f, "S\t%s\t%s\t%u\n", canon[ i ].c_str(), symTag( ing.symbols[ i ].kind ), unsigned( ing.symbols[ i ].line ) );
+        rw::emitTo( f, "S\t{}\t{}\t{}\n", canon[ i ].c_str(), symTag( ing.symbols[ i ].kind ), unsigned( ing.symbols[ i ].line )  );
     }
 }
 
@@ -342,32 +344,32 @@ inline bool writePinCensus( const char* path, const PinCensus& pc, const IngestR
     }
     const std::vector<std::string> canon = pinCensusIdentities( ing, root );
 
-    std::fprintf( f, "# ripwire pin-census v2\tC=kind\\tmech\\tpre\\tpost\\tflags\\tcaller_id\\tcallee\\ttargets(|-sep)\\tline\n" );
-    std::fprintf( f, "# line is the 1-based call-site line in the caller's file (v2, appended LAST so v1 readers are unchanged):\n" );
-    std::fprintf( f, "#   the key a SCIP occurrence joins on, so a coverage loss can be classified per site instead of guessed.\n" );
-    std::fprintf( f, "# O rows (only under --scip) are the SCIP oracle: O\\tcaller_id\\tcallee\\ttargets(|-sep)\n" );
-    std::fprintf( f, "#   a target of @external (a builtin / another package) or @nondef (an in-index parameter, local or\n" );
-    std::fprintf( f, "#   attribute ripwire extracts no symbol for) means SCIP resolved the site to something that is NOT a\n" );
-    std::fprintf( f, "#   ripwire definition — the index spoke, and disagrees with every in-repo target the C row names.\n" );
-    std::fprintf( f, "# S rows (v2) are the DEFINITION universe, one per symbol: S\\tid\\tkind\\tline — the def side of the\n" );
-    std::fprintf( f, "#   SCIP join (buildScipOverlay maps a SCIP definition to a symbol by exact file+line), listed in full.\n" );
-    std::fprintf( f, "# ids are path::scope::name#NODEID (path::name#NODEID when unscoped) — NEVER a bare name: the\n" );
-    std::fprintf( f, "#   handle is the join key and is stable across runs of one binary on one corpus, --scip or not.\n" );
-    std::fprintf( f, "# mech: unique|qualified|receiver-rule|cone|arity|locality|split|scip|binding|external|import — the stage that DECIDED the site\n" );
-    std::fprintf( f, "#   external (Phase 5): the external-name VETO refused the site — an EMPTY target list, no edge; the row is\n" );
-    std::fprintf( f, "#   scored right iff SCIP's answer is @external (the name was bound outside the indexed tree).\n" );
-    std::fprintf( f, "# flags: q=qualified r=receiver-rule c=cha-cone a=arity l=locality-tiebreak-fired m=es-import-binding (every stage that fired)\n" );
-    std::fprintf( f, "# rows are a FLOOR on call sites, not a total: a site that produced no edge (name undefined in-repo,\n" );
-    std::fprintf( f, "#   tier-3 non-unique drop, self-only tier) made no commitment and is deliberately absent.\n" );
+    rw::emitRaw( f, "# ripwire pin-census v2\tC=kind\\tmech\\tpre\\tpost\\tflags\\tcaller_id\\tcallee\\ttargets(|-sep)\\tline\n"  );
+    rw::emitRaw( f, "# line is the 1-based call-site line in the caller's file (v2, appended LAST so v1 readers are unchanged):\n"  );
+    rw::emitRaw( f, "#   the key a SCIP occurrence joins on, so a coverage loss can be classified per site instead of guessed.\n"  );
+    rw::emitRaw( f, "# O rows (only under --scip) are the SCIP oracle: O\\tcaller_id\\tcallee\\ttargets(|-sep)\n"  );
+    rw::emitRaw( f, "#   a target of @external (a builtin / another package) or @nondef (an in-index parameter, local or\n"  );
+    rw::emitRaw( f, "#   attribute ripwire extracts no symbol for) means SCIP resolved the site to something that is NOT a\n"  );
+    rw::emitRaw( f, "#   ripwire definition — the index spoke, and disagrees with every in-repo target the C row names.\n"  );
+    rw::emitRaw( f, "# S rows (v2) are the DEFINITION universe, one per symbol: S\\tid\\tkind\\tline — the def side of the\n"  );
+    rw::emitRaw( f, "#   SCIP join (buildScipOverlay maps a SCIP definition to a symbol by exact file+line), listed in full.\n"  );
+    rw::emitRaw( f, "# ids are path::scope::name#NODEID (path::name#NODEID when unscoped) — NEVER a bare name: the\n"  );
+    rw::emitRaw( f, "#   handle is the join key and is stable across runs of one binary on one corpus, --scip or not.\n"  );
+    rw::emitRaw( f, "# mech: unique|qualified|receiver-rule|cone|arity|locality|split|scip|binding|external|import — the stage that DECIDED the site\n"  );
+    rw::emitRaw( f, "#   external (Phase 5): the external-name VETO refused the site — an EMPTY target list, no edge; the row is\n"  );
+    rw::emitRaw( f, "#   scored right iff SCIP's answer is @external (the name was bound outside the indexed tree).\n"  );
+    rw::emitRaw( f, "# flags: q=qualified r=receiver-rule c=cha-cone a=arity l=locality-tiebreak-fired m=es-import-binding (every stage that fired)\n"  );
+    rw::emitRaw( f, "# rows are a FLOOR on call sites, not a total: a site that produced no edge (name undefined in-repo,\n"  );
+    rw::emitRaw( f, "#   tier-3 non-unique drop, self-only tier) made no commitment and is deliberately absent.\n"  );
 
     std::size_t mechCount[ kPinMechCount ] = {};
     writePinCensusDecisionRows( f, pc, canon, mechCount );
     writePinCensusOracleRows( f, pc, canon );
     writePinCensusSymbolRows( f, ing, canon );
-    std::fprintf( f, "# summary rows=%zu oracle_rows=%zu symbols=%zu", pc.rows(), pc.oraRows(), ing.symbols.size() );
+    rw::emitTo( f, "# summary rows={} oracle_rows={} symbols={}", pc.rows(), pc.oraRows(), ing.symbols.size()  );
     for( std::uint8_t m = 0; m < kPinMechCount; ++m )
     {
-        std::fprintf( f, " %s=%zu", pinMechName( m ), mechCount[ m ] );
+        rw::emitTo( f, " {}={}", pinMechName( m ), mechCount[ m ]  );
     }
     std::fputc( '\n', f );
     std::fclose( f );

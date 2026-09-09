@@ -1,4 +1,6 @@
 #pragma once
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
 
 // lintrules.h — user-extensible lint rules, ast-grep style (Wave 4 #2). Load a directory of YAML
 // rule files; each rule is a tree-sitter s-expression run through the EXISTING astQuery engine over
@@ -377,7 +379,7 @@ inline bool parseLintRuleFile( const std::string& path, std::string_view src, st
 
     const auto badLine = [ & ]( std::size_t lineNo, const char* why ) -> bool
     {
-        std::fprintf( stderr, "ripwire: lint-rules: %s:%zu: %s — file skipped\n", path.c_str(), lineNo + 1, why );
+        rw::emitTo( stderr, "ripwire: lint-rules: {}:{}: {} — file skipped\n", path.c_str(), lineNo + 1, why  );
         DEGRADED_PATH_ALERT( "lint-rules: malformed rule file skipped" );
         return false;
     };
@@ -621,7 +623,7 @@ inline std::vector<LintRule> loadLintRules( const std::string& dir )
         // No DEGRADED_PATH_ALERT (M7/F20): the caller REFUSES on an empty rule list, so the alert stamped a
         // "this run continued in a reduced mode" notice on stderr in front of a refusal that continued
         // nothing. The user-facing sentence is the whole message.
-        std::fprintf( stderr, "ripwire: --lint-rules: not a directory: %s\n", dir.c_str() );
+        rw::emitTo( stderr, "ripwire: --lint-rules: not a directory: {}\n", dir.c_str()  );
         return rules;
     }
 
@@ -653,7 +655,7 @@ inline std::vector<LintRule> loadLintRules( const std::string& dir )
     {
         // read the file
         std::FILE* fp = std::fopen( path.c_str(), "rb" );
-        if( fp == nullptr ) { std::fprintf( stderr, "ripwire: --lint-rules: cannot read %s — skipped\n", path.c_str() ); DEGRADED_PATH_ALERT( "lint-rules: unreadable file" ); continue; }
+        if( fp == nullptr ) { rw::emitTo( stderr, "ripwire: --lint-rules: cannot read {} — skipped\n", path.c_str()  ); DEGRADED_PATH_ALERT( "lint-rules: unreadable file" ); continue; }
         std::string buf;
         {
             std::fseek( fp, 0, SEEK_END );

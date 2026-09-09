@@ -629,7 +629,7 @@ inline bool refusePageValue( const char* flag, const char* s, bool isZeroAllowed
     }
     if( v > kPageValueMax )
     {
-        std::fprintf( stderr, "ripwire: %s=%s is out of range (the maximum is %ld) — e.g. %s=100\n", flag, s, kPageValueMax, flag );
+        rw::emitTo( stderr, "ripwire: {}={} is out of range (the maximum is {}) — e.g. {}=100\n", flag, s, kPageValueMax, flag  );
         return false;
     }
     out = int( v );

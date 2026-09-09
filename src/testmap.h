@@ -295,22 +295,36 @@ inline std::vector<TestRow> rankTestRows( const IngestResult& ing, std::span<con
 enum class EvDialect : std::uint8_t { Xml, Json, Text };
 inline std::string testRowEvidence( const TestRow& r, EvDialect d )
 {
-    static constexpr const char* kFlag[3] = { " %s=\"1\"", ",\"%s\":true", " [%s]" };
-    static constexpr const char* kHops[3] = { " hops=\"%u\"", ",\"hops\":%u", " [hops=%u]" };
-    const int   di = int( d );
+    // The dialect tables were arrays of printf FORMATS indexed at runtime, which std::format_string —
+    // consteval — cannot hold. Switching on the dialect instead keeps every format a literal at its own
+    // call site, so each one is compile-time checked; the three spellings are unchanged.
     std::string s;
     char        buf[ 48 ];
+    const auto  flagOf = [ & ]( const char* name )
+    {
+        switch( d )
+        {
+            case EvDialect::Xml:  rw::formatTo( buf, sizeof buf, " {}=\"1\"", name );   break;
+            case EvDialect::Json: rw::formatTo( buf, sizeof buf, ",\"{}\":true", name ); break;
+            case EvDialect::Text: rw::formatTo( buf, sizeof buf, " [{}]", name );       break;
+        }
+    };
     for( const auto& [ name, on ] : { std::pair{ "changed", r.changed }, std::pair{ "partner", r.partner } } )
     {
         if( on )
         {
-            std::snprintf( buf, sizeof buf, kFlag[di], name );
+            flagOf( name );
             s += buf;
         }
     }
     if( r.hops )
     {
-        std::snprintf( buf, sizeof buf, kHops[di], unsigned( r.hops ) );
+        switch( d )
+        {
+            case EvDialect::Xml:  rw::formatTo( buf, sizeof buf, " hops=\"{}\"", unsigned( r.hops ) );   break;
+            case EvDialect::Json: rw::formatTo( buf, sizeof buf, ",\"hops\":{}", unsigned( r.hops ) );   break;
+            case EvDialect::Text: rw::formatTo( buf, sizeof buf, " [hops={}]", unsigned( r.hops ) );     break;
+        }
         s += buf;
     }
     return s;

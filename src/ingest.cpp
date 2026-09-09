@@ -18,6 +18,8 @@
 #include "infra/fixedStr.h"    // rw::findByte — the NEON/SSE2 byte scan buildNewlineOffsets rides
 #include "lexindex.h"          // B0.1/B0.2: shared subtoken state machine + per-def lexical statistics builder
 #include "didyoumean.h"        // octocode F3: boundedEditDistance/nearestNameByEditDistance — the ONE near-miss
+#include "infra/emit.h" // rw::emitTo / emitRaw / formatTo — THE emitter and its siblings
+
                                 // primitive, reused for a --match query's node-kind tokens (see nearestNodeKindHint)
 #include "pattern.h"           // R2: the pattern surface's compiler + matcher — AstWalk::Pattern rides the shared file walk
 #include "preprocdead.h"       // #62: the ONE literal `#if 0` rule (shared with slice.h) — dead call sites never become edges
@@ -95,28 +97,28 @@ struct Dump
         {
             calls += gNodes[ p ].load();
         }
-        std::fprintf( stderr, "\n[fuseprobe] files_with_a_parsed_tree=%llu\n", (unsigned long long) files );
-        std::fprintf( stderr, "[fuseprobe] %-18s %13s %10s %8s\n", "pass", "visitor_calls", "files", "%files" );
+        rw::emitTo( stderr, "\n[fuseprobe] files_with_a_parsed_tree={}\n", (unsigned long long) files  );
+        rw::emitTo( stderr, "[fuseprobe] {:<18} {:>13} {:>10} {:>8}\n", "pass", "visitor_calls", "files", "%files"  );
         for( int p = 0; p < kPassCount; ++p )
         {
             const std::uint64_t f = gFiles[ p ].load();
-            std::fprintf( stderr, "[fuseprobe] %-18s %13llu %10llu %7.1f%%\n", kPassName[ p ], (unsigned long long) gNodes[ p ].load(),
-                          (unsigned long long) f, files ? 100.0 * double( f ) / double( files ) : 0.0 );
+            rw::emitTo( stderr, "[fuseprobe] {:<18} {:>13} {:>10} {:7.1f}%\n", kPassName[ p ], (unsigned long long) gNodes[ p ].load(),
+                          (unsigned long long) f, files ? 100.0 * double( f ) / double( files ) : 0.0  );
         }
         const std::uint64_t astProxy = gNodesMaxPass.load();
         const std::uint64_t pops     = gStreamPops.load();
-        std::fprintf( stderr, "[fuseprobe] visitor_calls=%llu  ast_size_proxy(sum of per-file max pass)=%llu\n",
-                      (unsigned long long) calls, (unsigned long long) astProxy );
-        std::fprintf( stderr, "[fuseprobe] STREAM_POPS=%llu  streams_per_node=%.2fx  <-- the number fusion moves\n",
-                      (unsigned long long) pops, astProxy ? double( pops ) / double( astProxy ) : 0.0 );
-        std::fprintf( stderr, "[fuseprobe] files by number of passes that SAW a node:\n" );
+        rw::emitTo( stderr, "[fuseprobe] visitor_calls={}  ast_size_proxy(sum of per-file max pass)={}\n",
+                      (unsigned long long) calls, (unsigned long long) astProxy  );
+        rw::emitTo( stderr, "[fuseprobe] STREAM_POPS={}  streams_per_node={:.2f}x  <-- the number fusion moves\n",
+                      (unsigned long long) pops, astProxy ? double( pops ) / double( astProxy ) : 0.0  );
+        rw::emitRaw( stderr, "[fuseprobe] files by number of passes that SAW a node:\n"  );
         for( int k = 0; k <= kPassCount; ++k )
         {
             const std::uint64_t f = gHist[ k ].load();
             if( f != 0 )
             {
-                std::fprintf( stderr, "[fuseprobe]   %d pass%s : %10llu files (%5.1f%%)\n", k, k == 1 ? " " : "es", (unsigned long long) f,
-                              files ? 100.0 * double( f ) / double( files ) : 0.0 );
+                rw::emitTo( stderr, "[fuseprobe]   {} pass{} : {:>10} files ({:5.1f}%)\n", k, k == 1 ? " " : "es", (unsigned long long) f,
+                              files ? 100.0 * double( f ) / double( files ) : 0.0  );
             }
         }
         std::fflush( stderr );
