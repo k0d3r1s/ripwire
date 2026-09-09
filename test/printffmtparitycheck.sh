@@ -99,7 +99,9 @@ hashfile(){
 # --pack-task is INCLUDED but routes through --for's ranker; it was probed across a commit before being
 # admitted, and if it ever flakes it is the first label to suspect and drop.
 LABELS="flagless lint lint_sarif lint_select lint_naming lint_catalog match pattern callers impact clones help \
-expand callees around uses path connect grep pack_signatures pack_task arch seams skipped recall exemplar lego notes bad_flag"
+expand callees around uses path connect grep pack_signatures pack_task arch seams skipped recall exemplar lego notes bad_flag \
+callers_json callees_json impact_json uses_json grep_json expand_missing callers_missing \
+safe_delete verify_layer graph_query callers_limit"
 
 # needsCorpus: 1 = prepend "test/fixture --no-cache"; 0 = a global verb that takes no positional path.
 needsCorpusFor(){
@@ -139,6 +141,27 @@ argvFor(){
         exemplar)        ARGV=( '--exemplar=compute a distance' );;
         lego)            ARGV=( --lego=Point );;
         notes)           ARGV=( --notes );;
+        # --json is a SECOND output path through the same file, and the brace-dense one: JSON emitters
+        # are where {{ }} escaping matters most, and a coverage run showed the XML labels never reach
+        # them. These two are the highest-value rows in the corpus per byte.
+        callers_json)    ARGV=( --callers=distance --json );;
+        callees_json)    ARGV=( --callees=distance --json );;
+        impact_json)     ARGV=( --impact=perimeter --json );;
+        # --json refusals: verbs that do not implement it must keep refusing in the same bytes.
+        uses_json)       ARGV=( --uses=distance --json );;
+        grep_json)       ARGV=( --grep=distance --json );;
+        # not-found refusals — the selectorNotFoundMessage path, 35 cold stderr sites' front door.
+        expand_missing)  ARGV=( --expand=nosuchsym );;
+        callers_missing) ARGV=( --callers=nosuchsym );;
+        # whole verbs in verbs_navigate.h that no other label reaches at all. (--slice was tried here
+        # too and REFUSED by the stamp screen below: it prints at="<sha>". The screen caught it on the
+        # very next widening after it was written, which is the argument for having it.)
+        safe_delete)     ARGV=( --safe-delete=distance );;
+        # verify_layer fences the one site in this conversion that was edited BY HAND (the converter
+        # emitted a double-wrapped string_view there and it was simplified back to the bare view).
+        verify_layer)    ARGV=( '--verify=reaches(distance,perimeter)' );;
+        graph_query)     ARGV=( --graph-query=kind:fn );;
+        callers_limit)   ARGV=( --callers=distance --limit=1 );;
         # the refusal path: an unknown flag must keep emitting the same stderr bytes and the same rc.
         bad_flag)        ARGV=( --no-such-flag-parity-probe );;
         *)               echo "printffmtparitycheck: unknown label '$1'" >&2; exit 2;;
