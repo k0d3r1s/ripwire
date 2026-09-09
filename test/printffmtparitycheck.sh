@@ -221,7 +221,25 @@ screenStamp(){
     return 0
 }
 
+# ── re-pinning, and why a WIDER fence makes a blind re-pin MORE dangerous ────────────────────────────
+# UPDATE_GOLDEN rewrites EVERY label, not the one you meant to move. At 12 labels that was survivable by
+# reading the diff; at 40 it is a real footgun, and the failure it invites is precise: an unrelated drift
+# gets absorbed under someone else's justification, and the manifest then certifies a bug as intended.
+# That is the same shape as a blind re-pin of test/qschemetrip.hash, one file over — except here it would
+# defeat the exact guarantee this gate exists to provide.
+#
+# So a re-pin REPORTS ITSELF. Before writing, the previous manifest is read; afterwards every label whose
+# hash or exit code moved is named with its old and new value, and the count of unchanged labels is stated
+# beside it. Set UPDATE_GOLDEN_EXPECT to the space-separated labels you INTEND to move and the gate exits 4
+# if the moved set differs — the cheap way to make "exactly one line, help, and nothing else" a check
+# rather than a promise.
+#
+# THE ORDER THAT MATTERS: run the gate FIRST and read which labels are red. Only then re-pin. A red you
+# have not explained is not a manifest that needs updating; for a printf-family conversion it is a revert
+# of the converting file, because the whole claim is that the bytes did not move.
 if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
+    prevManifest=""
+    [ -f "$MANIFEST" ] && prevManifest="$( cat "$MANIFEST" )"
     : >"$MANIFEST"
     screenFail=0
     for label in $LABELS; do
@@ -234,7 +252,43 @@ if [ "${UPDATE_GOLDEN:-0}" = "1" ]; then
         echo "  $MANIFEST was written anyway so you can see the damage, but DO NOT COMMIT IT."
         exit 3
     fi
-    echo "UPDATE_GOLDEN: wrote $MANIFEST ($( wc -l <"$MANIFEST" | tr -d ' ' ) verbs) — review the diff before committing"
+    moved=""; unchanged=0
+    if [ -n "$prevManifest" ]; then
+        while read -r pl prc pout perr; do
+            [ -n "$pl" ] || continue
+            newline="$( grep "^$pl " "$MANIFEST" | head -1 )"
+            if [ -z "$newline" ]; then
+                printf '  DROPPED %s (was in the previous manifest, not in LABELS any more)\n' "$pl"
+                moved="$moved $pl"
+                continue
+            fi
+            set -- $newline
+            if [ "$2" != "$prc" ] || [ "$3" != "$pout" ] || [ "$4" != "$perr" ]; then
+                moved="$moved $pl"
+                [ "$3" != "$pout" ] && printf '  MOVED %-16s STDOUT %s -> %s\n' "$pl" "$( printf %.8s "$pout" )" "$( printf %.8s "$3" )"
+                [ "$4" != "$perr" ] && printf '  MOVED %-16s STDERR %s -> %s\n' "$pl" "$( printf %.8s "$perr" )" "$( printf %.8s "$4" )"
+                [ "$2" != "$prc" ]  && printf '  MOVED %-16s exit   %s -> %s\n' "$pl" "$prc" "$2"
+            else
+                unchanged=$(( unchanged + 1 ))
+            fi
+        done <<EOF
+$prevManifest
+EOF
+    fi
+    moved="$( printf '%s' "$moved" | sed 's/^ *//' )"
+    echo "UPDATE_GOLDEN: wrote $MANIFEST ($( wc -l <"$MANIFEST" | tr -d ' ' ) verbs); moved={${moved:-none}}, $unchanged unchanged"
+    echo "  Read that list. It must be EXACTLY the labels you meant to move; anything else is a real change"
+    echo "  being absorbed under your justification."
+    if [ -n "${UPDATE_GOLDEN_EXPECT+x}" ]; then
+        want="$( printf '%s' "$UPDATE_GOLDEN_EXPECT" | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ *$//' )"
+        got="$(  printf '%s' "$moved"                | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ *$//' )"
+        if [ "$want" != "$got" ]; then
+            echo "printffmtparitycheck: MOVED SET MISMATCH — expected {$want}, got {$got}. The manifest was written;"
+            echo "  DO NOT COMMIT IT until the difference is explained."
+            exit 4
+        fi
+        echo "  UPDATE_GOLDEN_EXPECT matched: {$got}"
+    fi
     exit 0
 fi
 
