@@ -2395,14 +2395,27 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
                 // qp to qe after every append (once full, further appends write nothing and stay clamped).
                 // fmt is always a string literal at every call site below — the non-literal warning is
                 // an artifact of routing it through the lambda parameter
-                // format_to_n returns the ACTUAL end of what it wrote, already bounded by the n it was
-                // given, so the A4-F8 clamp above is now structural: there is no would-have-written
-                // length to add to qp and therefore no way to walk past qe. The -Wformat-security
-                // suppression goes with it — std::format_string keeps compile-time checking THROUGH the
-                // lambda parameter, which a const char* fmt could never do.
+                // rw::formatTo reproduces snprintf's contract EXACTLY, so the A4-F8 clamp below is kept
+                // verbatim: it is applied to the same would-have-written length, and truncation therefore
+                // happens at the same byte it always did.
+                //
+                // The obvious-looking rewrite — `qp = std::format_to_n( qp, qe - qp, ... ).out` — is WRONG,
+                // and wrong in a way no fixture catches. snprintf( p, S, ... ) writes at most S-1 characters
+                // PLUS a NUL; format_to_n( p, S, ... ) writes up to S and terminates nothing. It buys one
+                // extra byte of room and drops the terminator. Measured 2026-09-09: that version emitted a
+                // row carrying amp="1" where every previous release truncated it away, on test/ as the
+                // corpus. The byte fence was green throughout — the fixture's attribute strings never reach
+                // this 80-byte buffer, so only a differential run against the pre-conversion binary on a
+                // REAL tree exposed it.
+                //
+                // What the conversion does keep: -Wformat-security is gone, because std::format_string
+                // preserves compile-time checking THROUGH the lambda parameter where a const char* fmt
+                // could not.
                 const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                 {
-                    qp = std::format_to_n( qp, qe - qp, fmt, std::forward<A>( args )... ).out;
+                    const std::size_t avail = std::size_t( qe - qp );
+                    const std::size_t want  = rw::formatTo( qp, avail, fmt, std::forward<A>( args )... );
+                    qp = ( want < avail ) ? qp + want : qe;
                 };
                 // loc: physical line span — always meaningful (SIZE is the master variable — report it first).
                 if( s.loc > 0 )
@@ -3676,11 +3689,13 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
                 char qbuf[ 80 ];  qbuf[ 0 ] = '\0';
                 {
                     char* qp = qbuf; char* const qe = qbuf + sizeof( qbuf );
-                    // see the sibling appendf above: format_to_n's .out is already clamped to qe, so the
-                    // truncation overrun this lambda used to hand-guard against cannot arise.
+                    // see the sibling appendf above — including why the clamp is kept rather than replaced
+                    // by format_to_n's .out, which silently widens the buffer by one byte.
                     const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                     {
-                        qp = std::format_to_n( qp, qe - qp, fmt, std::forward<A>( args )... ).out;
+                        const std::size_t avail = std::size_t( qe - qp );
+                        const std::size_t want  = rw::formatTo( qp, avail, fmt, std::forward<A>( args )... );
+                        qp = ( want < avail ) ? qp + want : qe;
                     };
                     if( churnPerFile && f < churnPerFile->size() && (*churnPerFile)[f] > 0 )
                     {
@@ -3912,14 +3927,27 @@ inline void packSignatures( std::FILE* out, const IngestResult& ing, const std::
                 // truncation (the next size_t(qe-qp) underflows into an unbounded stack write). See site #1.
                 // fmt is always a string literal at every call site below — the non-literal warning is
                 // an artifact of routing it through the lambda parameter
-                // format_to_n returns the ACTUAL end of what it wrote, already bounded by the n it was
-                // given, so the A4-F8 clamp above is now structural: there is no would-have-written
-                // length to add to qp and therefore no way to walk past qe. The -Wformat-security
-                // suppression goes with it — std::format_string keeps compile-time checking THROUGH the
-                // lambda parameter, which a const char* fmt could never do.
+                // rw::formatTo reproduces snprintf's contract EXACTLY, so the A4-F8 clamp below is kept
+                // verbatim: it is applied to the same would-have-written length, and truncation therefore
+                // happens at the same byte it always did.
+                //
+                // The obvious-looking rewrite — `qp = std::format_to_n( qp, qe - qp, ... ).out` — is WRONG,
+                // and wrong in a way no fixture catches. snprintf( p, S, ... ) writes at most S-1 characters
+                // PLUS a NUL; format_to_n( p, S, ... ) writes up to S and terminates nothing. It buys one
+                // extra byte of room and drops the terminator. Measured 2026-09-09: that version emitted a
+                // row carrying amp="1" where every previous release truncated it away, on test/ as the
+                // corpus. The byte fence was green throughout — the fixture's attribute strings never reach
+                // this 80-byte buffer, so only a differential run against the pre-conversion binary on a
+                // REAL tree exposed it.
+                //
+                // What the conversion does keep: -Wformat-security is gone, because std::format_string
+                // preserves compile-time checking THROUGH the lambda parameter where a const char* fmt
+                // could not.
                 const auto appendf = [ & ]< class... A >( std::format_string<A...> fmt, A&&... args )
                 {
-                    qp = std::format_to_n( qp, qe - qp, fmt, std::forward<A>( args )... ).out;
+                    const std::size_t avail = std::size_t( qe - qp );
+                    const std::size_t want  = rw::formatTo( qp, avail, fmt, std::forward<A>( args )... );
+                    qp = ( want < avail ) ? qp + want : qe;
                 };
                 if( churnPerFile && f < churnPerFile->size() && (*churnPerFile)[f] > 0 )
                 {
