@@ -2341,14 +2341,21 @@ inline void serialize( std::FILE* out, const IngestResult& ing, const std::vecto
             }
 
             char ambs[ 48 ];  ambs[ 0 ] = '\0';   // "fast guessed K of this symbol's call targets — read source"
-            std::size_t ambLen = 0;               // amb= (≤ 17 B) then lpin= (≤ 18 B) in ONE buffer, each absent when 0
+            // amb= (≤ 17 B) then lpin= (≤ 18 B) in ONE buffer, each absent when 0. The cursor is the OUT
+            // POINTER, never a would-have-written length: lpin= is written AT the offset the first write
+            // ended, so a count an implementation computed rather than wrote would place it inside the
+            // half-written amb= attribute. Same defect class as the appendf clamps below.
+            char*       ap = ambs;
+            char* const ae = ambs + sizeof( ambs );
             if( const std::uint32_t ambK = counterAt( ambOut, id ); ambK > 0 )
             {
-                ambLen = std::size_t( rw::formatTo( ambs, sizeof( ambs ), " amb=\"{}\"", ambK  ) );
+                ap  = std::format_to_n( ap, ( ae - ap ) - 1, " amb=\"{}\"", ambK ).out;
+                *ap = '\0';
             }
             if( const std::uint32_t lpinK = counterAt( locPinOut, id ); lpinK > 0 )   // Phase 4: the disclosed locality pin
             {
-                rw::formatTo( ambs + ambLen, sizeof( ambs ) - ambLen, " lpin=\"{}\"", lpinK );
+                ap  = std::format_to_n( ap, ( ae - ap ) - 1, " lpin=\"{}\"", lpinK ).out;
+                *ap = '\0';
             }
 
             // PageRank k= is GLOBALLY volatile (any edit perturbs every rank) → omit it in --stable mode

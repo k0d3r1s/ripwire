@@ -235,8 +235,6 @@ NUMERIC_ONLY = {
     ( "src/quality.h", "name" ): 1,
     ( "src/recall.h", "scoreText" ): 1,
     ( "src/serialize.h", "...)" ): 1,
-    ( "src/serialize.h", "ambs" ): 1,
-    ( "src/serialize.h", "ambs + ambLen" ): 1,
     ( "src/serialize.h", "callsHdr" ): 2,
     ( "src/serialize.h", "cb" ): 1,
     ( "src/serialize.h", "changedAttr" ): 1,
@@ -389,7 +387,12 @@ if not bad:
 #            mentions 309 -> 313, rows unchanged at 91. The three clamps now call std::format_to_n directly
 #            and bound themselves by its OUT POINTER, so they are no longer rw::formatTo call sites; the
 #            buffer they write through is `p` (two sites) and serialize.h's `qp` row leaves with them.
-EXPECTED = { "mentions": 313, "calls": 210, "sites": 210, "rows": 91, "widthforms": 0 }
+#            2026-09-09 (the amb=/lpin= cursor stops reading a would-have-written length): calls 210 -> 208,
+#            mentions -> 311, rows 91 -> 89. That pair wrote amb= then lpin= AT THE OFFSET the first write
+#            reported, so a count an implementation computed rather than wrote placed lpin= inside the
+#            half-written amb=. It now cursors by std::format_to_n's out pointer, so `ambs` and
+#            `ambs + ambLen` are no longer rw::formatTo call sites and their rows leave with them.
+EXPECTED = { "mentions": 311, "calls": 208, "sites": 208, "rows": 89, "widthforms": 0 }
 #            2026-09-04 (capture-audit L6, H9): +1 call/+1 mention, sites/rows UNCHANGED — re-read, not
 #            re-counted. packConnect gained ONE snprintf into a new `char connectCeiling[32]` for the
 #            H9 ` max_tokens="%d"` ceiling disclosure: a single %d of a caller-supplied INTEGER, no %s,
