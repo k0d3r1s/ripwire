@@ -62,6 +62,26 @@ template<class... A> inline void emitTo( std::FILE* stream, std::format_string<A
 #endif
 
 
+// ── emitRaw — literal text, which is not a format string at all ──────────────────────────────────────
+// 353 of this tree's printf-family calls pass a string and NO arguments: help pages, legends, usage
+// banners, XML preambles. Routing those through emitTo would be worse than pointless — std::format_string
+// is CONSTEVAL, so every one of them would pay compile-time parsing for formatting that does not happen,
+// and the --help table proves the cost is not theoretical: at 114,985 characters it exceeds the
+// constant-evaluation budget outright and does not compile ("call to consteval function ... is not a
+// constant expression", measured 2026-09-09 with Apple clang 21).
+//
+// So literal text goes out as literal text. std::fputs is not a printf-family call — it has no format
+// string to get wrong — and it is what the std::format fallback arm above already writes through.
+//
+// THE TRAP WHEN CONVERTING INTO THIS: a printf format spells a literal percent as %%, and text passed to
+// fputs is no longer a format, so %% here would print TWO characters. Every %% must become a single % on
+// the way in. Braces are the mirror image: emitTo needs {{ and }} where this needs a bare { and }. Getting
+// either backwards is invisible at the call site and shows up in generated documentation.
+template<class S> inline void emitRaw( std::FILE* stream, const S& text )
+{
+    std::fputs( text, stream );
+}
+
 // ── formatTo — snprintf's SHAPE, kept ────────────────────────────────────────────────────────────────
 // std::snprintf's other half of this tree renders into a CALLER-OWNED char buffer rather than a stream,
 // so emitTo is the wrong tool for it: routing those sites through std::format and a std::string would
