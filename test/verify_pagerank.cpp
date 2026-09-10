@@ -62,8 +62,8 @@ TEST_CASE( "double PageRank numeric, dangling, and top-K contracts" )
     {
         const sparseCsr<float> csr( 0, 0, 0 );
         std::vector<double> rank;
-        const unsigned iterationCount = rw::pageRankDouble( csr, {}, {}, rank, preciseConfig );
-        const bool isEmptyBoundaryValid = iterationCount == 0 && rank.empty();
+        const rw::PageRankRun run = rw::pageRankDouble( csr, {}, {}, rank, preciseConfig );
+        const bool isEmptyBoundaryValid = run.iterationCount == 0 && run.hasConverged && rank.empty();
         CHECK_MESSAGE( isEmptyBoundaryValid, "empty PageRank boundary failed" );
     }
 
