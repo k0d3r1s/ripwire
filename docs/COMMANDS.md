@@ -1502,9 +1502,9 @@ $ ./build/ripwire . --for="pagerank power iteration" --detail=2
 
 ### `--pack-signatures`
 
-**Answers:** body-elided decl skeletons — ~72-90% fewer element bytes than the same symbols' full --expand bodies (roughly 80% at the top-50 sigs payload cap — the sigs payload is top-50 whatever --top-k is set to, and --top-k's own default is 200), measured at top-10/50/100 on this repo with the corpus-root prefix subtracted from both sides: that prefix repeats inside every element, is charged in both forms, and is not what this elides — count it and the figure becomes a function of how deep your checkout sits.
+**Answers:** decl skeletons with the bodies cut — ~62-80% fewer element bytes than the same symbols' full --expand bodies, about 71% at top-50 (the sigs payload is always top-50, whatever --top-k says).
 
-test/showcasecapturecheck.sh (C) re-derives this range from the SAME repo every run and fails on drift. The share RISES with the result size. Like the --format=columnar sibling, a small result can invert it — a signature plus its doc comment can be bigger than a short body.
+The saving GROWS with the result size, and a small one can invert it: a signature plus its doc comment can outweigh a short body. Measured on this repo at top-10/50/100 with the root prefix taken off both sides — it repeats in every element and is not what this elides, so counting it would make the figure depend on how deep your checkout sits. test/showcasecapturecheck.sh re-derives the range every run and fails on drift.
 
 **Try it**
 
@@ -4306,7 +4306,7 @@ $ ./build/ripwire . --callers=rankGraphTeleport --format=bogus
 (empty)
 ```
 
-**Shaped by:** `--top-k`, `--pack-signatures`, `--json`, `--limit`
+**Shaped by:** `--top-k`, `--json`, `--limit`
 
 **Caveats (stated by the binary):**
 
@@ -4327,7 +4327,7 @@ $ ./build/ripwire . --callers=rankGraphTeleport --format=bogus
 (empty)
 ```
 
-**Shaped by:** `--top-k`, `--pack-signatures`, `--json`, `--limit`
+**Shaped by:** `--top-k`, `--json`, `--limit`
 
 ### `--legend=full|compact`
 
