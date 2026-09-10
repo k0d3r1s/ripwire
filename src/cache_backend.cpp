@@ -404,6 +404,11 @@ bool parseGitAuthority( const std::string_view authority, std::string& host, std
         port = std::string( authority.substr( colon + 1 ) );
         return true;
     }
+    if( colon != std::string_view::npos )
+    {
+        error = "Git remote IPv6 authorities must be bracketed for Redis project identity";
+        return false;
+    }
     host = std::string( authority );
     return true;
 }
