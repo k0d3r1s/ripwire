@@ -4,6 +4,7 @@
 
 #include "model.h"
 #include "cache_backend.h"          // immutable cache selection + per-root Redis project identity
+#include "redis_client.h"           // hidden self-exec resolver helper dispatch before normal startup
 #include "nextverb.h"              // P3 (L7): next= on every enumerated root (the verbs_*.h fragments read it from here)
 #include "infra/stdinline.h"       // R4: readByteSafeLine — the ONE byte-safe stdin line reader (--from-trace=- / --batch=-)
 #include "ingest.h"
@@ -2874,6 +2875,12 @@ static int runWithCompactLegend( const rw::Config& cfg, char** argv )
 int main( int argc, char** argv )
 {
     using namespace rw;
+
+    const int resolverHelperResult = runRedisResolverHelperIfRequested( argc, argv );
+    if( resolverHelperResult >= 0 )
+    {
+        return resolverHelperResult;
+    }
 
     if( argc >= 2 && std::string_view( argv[1] ) == "wrap" )
     { // adoption recipe (subcommand, not a flag)

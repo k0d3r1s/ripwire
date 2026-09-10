@@ -18,12 +18,14 @@ no(){ printf '  FAIL  %s\n' "$*"; fail=1; }
 cat > "$TMP/redis_client_gate.cpp" <<'CPP'
 #include "redis_client.h"
 
+#include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <sys/wait.h>
+#include <thread>
 #include <vector>
 
 namespace rw
@@ -31,11 +33,13 @@ namespace rw
 struct RedisClientTestPeer
 {
     static void injectEintr() { RedisClient::injectEintrForTesting(); }
+    static void injectEintr( const std::string_view call, const unsigned count ) { RedisClient::injectRepeatedEintrForTesting( call, count ); }
     static void resolverDelay( const std::uint32_t milliseconds ) { RedisClient::setResolverDelayForTesting( milliseconds ); }
     static void resolverAddresses( std::vector<std::string> addresses ) { RedisClient::setResolverAddressesForTesting( std::move( addresses ) ); }
     static void peerMismatch() { RedisClient::setPeerMismatchForTesting(); }
     static void unixPathSwap() { RedisClient::setUnixPathSwapForTesting(); }
     static void unsafeUnixOwner() { RedisClient::setUnsafeUnixOwnerForTesting(); }
+    static void noSigPipeFailure() { RedisClient::setNoSigPipeFailureForTesting(); }
 };
 }
 
@@ -50,6 +54,11 @@ int printFailure( const rw::RedisResult& result )
 
 int main( int argc, char** argv )
 {
+    const int resolverHelperResult = rw::runRedisResolverHelperIfRequested( argc, argv );
+    if( resolverHelperResult >= 0 )
+    {
+        return resolverHelperResult;
+    }
     if( argc < 6 )
     {
         return 64;
@@ -90,6 +99,14 @@ int main( int argc, char** argv )
     {
         return printFailure( client.command( { "SET", argv[6], argv[7] } ) );
     }
+    if( mode == "set-expiring" && argc == 8 )
+    {
+        return printFailure( client.command( { "SET", argv[6], argv[7], "EX", "2" } ) );
+    }
+    if( mode == "set-delete" && argc == 8 )
+    {
+        return printFailure( client.pipeline( { { "SET", argv[6], argv[7] }, { "DEL", "handshake-guard" } } ) );
+    }
     if( mode == "get" && argc == 7 )
     {
         const rw::RedisResult result = client.command( { "GET", argv[6] } );
@@ -119,6 +136,16 @@ int main( int argc, char** argv )
         rw::RedisClientTestPeer::injectEintr();
         return printFailure( client.command( { "PING" } ) );
     }
+    if( mode == "eintr-family" && argc == 7 )
+    {
+        rw::RedisClientTestPeer::injectEintr( argv[6], 1000000 );
+        return printFailure( client.command( { "PING" } ) );
+    }
+    if( mode == "nosigpipe-failure" )
+    {
+        rw::RedisClientTestPeer::noSigPipeFailure();
+        return printFailure( client.command( { "PING" } ) );
+    }
     if( mode == "resolver-delay" )
     {
         rw::RedisClientTestPeer::resolverDelay( 300 );
@@ -127,6 +154,31 @@ int main( int argc, char** argv )
         const bool hasNoChild = waitpid( -1, nullptr, WNOHANG ) == -1 && errno == ECHILD;
         std::cout << ( hasNoChild ? "reaped\n" : "child-leak\n" );
         return printFailure( result );
+    }
+    if( mode == "concurrent-dns" )
+    {
+        std::atomic<unsigned> failures{ 0 };
+        std::vector<std::thread> threads;
+        for( unsigned threadIndex = 0; threadIndex < 8; ++threadIndex )
+        {
+            threads.emplace_back( [&client, &failures]() {
+                for( unsigned requestIndex = 0; requestIndex < 4; ++requestIndex )
+                {
+                    if( !client.command( { "PING" } ) )
+                    {
+                        ++failures;
+                    }
+                }
+            } );
+        }
+        for( std::thread& thread : threads )
+        {
+            thread.join();
+        }
+        errno = 0;
+        const bool hasNoChild = waitpid( -1, nullptr, WNOHANG ) == -1 && errno == ECHILD;
+        std::cout << ( hasNoChild ? "reaped\n" : "child-leak\n" );
+        return failures == 0 && hasNoChild ? 0 : 1;
     }
     if( mode == "remote-resolution" )
     {
@@ -208,10 +260,76 @@ print(int(sys.argv[1]) + 2)
 PY
 }
 
+command_log_has_argument_since()
+{
+    local log_json
+    log_json="$( admin '{"op":"command_log"}' )"
+    python3 - "$log_json" "$@" <<'PY'
+import base64, json, struct, sys
+document = json.loads(sys.argv[1])
+start = int(sys.argv[2])
+targets = {value.encode() for value in sys.argv[3:]}
+for row in document["commands"]:
+    if row["index"] < start:
+        continue
+    record = base64.b64decode(row["record"], validate=True)
+    offset = 0
+    count = struct.unpack_from("!I", record, offset)[0]
+    offset += 4
+    arguments = []
+    for _ in range(count):
+        size = struct.unpack_from("!I", record, offset)[0]
+        offset += 4
+        arguments.append(record[offset:offset + size])
+        offset += size
+    assert offset == len(record)
+    if targets.intersection(arguments):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 if "$CLIENT" "$TCP" gate-user gate-password 500 basic >"$TMP/basic.out" 2>"$TMP/basic.err"; then ok "TCP AUTH SELECT binary command and ordered pipeline"; else no "TCP basic transport failed"; fi
 if "$CLIENT" "$UNIX" gate-user gate-password 500 basic >"$TMP/unix.out" 2>"$TMP/unix.err"; then ok "Unix socket AUTH SELECT and binary replies"; else no "Unix socket transport failed"; fi
 if "$CLIENT" "$TCP" gate-user gate-password 500 eintr >"$TMP/eintr.out" 2>&1; then ok "EINTR retries preserve the operation deadline"; else no "injected EINTR was not retried"; fi
 if "$CLIENT" "$UNIX" gate-user gate-password 500 eintr >"$TMP/eintr-unix.out" 2>&1; then ok "Unix path and connect EINTR retries preserve the deadline"; else no "Unix EINTR was not retried"; fi
+
+for eintr_case in getsockopt getpeername
+do
+    set +e
+    "$CLIENT" "$TCP" gate-user gate-password 40 eintr-family "$eintr_case" >"$TMP/eintr-$eintr_case.out" 2>&1
+    eintr_rc=$?
+    set -e
+    if [ "$eintr_rc" -ne 0 ] && grep -q 'redis tcp: timeout' "$TMP/eintr-$eintr_case.out"; then
+        ok "repeated $eintr_case EINTR is classified as timeout"
+    else
+        no "repeated $eintr_case EINTR was not classified as timeout"
+    fi
+done
+for eintr_case in stat lstat unix-peer
+do
+    set +e
+    "$CLIENT" "$UNIX" gate-user gate-password 40 eintr-family "$eintr_case" >"$TMP/eintr-$eintr_case.out" 2>&1
+    eintr_rc=$?
+    set -e
+    if [ "$eintr_rc" -ne 0 ] && grep -q 'redis unix: timeout' "$TMP/eintr-$eintr_case.out"; then
+        ok "repeated $eintr_case EINTR is classified as timeout"
+    else
+        no "repeated $eintr_case EINTR was not classified as timeout"
+    fi
+done
+
+NOSIGPIPE_START="$( next_index )"
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 100 nosigpipe-failure >"$TMP/nosigpipe.out" 2>&1
+nosigpipe_rc=$?
+set -e
+if [ "$nosigpipe_rc" -ne 0 ] && grep -q 'redis tcp: connect' "$TMP/nosigpipe.out" \
+    && ! command_log_has_argument_since "$NOSIGPIPE_START" PING; then
+    ok "SO_NOSIGPIPE setup failure closes before request writes"
+else
+    no "SO_NOSIGPIPE setup failure was ignored"
+fi
 
 set +e
 "$CLIENT" "redis://resolver.test:$TCP_PORT/0" '' '' 40 resolver-delay >"$TMP/resolver-delay.out" 2>&1
@@ -227,6 +345,14 @@ if [ "$resolver_delay_rc" -ne 0 ] && grep -q 'reaped' "$TMP/resolver-delay.out" 
     ok "name resolution is deadline-bounded and resolver child is reaped"
 else
     no "resolver deadline or child reap failed"
+fi
+if grep -Fq 'fork(' src/redis_client.cpp; then
+    no "resolver still executes code through fork in a multithreaded process"
+elif "$CLIENT" "redis://localhost:$TCP_PORT/0" gate-user gate-password 1000 concurrent-dns >"$TMP/concurrent-dns.out" 2>&1 \
+    && grep -q 'reaped' "$TMP/concurrent-dns.out"; then
+    ok "concurrent same-process DNS resolution is bounded and reaps helpers"
+else
+    no "concurrent resolver calls deadlocked failed or leaked children"
 fi
 if [ "$remote_rc" -ne 0 ] && grep -q 'redis tcp: connect' "$TMP/remote.out"; then ok "hostname resolving only remote is refused"; else no "remote-only hostname was not refused"; fi
 if [ "$mixed_rc" -ne 0 ] && grep -q 'redis tcp: connect' "$TMP/mixed.out"; then ok "mixed loopback and remote resolution is refused"; else no "mixed hostname was not refused"; fi
@@ -261,6 +387,87 @@ set +e
 auth_rc=$?
 set -e
 if [ "$auth_rc" -ne 0 ] && grep -q 'redis tcp: auth WRONGPASS' "$TMP/auth.out" && ! grep -q 'wrong-password\|gate-user' "$TMP/auth.out"; then ok "authentication failure is classified and redacted"; else no "authentication failure diagnostic is unsafe"; fi
+
+admin '{"op":"replace","db":0,"key":"aGFuZHNoYWtlLWd1YXJk","value":"Z3VhcmQtdmFsdWU="}' >/dev/null
+SELECT_START="$( next_index )"
+admin "{\"op\":\"server_error\",\"command_index\":$(( SELECT_START + 1 )),\"message\":\"select denied\"}" >/dev/null
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 300 set-delete select-blocked value >"$TMP/select-order.out" 2>&1
+select_order_rc=$?
+set -e
+if [ "$select_order_rc" -ne 0 ] && ! command_log_has_argument_since "$SELECT_START" select-blocked handshake-guard \
+    && [ "$( "$CLIENT" "redis://127.0.0.1:$TCP_PORT/0" gate-user gate-password 500 get handshake-guard )" = guard-value ] \
+    && [ "$( "$CLIENT" "redis://127.0.0.1:$TCP_PORT/0" gate-user gate-password 500 get select-blocked )" = nil ]; then
+    ok "SELECT is validated before user command bytes are sent"
+else
+    no "user commands crossed a rejected SELECT handshake"
+fi
+
+AUTH_START="$( next_index )"
+admin "{\"op\":\"auth_error\",\"command_index\":$AUTH_START,\"message\":\"auth denied\"}" >/dev/null
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 300 set-delete auth-blocked value >"$TMP/auth-order.out" 2>&1
+auth_order_rc=$?
+set -e
+if [ "$auth_order_rc" -ne 0 ] && ! command_log_has_argument_since "$AUTH_START" auth-blocked handshake-guard \
+    && [ "$( "$CLIENT" "redis://127.0.0.1:$TCP_PORT/0" gate-user gate-password 500 get handshake-guard )" = guard-value ] \
+    && [ "$( "$CLIENT" "redis://127.0.0.1:$TCP_PORT/0" gate-user gate-password 500 get auth-blocked )" = nil ]; then
+    ok "AUTH is validated before SELECT or user command bytes are sent"
+else
+    no "user commands crossed a rejected AUTH handshake"
+fi
+
+RAW_AUTH_START="$( next_index )"
+admin "{\"op\":\"auth_error\",\"command_index\":$RAW_AUTH_START,\"message\":\"auth state denied\"}" >/dev/null
+python3 - "$TCP_PORT" <<'PY'
+import socket, sys, time
+s = socket.create_connection(("127.0.0.1", int(sys.argv[1])))
+s.sendall(b"*3\r\n$4\r\nAUTH\r\n$9\r\ngate-user\r\n$13\r\ngate-password\r\n"
+          b"*3\r\n$3\r\nSET\r\n$14\r\nraw-auth-state\r\n$7\r\nmutated\r\n")
+s.recv(4096)
+time.sleep(0.05)
+s.close()
+PY
+if command_log_has_argument_since "$RAW_AUTH_START" raw-auth-state \
+    && [ "$( "$CLIENT" "redis://127.0.0.1:$TCP_PORT/0" gate-user gate-password 500 get raw-auth-state )" = nil ]; then
+    ok "fail_before auth_error does not authenticate the connection"
+else
+    no "auth_error marked the connection authenticated"
+fi
+
+admin "{\"op\":\"server_error\",\"command_index\":$( user_command_index ),\"message\":\"blocked mutation\"}" >/dev/null
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 300 set before-state untouched >"$TMP/before-state.out" 2>&1
+before_state_rc=$?
+set -e
+if [ "$before_state_rc" -ne 0 ] && [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get before-state )" = nil ]; then
+    ok "fail_before returns before command execution and preserves state"
+else
+    no "fail_before allowed a command mutation"
+fi
+
+admin "{\"op\":\"fail_before\",\"command_index\":$( user_command_index ),\"mode\":\"malformed\"}" >/dev/null
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 300 set before-malformed untouched >"$TMP/before-malformed.out" 2>&1
+before_malformed_rc=$?
+set -e
+if [ "$before_malformed_rc" -ne 0 ] && grep -q 'redis tcp: protocol' "$TMP/before-malformed.out" \
+    && [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get before-malformed )" = nil ]; then
+    ok "all fail_before transport modes run before command execution"
+else
+    no "fail_before malformed mode executed or accepted the command"
+fi
+
+admin "{\"op\":\"fail_after\",\"command_index\":$( user_command_index ),\"mode\":\"drop\"}" >/dev/null
+set +e
+"$CLIENT" "$TCP" gate-user gate-password 300 set after-state committed >"$TMP/after-state.out" 2>&1
+after_state_rc=$?
+set -e
+if [ "$after_state_rc" -ne 0 ] && [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get after-state )" = committed ]; then
+    ok "fail_after occurs after command execution and preserves mutation"
+else
+    no "fail_after did not remain distinct from fail_before"
+fi
 
 SERVER_ECHO_SENTINEL='SERVER_ECHO_SENTINEL_71d2'
 admin "{\"op\":\"auth_error\",\"command_index\":$( next_index ),\"message\":\"$SERVER_ECHO_SENTINEL\"}" >/dev/null
@@ -353,15 +560,16 @@ config_rc=$?
 set -e
 if [ "$config_rc" -ne 0 ] && grep -q 'redis tcp: config' "$TMP/config.out" && ! grep -q "$SECRET\|gate-user\|gate-password" "$TMP/config.out"; then ok "invalid endpoint diagnostics are fully redacted"; else no "configuration diagnostic leaked input"; fi
 
-if [ -s "$TMP/commands.bin" ]; then ok "stub writes a length-delimited binary command log"; else no "stub command log is empty"; fi
-if admin '{"op":"command_log"}' | grep -q 'commands'; then ok "admin socket returns command log"; else no "admin command log operation failed"; fi
 admin '{"op":"replace","db":2,"key":"YWRtaW4ta2V5","value":"YWRtaW4tdmFsdWU="}' >/dev/null
 if [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get admin-key )" = admin-value ]; then ok "admin replace operation is deterministic"; else no "admin replace operation failed"; fi
 admin '{"op":"delete","key":"YWRtaW4ta2V5"}' >/dev/null
+if [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get admin-key )" = nil ]; then ok "admin delete removes the selected record"; else no "admin delete did not remove the record"; fi
+"$CLIENT" "$TCP" gate-user gate-password 500 set-expiring clock-key clock-value >/dev/null 2>&1
 admin '{"op":"advance_clock","seconds":10}' >/dev/null
-admin '{"op":"release","barrier":"unused"}' >/dev/null
-ok "admin clock delete and named release operations are accepted"
+if [ "$( "$CLIENT" "$TCP" gate-user gate-password 500 get clock-key )" = nil ]; then ok "admin clock advancement expires records"; else no "admin clock did not expire the record"; fi
+if [ "$( admin '{"op":"release","barrier":"unused"}' )" = '{"ok":true}' ]; then ok "admin named release returns a validated response"; else no "admin named release response was invalid"; fi
 
+CONCURRENT_START="$( next_index )"
 CONCURRENT_PIDS=
 for concurrent_index in 1 2 3 4
 do
@@ -373,10 +581,57 @@ for concurrent_pid in $CONCURRENT_PIDS
 do
     wait "$concurrent_pid" || concurrent_ok=0
 done
-if [ "$concurrent_ok" -eq 1 ] && admin '{"op":"command_log"}' | python3 -c 'import base64,json,struct,sys; d=json.load(sys.stdin); rows=d["commands"]; assert [r["index"] for r in rows] == list(range(d["next_index"])); decoded=[base64.b64decode(r["record"]) for r in rows]; assert all(len(b)>=4 and struct.unpack_from("!I",b)[0]>=1 for b in decoded)'; then
-    ok "concurrent command indexes and length-delimited log are deterministic"
+LOG_JSON="$( admin '{"op":"command_log"}' )"
+if [ "$concurrent_ok" -eq 1 ] && python3 - "$LOG_JSON" "$TMP/commands.bin" "$CONCURRENT_START" <<'PY'
+import base64, json, struct, sys
+
+document = json.loads(sys.argv[1])
+raw = open(sys.argv[2], "rb").read()
+concurrent_start = int(sys.argv[3])
+
+def parse_command(record):
+    assert len(record) >= 4
+    count = struct.unpack_from("!I", record, 0)[0]
+    assert 1 <= count <= 4096
+    offset = 4
+    arguments = []
+    for _ in range(count):
+        assert offset + 4 <= len(record)
+        size = struct.unpack_from("!I", record, offset)[0]
+        offset += 4
+        assert offset + size <= len(record)
+        arguments.append(record[offset:offset + size])
+        offset += size
+    assert offset == len(record)
+    return arguments
+
+frames = []
+offset = 0
+while offset < len(raw):
+    assert offset + 4 <= len(raw)
+    size = struct.unpack_from("!I", raw, offset)[0]
+    offset += 4
+    assert size >= 8 and offset + size <= len(raw)
+    frames.append(raw[offset:offset + size])
+    offset += size
+assert offset == len(raw)
+
+rows = document["commands"]
+assert [row["index"] for row in rows] == list(range(document["next_index"]))
+records = [base64.b64decode(row["record"], validate=True) for row in rows]
+assert records == frames
+commands = [parse_command(record) for record in records]
+concurrent = commands[concurrent_start:]
+assert len(concurrent) == 12
+assert sum(command[0].upper() == b"AUTH" for command in concurrent) == 4
+assert sum(command[0].upper() == b"SELECT" for command in concurrent) == 4
+set_keys = sorted(command[1] for command in concurrent if command[0].upper() == b"SET")
+assert set_keys == [b"concurrent-1", b"concurrent-2", b"concurrent-3", b"concurrent-4"]
+PY
+then
+    ok "binary and admin logs have complete deterministic indexed concurrent frames"
 else
-    no "concurrent command log indexes are inconsistent"
+    no "binary or admin command log framing is inconsistent"
 fi
 
 [ "$fail" -eq 0 ] || { echo "FAILURES ABOVE"; exit 1; }

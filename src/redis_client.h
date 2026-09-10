@@ -32,6 +32,8 @@ struct RedisResult
 
 struct RedisClientTestPeer;
 
+[[nodiscard]] int runRedisResolverHelperIfRequested( int argumentCount, char** arguments );
+
 class RedisClient
 {
   public:
@@ -47,11 +49,13 @@ class RedisClient
     static RedisResult parseReplyChunksForTesting( const std::vector<std::string_view>& chunks );
     static bool encodedBatchSizeForTesting( const std::vector<std::vector<std::string_view>>& commands, std::size_t& size );
     static void injectEintrForTesting();
+    static void injectRepeatedEintrForTesting( std::string_view call, unsigned count );
     static void setResolverDelayForTesting( std::uint32_t milliseconds );
     static void setResolverAddressesForTesting( std::vector<std::string> addresses );
     static void setPeerMismatchForTesting();
     static void setUnixPathSwapForTesting();
     static void setUnsafeUnixOwnerForTesting();
+    static void setNoSigPipeFailureForTesting();
     [[nodiscard]] RedisResult execute( const std::vector<std::vector<std::string_view>>& commands ) const;
 
     RedisCacheConfig config_;

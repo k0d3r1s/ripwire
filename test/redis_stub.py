@@ -198,9 +198,7 @@ def execute_redis_command(state, command, selected, authenticated):
     return response, selected, authenticated
 
 
-def apply_before_fault(response, fault):
-    if not fault:
-        return response
+def before_fault_response(fault):
     mode = fault.get("mode")
     if mode == "auth_error":
         return b"-WRONGPASS " + fault.get("message", "forced").encode() + b"\r\n"
@@ -210,7 +208,14 @@ def apply_before_fault(response, fault):
         return bulk(base64.b64decode(fault["value"]))
     if mode == "server_error":
         return b"-ERR " + fault.get("message", "forced").encode() + b"\r\n"
-    return response
+    return b"-ERR forced before execution\r\n"
+
+
+def send_before_fault(handler, fault):
+    if fault.get("mode") == "drop":
+        return False
+    transport_fault = fault if fault.get("mode") in ("malformed", "truncate", "delay", "slow_drip") else None
+    return handler.send_response(before_fault_response(fault), transport_fault)
 
 
 def serve_redis_connection(handler):
@@ -230,11 +235,12 @@ def serve_redis_connection(handler):
         if barrier is not None:
             barrier.wait()
         before = state.take_fault("before", command_index)
-        if before and before.get("mode") == "drop":
-            return
+        if before:
+            if not send_before_fault(handler, before):
+                return
+            continue
         with state.lock:
             response, selected, authenticated = execute_redis_command(state, command, selected, authenticated)
-        response = apply_before_fault(response, before)
         if not handler.send_response(response, state.take_fault("after", command_index)):
             return
 
