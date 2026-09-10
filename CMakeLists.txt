@@ -495,6 +495,7 @@ add_ts_object(tstsx ${ts_typescript_SOURCE_DIR}/tsx/src)
 # diagnostics.cpp (VERIFY/DEGRADED handlers link partner) are the foundation.
 set(RIPWIRE_SRCS
   src/cache_backend.cpp
+  src/redis_client.cpp
   src/ingest.cpp
   src/pagerank.cpp
   src/infra/diagnostics.cpp
@@ -638,6 +639,13 @@ if(RIPWIRE_TESTS)
     src/infra/diagnostics.cpp)
   target_include_directories(ripwire_test_radix PRIVATE src/infra third_party src)
   add_test(NAME ripwire.radix COMMAND ripwire_test_radix)
+
+  add_executable(ripwire_test_redis_protocol
+    test/redis_protocol_unit.cpp
+    src/redis_client.cpp)
+  target_include_directories(ripwire_test_redis_protocol PRIVATE src/infra third_party src)
+  target_link_libraries(ripwire_test_redis_protocol PRIVATE doctest::doctest Threads::Threads)
+  add_test(NAME ripwire.redis_protocol COMMAND ripwire_test_redis_protocol)
 endif()
 
 # ---- self-profiling build (src/infra/profileScope.h): -DRIPWIRE_PROFILE=ON ----
@@ -724,9 +732,9 @@ set(RIPWIRE_RUNTIME_LINK_TARGETS ripwire_probe ripwire)
 # the only ones the libstdc++ header exemption below has anything to say about (the grammars are C).
 set(RIPWIRE_OWNED_CXX_TARGETS ripwire_probe ripwire)
 if(RIPWIRE_TESTS)
-  list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix)
-  list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix)
-  list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix)
+  list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
+  list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
+  list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
 endif()
 # G1's `integer` is a CLANG-ONLY UBSan group (unsigned-integer-overflow, implicit-*-truncation,
 # implicit-integer-sign-change — the defined-but-suspicious conversions, not UB). GCC has no such group
