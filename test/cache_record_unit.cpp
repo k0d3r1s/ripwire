@@ -1,7 +1,62 @@
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
+#if !defined( CACHE_RECORD_BASELINE_DRIVER )
+#include <tree_sitter/api.h>
+#include <atomic>
+#include <new>
+#include <string_view>
+
+namespace
+{
+std::atomic<unsigned> transientFailureMode{ 0 };
+std::atomic<unsigned> transientFailuresObserved{ 0 };
+thread_local bool transientFailureTarget = false;
+thread_local unsigned transientMatchCount = 0;
+thread_local const TSTree* transientFailureTree = nullptr;
+
+TSTree* parseWithTransientFailure( TSParser* parser, const TSTree* oldTree, const char* source, std::uint32_t length )
+{
+    transientFailureTarget = std::string_view( source, length ).find( "transient_failure_target" ) != std::string_view::npos;
+    transientMatchCount = 0;
+    if( transientFailureTarget && transientFailureMode.load() == 1 )
+    {
+        ++transientFailuresObserved;
+        return nullptr;
+    }
+    TSTree* tree = ts_parser_parse_string( parser, oldTree, source, length );
+    if( transientFailureTarget ) { transientFailureTree = tree; }
+    else if( tree == transientFailureTree ) { transientFailureTree = nullptr; }   // allocator reused a previously freed target tree
+    return tree;
+}
+
+void execWithTransientFailure( TSQueryCursor* cursor, const TSQuery* query, TSNode node )
+{
+    transientFailureTarget = node.tree == transientFailureTree;
+    transientMatchCount = 0;
+    ts_query_cursor_exec( cursor, query, node );
+}
+
+bool nextMatchWithTransientFailure( TSQueryCursor* cursor, TSQueryMatch* match )
+{
+    if( transientFailureTarget && transientFailureMode.load() == 2 && transientMatchCount++ == 1 )
+    {
+        ++transientFailuresObserved;
+        throw std::bad_alloc();   // after one match was extracted: partial facts must never be published
+    }
+    return ts_query_cursor_next_match( cursor, match );
+}
+}
+#define ts_parser_parse_string parseWithTransientFailure
+#define ts_query_cursor_exec execWithTransientFailure
+#define ts_query_cursor_next_match nextMatchWithTransientFailure
+#endif
 #include "ingest.cpp"
+#if !defined( CACHE_RECORD_BASELINE_DRIVER )
+#undef ts_parser_parse_string
+#undef ts_query_cursor_exec
+#undef ts_query_cursor_next_match
+#endif
 
 #include <array>
 #include <bit>
@@ -622,6 +677,48 @@ static bool rejectTrailingRedisRecord( const rw::CacheContext& cache )
     return true;
 }
 
+// Force either side of the deferred-query seam without sleeps: queries are installed, while the
+// worker's enqueue signal and its already-open query gate are controlled independently.
+static std::size_t runFailedExtraction( const char* root, const rw::CacheContext& cache, bool deferred )
+{
+    const std::vector<std::string> files{ std::string( root ) + "/file0.cpp", std::string( root ) + "/file1.cpp", std::string( root ) + "/file2.cpp" };
+    rw::HashMap<std::string, rw::FileFacts> cached;
+    rw::IngestFileScan scan = rw::makeFileScan( files );
+    rw::QueryPrewarm prewarm;
+    rw::prewarmTagsQueries( files, cached, -1, scan, prewarm );
+    rw::installCompiledQueriesAndOpenGate( prewarm );
+    prewarm.ready.store( !deferred );
+    std::atomic<bool> gateReady{ true }, dirty{ false };
+    rw::QueryReadyGate gate{ &gateReady, &prewarm.mutex, &prewarm.cv };
+    std::atomic<std::size_t> nextFile{ 0 }, reparsedCount{ 0 };
+    const std::vector<rw::FileFacts*> candidates( files.size(), nullptr ), hits( files.size(), nullptr );
+    std::vector<rw::RawFacts> facts( 1 );
+    const std::vector<std::size_t> order;
+    std::vector<std::string> sourceDigests( files.size() );
+    rw::ParsePoolShared shared{ files, cached, scan, prewarm, gate, candidates, hits, facts, order,
+                                nextFile, dirty, reparsedCount, files.size(), true, false, sourceDigests };
+    transientFailureMode.store( 2 );
+    rw::runParseWorker( shared, 0 );
+    const rw::RawFacts& raw = facts[0];
+    const rw::CacheEncodeInput input{ scan.hash, scan.statSize, scan.statMtime, scan.statCtime, scan.health,
+                                      raw.defs, raw.refs, raw.incs, raw.binds, raw.ffis, raw.routeDefs, raw.routeUses, raw.constOpens, false };
+    rw::saveIngestCache( cache, root, files, sourceDigests, input );
+    return reparsedCount.load();
+}
+
+static std::pair<std::size_t, bool> runRedisIngestRequest( const char* root, const rw::CacheContext& cache, std::string_view line )
+{
+    transientFailureMode.store( line == "fail-parse" ? 1u : 0u );
+    transientFailuresObserved.store( 0 );
+    if( line == "fail-extract" || line == "fail-pending" )
+    {
+        const std::size_t reparsed = runFailedExtraction( root, cache, line == "fail-pending" );
+        return { reparsed, transientFailuresObserved.load() == 1 };
+    }
+    const rw::IngestResult result = rw::ingest( root, {}, cache, rw::kDefaultMaxFileBytes, false );
+    return { result.reparsedFiles, transientFailuresObserved.load() == ( line == "fail-parse" ? 1u : 0u ) };
+}
+
 static int runRedisIngestDriver( const char* root )
 {
     std::shared_ptr<const rw::CachePolicy> policy;
@@ -638,8 +735,9 @@ static int runRedisIngestDriver( const char* root )
             std::cout << "rejected\n" << std::flush;
             continue;
         }
-        const rw::IngestResult result = rw::ingest( root, {}, cache, rw::kDefaultMaxFileBytes, false );
-        std::cout << result.reparsedFiles << '\n' << std::flush;
+        const auto [ reparsed, faultObserved ] = runRedisIngestRequest( root, cache, line );
+        if( !faultObserved ) { return 5; }
+        std::cout << reparsed << '\n' << std::flush;
     }
     return 0;
 }

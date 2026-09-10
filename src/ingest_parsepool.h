@@ -237,8 +237,49 @@ struct ParsePoolShared
     std::size_t                      nfiles;
     bool                             needsCacheHash;
     bool                             captureValueUses;
-    std::vector<std::string>&        redisSourceDigests;
+    std::vector<std::string>&        redisSourceDigests;    // nonempty only after complete successful extraction
 };
+
+inline void markRedisParseComplete( ParsePoolShared& sh, std::size_t fileId, std::string_view bytes )
+{
+    if( !sh.redisSourceDigests.empty() )
+    {
+        sh.scan.hash[fileId] = contentHash64( bytes );
+        sh.redisSourceDigests[fileId] = redisKeyHash( bytes );
+    }
+}
+
+// Deferred files own their exception boundary: a failed capture may leave this run's partial
+// facts, but cannot authorize an immutable cache record or prevent healthy queued files completing.
+template<typename BuildLex>
+inline void flushPendingParsedFiles( std::vector<PendingParsedFile>& pendingParsed, ParsePoolShared& sh,
+                                     RawFacts& out, TSQueryCursor* cursor, const BuildLex& buildLex )
+{
+    if( pendingParsed.empty() ) { return; }
+    PROFILE_SCOPE_DESCRIBE( "ingest/parse-pool: flush pending parsed tags" );
+    waitForQueryPrewarm( &sh.gate );
+    for( PendingParsedFile& pending : pendingParsed )
+    {
+        if( pending.le == nullptr || pending.tree == nullptr ) { continue; }
+        try
+        {
+            const TSNode root = ts_tree_root_node( pending.tree );
+            const std::size_t firstNewDefIndex = out.defs.size();
+            if( captureTagsFacts( cursor, *pending.le, pending.fileId, pending.bytes, root, out.defs, out.refs ) )
+            {
+                buildLex( out.defs, firstNewDefIndex, pending.bytes );
+                markRedisParseComplete( sh, pending.fileId, pending.bytes );
+            }
+        }
+        catch( ... )
+        {
+            DEGRADED_PATH_ALERT( "ingest: deferred extraction exception on a file — not cached" );
+        }
+        ts_tree_delete( pending.tree );
+        pending.tree = nullptr;
+    }
+    pendingParsed.clear();
+}
 
 // one worker's whole life: grab files off the shared cursor, reuse cache hits, parse+capture misses,
 // queueing parsed trees while the tags queries still compile. Body moved verbatim from the lambda in
@@ -289,29 +330,7 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
     std::size_t pendingParsedBytes = 0;
     const auto flushPendingParsed = [ & ]()
     {
-        if( pendingParsed.empty() )
-        {
-            return;
-        }
-
-        {
-            PROFILE_SCOPE_DESCRIBE( "ingest/parse-pool: flush pending parsed tags" );
-            waitForQueryPrewarm( &sh.gate );
-            for( PendingParsedFile& pending : pendingParsed )
-            {
-                if( pending.le == nullptr || pending.tree == nullptr )
-                {
-                    continue;
-                }
-                const TSNode root = ts_tree_root_node( pending.tree );
-                const std::size_t firstNewDefIndex = out.defs.size();
-                captureTagsFacts( cursor, *pending.le, pending.fileId, pending.bytes, root, out.defs, out.refs );
-                buildLexForNewDefs( out.defs, firstNewDefIndex, pending.bytes );   // B0.2: bytes still in memory
-                ts_tree_delete( pending.tree );
-                pending.tree = nullptr;
-            }
-        }
-        pendingParsed.clear();
+        flushPendingParsedFiles( pendingParsed, sh, out, cursor, buildLexForNewDefs );
         pendingParsedBytes = 0;
     };
 
@@ -421,12 +440,6 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
                 }
             }
 
-            if( !sh.redisSourceDigests.empty() )
-            {
-                sh.redisSourceDigests[fileId] = redisKeyHash( bytes );
-                sh.scan.hash[fileId] = contentHash64( bytes );
-            }
-
             // hostile/degenerate JSON guard — must run BEFORE the parse (that is the whole point);
             // the skip is a degrade with a one-line stderr note, matching the house skip style.
             if( le->lang == Lang::Json && jsonNestsTooDeep( bytes ) )
@@ -508,9 +521,15 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
                     waitForQueryPrewarm( &sh.gate );
                 }
                 const std::size_t firstNewDefIndex = out.defs.size();
-                captureTagsFacts( cursor, *le, static_cast<std::uint32_t>( fileId ), bytes, root, out.defs, out.refs );
+                if( !captureTagsFacts( cursor, *le, static_cast<std::uint32_t>( fileId ), bytes, root, out.defs, out.refs ) )
+                {
+                    continue;
+                }
                 buildLexForNewDefs( out.defs, firstNewDefIndex, bytes );   // B0.2: bytes still in memory
             }
+            // A digest is publication eligibility, not just evidence that bytes were read. Every
+            // parse, side/tag capture and rich lexical pass must finish before an immutable SET NX.
+            markRedisParseComplete( sh, fileId, bytes );
         }
         catch( ... )
         {

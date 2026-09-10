@@ -1384,18 +1384,18 @@ inline std::vector<PreprocDeadRange> preprocDeadRangesFor( const LangEntry& le, 
     return collectPreprocDeadRanges( root, src );
 }
 
-void captureTagsFacts( TSQueryCursor* cursor, const LangEntry& le, std::uint32_t fileId, std::string_view src, TSNode root,
+bool captureTagsFacts( TSQueryCursor* cursor, const LangEntry& le, std::uint32_t fileId, std::string_view src, TSNode root,
                        std::vector<RawDef>& defs, std::vector<RawRef>& refs )
 {
     if( cursor == nullptr )
     {
-        return;
+        return false;
     }
 
     TSQuery* query = compiledQueryFor( le );   // shared immutable query, compiled once per grammar (pre-warmed) — do NOT delete
     if( query == nullptr )
     {
-        return;
+        return false;
     }
 
     const std::size_t firstDefOfFile = defs.size();   // member-variable round: foldFieldDefs' window (below)
@@ -1857,6 +1857,7 @@ void captureTagsFacts( TSQueryCursor* cursor, const LangEntry& le, std::uint32_t
     }
 
     foldFieldDefs( defs, firstDefOfFile, le.lang );   // member-variable round: owner-less fields drop, Python fields fold to one per (class, name)
+    return true;
 }
 
 }   // namespace — ingest_sidecap.h section of ingest.cpp

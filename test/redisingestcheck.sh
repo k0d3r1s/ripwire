@@ -8,7 +8,7 @@ cmake -Wno-deprecated -S "$ROOT" -B "$BUILD_DIR" -DRIPWIRE_TESTS=ON \
     -DRIPWIRE_CACHE_RECORD_SOURCE_ROOT="$ROOT" -DRIPWIRE_CACHE_RECORD_BASELINE=OFF >/dev/null
 cmake --build "$BUILD_DIR" --target ripwire_test_cache_record -j2 >/dev/null
 python3 - "$ROOT" "$BIN" "$BUILD_DIR/ripwire_test_cache_record" <<'PY'
-import base64, json, os, pathlib, re, socket, struct, subprocess, sys, tempfile, time
+import base64, hashlib, json, os, pathlib, re, socket, struct, subprocess, sys, tempfile, time
 
 root, binary, driver = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve(), pathlib.Path(sys.argv[3]).resolve()
 with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
@@ -53,6 +53,17 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
             assert found and int(found[1]) == expected, (str(checkout), expected, result.stderr.decode())
             return result
         def keys(): return command(b"SCAN", b"0")[1]
+        def logged_commands(start):
+            commands = []
+            for entry in admin("command_log")["commands"]:
+                if entry["index"] < start: continue
+                raw = base64.b64decode(entry["record"])
+                count = struct.unpack("!I", raw[:4])[0]; offset = 4; args = []
+                for _ in range(count):
+                    size = struct.unpack("!I", raw[offset:offset + 4])[0]; offset += 4
+                    args.append(raw[offset:offset + size]); offset += size
+                commands.append((entry["index"], args))
+            return commands
         def records(): return [k for k in keys() if b":record:" in k]
         def descriptors(): return [k for k in keys() if b":descriptor:" in k]
         def ttl():
@@ -68,6 +79,25 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
             return path
         a = fixture("a", "https://example.com/team/project.git")
         b = fixture("checkout-b", "git@example.com:team/project.git")
+        for mode in ("fail-pending", "fail-parse", "fail-extract"):
+            failed = fixture(mode, f"https://example.com/team/{mode}.git")
+            (failed / "file0.cpp").write_text("int transient_failure_target() { return 7; }\n")
+            before_failure = set(keys())
+            injected = subprocess.run([str(driver), "--redis-ingest-driver", str(failed)], env=env,
+                                      input=mode + "\n", text=True, capture_output=True)
+            assert injected.returncode == 0 and injected.stdout.strip() == "3", (mode, injected.returncode, injected.stderr)
+            failure_keys = set(keys()) - before_failure
+            assert len(failure_keys) == 4, (mode, "failed extraction published a record or descriptor", failure_keys)
+            failed_path_hash = hashlib.sha256(b"file0.cpp").hexdigest().encode()
+            assert not any(failed_path_hash in key for key in failure_keys), (mode, failure_keys)
+            healthy = run(failed, 1)
+            assert b"transient_failure_target" in healthy.stdout
+            assert healthy.stdout == run(failed, 3, "--no-cache").stdout
+            healthy_peer = fixture(mode + "-peer", f"git@example.com:team/{mode}.git")
+            (healthy_peer / "file0.cpp").write_bytes((failed / "file0.cpp").read_bytes())
+            assert run(healthy_peer, 0).stdout == healthy.stdout == run(failed, 0).stdout
+            for key in set(keys()) - before_failure: command(b"DEL", key)
+        print("  PASS  parse and immediate/deferred extraction failures never publish; healthy hosts reparse then share")
         cold = run(a, 3)
         assert len(records()) == 3 and len(descriptors()) == 3, "Redis ingest records/descriptors were not stored"
         warm = run(b, 0)
@@ -170,22 +200,41 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
         print("  PASS  before/after record and descriptor faults never leave persistent keys or dangling descriptors")
         # Hold A's first SET while B completes. A then becomes descriptor last writer, but both
         # source variants must remain directly addressable and the overlapping record must verify.
-        race_env = dict(env, RIPWIRE_REDIS_PROJECT="race")
-        index = admin("command_log")["next_index"]
-        admin("hold", barrier="writer-a", command_index=index + 1)
-        writer = subprocess.Popen([str(binary), ".", "--cache=redis", "--no-stable"], cwd=a, env=race_env,
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        for _ in range(1000):
-            if admin("command_log")["next_index"] >= index + 2: break
-            time.sleep(0.005)
-        else: raise AssertionError("writer did not reach barrier")
-        run(b, 3, extra={"RIPWIRE_REDIS_PROJECT": "race"})
-        admin("release", barrier="writer-a")
-        stdout, stderr = writer.communicate(timeout=10)
-        assert writer.returncode == 0, stderr
-        assert run(a, 0, extra={"RIPWIRE_REDIS_PROJECT": "race"}).stdout == stdout
-        assert run(b, 0, extra={"RIPWIRE_REDIS_PROJECT": "race"}).stdout == changed.stdout
-        print("  PASS  overlapping writers preserve all content records regardless of descriptor last writer")
+        for attempt in range(3):
+            race_options = dict(RIPWIRE_REDIS_PROJECT=f"race-{attempt}", RIPWIRE_REDIS_TIMEOUT_MS="10000")
+            race_env = dict(env, **race_options)
+            index = admin("command_log")["next_index"]
+            barrier = f"writer-a-{attempt}"
+            admin("hold", barrier=barrier, command_index=index + 1)
+            writer = subprocess.Popen([str(binary), ".", "--cache=redis", "--no-stable"], cwd=a, env=race_env,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                for _ in range(1000):
+                    if admin("command_log")["next_index"] >= index + 2: break
+                    time.sleep(0.005)
+                else: raise AssertionError("writer did not reach barrier")
+                held = logged_commands(index)
+                assert len(held) == 2 and held[0][1][0] == b"MGET", held
+                held_key = held[1][1][1]
+                assert held[1][1][0] == b"SET" and b":record:" in held_key, held
+                assert command(b"GET", held_key) is None and writer.poll() is None
+                other = run(b, 3, extra=race_options)
+                assert b"Redis cache" not in other.stderr, other.stderr
+                assert command(b"GET", held_key) is not None and writer.poll() is None
+                completed = logged_commands(index + 2)
+                assert sum(args[0] == b"SET" for _, args in completed) == 6, completed
+                after_b = admin("command_log")["next_index"]
+            finally:
+                admin("release", barrier=barrier)
+                stdout, stderr = writer.communicate(timeout=15)
+            assert writer.returncode == 0 and b"Redis cache" not in stderr, stderr
+            assert b"reparsed=3 reused=0" in stderr, stderr
+            after_release = logged_commands(after_b)
+            assert any(args[0] == b"GET" and args[1] == held_key for _, args in after_release), after_release
+            assert sum(args[0] == b"SET" and b":descriptor:" in args[1] for _, args in after_release) == 3, after_release
+            assert run(a, 0, extra=race_options).stdout == stdout
+            assert run(b, 0, extra=race_options).stdout == changed.stdout
+        print("  PASS  three ordered overlapping writer races preserve every record without timeouts")
         bulk = fixture("bulk", "https://example.com/team/bulk.git")
         for i in range(3, 39): (bulk / f"file{i}.cpp").write_text(f"int bulk{i}() {{ return {i}; }}\n")
         bulk_output = run(bulk, 39).stdout
