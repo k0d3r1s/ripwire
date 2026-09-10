@@ -44,6 +44,7 @@ namespace rw
 // ─── configuration handed down from the CLI (main.cpp parses --listen/--mcp-token/--allow-remote-edits) ──
 struct McpHttpConfig
 {
+    std::shared_ptr<const CachePolicy> cachePolicy;
     std::string              listenSpec;             // the raw --listen value: "HOST:PORT" or bare "PORT" (loopback)
     std::string              token;                  // shared bearer (--mcp-token or RIPWIRE_MCP_TOKEN); "" = none
     std::string              root;                   // roots[0] — the single-root workspace to pin
@@ -489,6 +490,7 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
     }
 
     McpDispatchPolicy policy;
+    policy.cachePolicy = cfg.cachePolicy;
     policy.pinnedRoot   = pinnedRoot;
     policy.editsAllowed = cfg.allowRemoteEdits;   // remote edits refused by default
 
@@ -557,7 +559,11 @@ inline int runMcpHttp( const McpHttpConfig& cfg )
 
     // warm the pinned index once so the first client request is fast (and any parse issue surfaces now, on
     // stderr, not mid-request). getIndex caches process-wide; failure degrades to a lazy first-request build.
-    (void)getIndex( pinnedRoot );
+    if( !pinnedRoot.empty() )
+    {
+        mcpUseCachePolicy( policy.cachePolicy );
+        (void)getIndex( pinnedRoot );
+    }
 
     const bool authRequired = !cfg.token.empty();
 

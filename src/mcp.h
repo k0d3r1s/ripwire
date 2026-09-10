@@ -308,6 +308,7 @@ inline bool isMcpProtocolVersionSupported( std::string_view version ) noexcept
 //     when pinnedRootHasGit is true, since the disclosure it feeds is never rendered in that case.
 struct McpDispatchPolicy
 {
+    std::shared_ptr<const CachePolicy> cachePolicy;
     std::string pinnedRoot;         // "" = stdio (no pinning); non-empty = the remote transport's fixed workspace key/root
     bool        editsAllowed = true;   // false = refuse the 3 edit verbs (remote default)
     std::string defaultRoot;        // "" = no stdio startup root given; else the canonicalized `ripwire <root> --mcp` root
@@ -541,6 +542,7 @@ struct McpDispatchResult
 inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, bool stable, bool noRedact,
                                           const McpDispatchPolicy& policy )
 {
+    mcpUseCachePolicy( policy.cachePolicy );
     McpDispatchResult out;
     {
         // ── §H3: the FRAMING GATE — before a single field is read out of this frame ─────────────────────────
@@ -1170,6 +1172,11 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                 {
                     resp = errResultMsg( -32602, rootErr );
                     pathsUsageError = true;   // reuse the skip-flag: no dispatch, no getIndex(), no byte written
+                }
+                else if( const std::string cacheErr = mcpRedisRootRefusal( path ); !cacheErr.empty() )
+                {
+                    resp = errResultMsg( -32602, cacheErr );
+                    pathsUsageError = true;
                 }
             }
 
@@ -1914,7 +1921,8 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
 // own `path` exactly as before. `root` mirrors `McpHttpConfig::root`; `roots` mirrors `::roots` — same
 // plumbing as runMcpHttp(), just building McpDispatchPolicy::defaultRoot instead of ::pinnedRoot (D3/D4).
 inline int runMcp( int topK, bool stable = false, bool noRedact = false,
-                   const std::string& root = std::string(), const std::vector<std::string>& roots = {} )
+                   const std::string& root = std::string(), const std::vector<std::string>& roots = {},
+                   std::shared_ptr<const CachePolicy> cachePolicy = {} )
 {
     // MEASURE-FIRST instrumentation (RIPWIRE_MCP_TIMINGS, off by default → byte-identical + silent server, same
     // discipline as ingest.cpp's RIPWIRE_CACHE_STATS). When set, emit ONE stderr TSV line per handled request:
@@ -1944,6 +1952,7 @@ inline int runMcp( int topK, bool stable = false, bool noRedact = false,
     }
 
     McpDispatchPolicy policy;      // stdio: no HARD workspace pinning (pinnedRoot stays ""), edit verbs allowed
+    policy.cachePolicy = std::move( cachePolicy );
     policy.defaultRoot = defaultRoot;   // "" unless a startup root was given — see the comment above
 
     // R2a (the 2026-08-12 usage mine): with NO startup root, resolve the launch cwd ONCE as the softest

@@ -12,6 +12,7 @@
 
 #include "model.h"
 #include "ingest.h"
+#include "cache_backend.h"
 #include "graph.h"
 #include "serialize.h"
 #include "search.h"
@@ -516,6 +517,7 @@ namespace mcpdetail
 struct McpIndex
 {
     std::string                       root;
+    std::shared_ptr<const CachePolicy> cachePolicy;   // immutable configuration only; foreground ingest owns Redis clients
     bool                              valid = false;
     IngestResult                      ing;
     Graph                             g;
@@ -589,6 +591,27 @@ inline std::string mcpCachePath( const std::string& root )
     std::snprintf( name, sizeof( name ), "ripwire-mcp-%016llx.cache", (unsigned long long)h );
 
     return quality::resolveCacheBlobPath( quality::cacheDirLadder(), name );
+}
+
+// Derive identity only after the concrete root is known (including each part of a workspace).
+// The ingest cache adapter creates operation-local clients; no socket or reply enters McpIndex.
+inline IngestResult mcpIngestRoot( const std::string& root, const std::shared_ptr<const CachePolicy>& policy,
+                                   std::string_view label = {} )
+{
+    if( !policy || policy->kind != CacheBackendKind::Redis )
+    {
+        return ingest( root.c_str(), {}, mcpCachePath( root ), kDefaultMaxFileBytes, true, label );
+    }
+    CacheContext context;
+    std::string error;
+    if( !cacheContextForRoot( policy, root, true, context, error ) )
+    {
+        // A root's repository identity can disappear between validation and rebuild. Source remains
+        // authoritative; never substitute a filesystem cache or print remote/configuration bytes.
+        DEGRADED_PATH_ALERT( "MCP Redis root identity unavailable; ingesting source without a local cache" );
+        return ingest( root.c_str(), {}, std::string_view{}, kDefaultMaxFileBytes, true, label );
+    }
+    return ingest( root.c_str(), {}, context, kDefaultMaxFileBytes, true, label );
 }
 
 // working-set (Cody-style): FNV-1a-64 of the SORTED changed-file id list, so the hash is a pure
@@ -809,6 +832,18 @@ inline McpIndex& mcpIndexSlot()
 {
     static McpIndex ix;
     return ix;
+}
+
+// Both transports serialize foreground dispatch. Changing immutable configuration invalidates the
+// held index; requests using the same policy preserve watcher and freshness state.
+inline void mcpUseCachePolicy( const std::shared_ptr<const CachePolicy>& policy )
+{
+    McpIndex& ix = mcpIndexSlot();
+    if( ix.cachePolicy != policy )
+    {
+        ix.valid = false;
+        ix.cachePolicy = policy;
+    }
 }
 
 // force the cached index stale — the next getIndex() call rebuilds from disk. Called after a successful edit
@@ -1051,6 +1086,13 @@ inline std::uint64_t gitHeadMoveToken( const std::string& root )
 // above, gated first on the file count so a small repo does not even probe git.
 inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t fileCount )
 {
+    // Temporary Task 5 boundary: Task 6 must route BOTH HEAD ingest and derived snapshot storage
+    // before Redis mode may launch this filesystem warmer. Check before probing HEAD or spawning.
+    const auto& policy = mcpIndexSlot().cachePolicy;
+    if( policy && policy->kind == CacheBackendKind::Redis )
+    {
+        return;
+    }
     if( fileCount < mcpPrefetchMinFiles() )
     {
         return; // (4) GO-at-scale: small repos never pay
@@ -1100,6 +1142,29 @@ inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t file
     } ).detach();
 }
 
+// Validate a newly selected Redis root before dispatch (including every root in a workspace key).
+// An already-held root keeps the stat-only warm path; rebuild still derives its context afresh.
+inline std::string mcpRedisRootRefusal( const std::string& root )
+{
+    const McpIndex& ix = mcpIndexSlot();
+    if( !ix.cachePolicy || ix.cachePolicy->kind != CacheBackendKind::Redis || ( ix.valid && ix.root == root ) )
+    {
+        return {};
+    }
+    CacheContext context;
+    std::string error;
+    const auto workspace = mcpWorkspaceRegistry().find( root );
+    if( workspace != mcpWorkspaceRegistry().end() )
+    {
+        for( const WorkspaceRoot& part : workspace->second )
+        {
+            if( !cacheContextForRoot( ix.cachePolicy, part.arg, true, context, error ) ) { return error; }
+        }
+    }
+    else if( !cacheContextForRoot( ix.cachePolicy, root, true, context, error ) ) { return error; }
+    return {};
+}
+
 // the cached index for `root`, rebuilt only when stale (otherwise returned as-is, no parse, no graph rebuild).
 inline const McpIndex& getIndex( const std::string& root )
 {
@@ -1132,10 +1197,10 @@ inline const McpIndex& getIndex( const std::string& root )
     // touches the warm reuse that returned above.
     const McpRebuildBaseline a3Before = mcpRebuildBaseline( ix, isIncrementalPass );
 
-    // Multi-root workspace key (A11): per-root ingest (each with ITS OWN mcpCachePath blob — an edit in
-    // one root never reparses another) merged into one IngestResult; else the single-root path unchanged.
+    // Multi-root workspace key (A11): per-root cache context, then merge the independent ingests.
     const auto wsIt = mcpWorkspaceRegistry().find( root );
     const bool isWorkspace = wsIt != mcpWorkspaceRegistry().end() && wsIt->second.size() >= 2;
+    ix.cacheFile = ix.cachePolicy && ix.cachePolicy->kind == CacheBackendKind::Redis ? std::string{} : mcpCachePath( root );
     {
         // Phase-M: serialize this rebuild's ingest against a concurrent qsnap-prefetch worker (ingest() writes
         // single-writer process-global query caches — §2b). Uncontended on the single request thread; only the
@@ -1149,15 +1214,13 @@ inline const McpIndex& getIndex( const std::string& root )
             parts.reserve( roots.size() );
             for( const WorkspaceRoot& r : roots )
             {
-                parts.push_back( ingest( r.arg.c_str(), {}, mcpCachePath( r.arg ), kDefaultMaxFileBytes, true, r.label ) );
+                parts.push_back( mcpIngestRoot( r.arg, ix.cachePolicy, r.label ) );
             }
-            ix.cacheFile = mcpCachePath( root );                      // key-derived (unused by the per-root ingests)
             ix.ing = mergeWorkspaceIngests( roots, parts );
         }
         else
         {
-            ix.cacheFile = mcpCachePath( root );
-            ix.ing  = ingest( root.c_str(), {}, ix.cacheFile );          // warm rebuild via content-hash cache
+            ix.ing = mcpIngestRoot( root, ix.cachePolicy );
         }
     }
     ix.g    = buildGraph( ix.ing );

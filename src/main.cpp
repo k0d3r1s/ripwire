@@ -3027,6 +3027,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
         if( !cfg.listen.empty() )
         {
             McpHttpConfig hc;
+            hc.cachePolicy = cachePolicy;
             hc.listenSpec = std::string( cfg.listen );
             hc.token      = std::string( cfg.mcpToken );
             if( hc.token.empty() )
@@ -3055,7 +3056,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
         {
             mcpRoots.emplace_back( r );
         }
-        return runMcp( cfg.topK, cfg.stable, cfg.noRedact, std::string( cfg.rootPath ), mcpRoots );   // P2-C: --mcp turns --stable on by default (set in parseArgs); A3-F3: the server redacts by default like the CLI
+        return runMcp( cfg.topK, cfg.stable, cfg.noRedact, std::string( cfg.rootPath ), mcpRoots, cachePolicy );   // P2-C: --mcp turns --stable on by default; A3-F3: redact like CLI
     }
 
     // ── multi-root workspace refusals: each cut verb refuses with ONE clear stderr
