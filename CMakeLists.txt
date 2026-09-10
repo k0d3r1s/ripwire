@@ -604,6 +604,12 @@ option(RIPWIRE_TESTS "build direct CSR and PageRank verification gates" OFF)
 if(RIPWIRE_TESTS)
   enable_testing()
 
+  # cache-record compatibility regeneration may point this one test at the exact pre-refactor source
+  # checkout. The ordinary test build uses this checkout and exercises the public record seams directly.
+  set(RIPWIRE_CACHE_RECORD_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH
+      "source checkout whose ingest.cpp supplies the cache-record codec test")
+  option(RIPWIRE_CACHE_RECORD_BASELINE "build the cache-record test as a legacy baseline extractor" OFF)
+
   # unit/property gates use a SHA-locked Doctest checkout — the exact v2.4.12 release commit,
   # vendored under third_party/deps/doctest (header + parts + the cmake scripts its CMakeLists reads).
   set(_ripwire_doctest_commit 1da23a3e8119ec5cce4f9388e91b065e20bf06f5)
@@ -646,6 +652,24 @@ if(RIPWIRE_TESTS)
   target_include_directories(ripwire_test_redis_protocol PRIVATE src/infra third_party src)
   target_link_libraries(ripwire_test_redis_protocol PRIVATE doctest::doctest Threads::Threads)
   add_test(NAME ripwire.redis_protocol COMMAND ripwire_test_redis_protocol)
+
+  add_executable(ripwire_test_cache_record
+    test/cache_record_unit.cpp
+    ${RIPWIRE_CACHE_RECORD_SOURCE_ROOT}/src/infra/diagnostics.cpp
+    ${RIPWIRE_TS_OBJECTS})
+  target_include_directories(ripwire_test_cache_record PRIVATE
+    ${RIPWIRE_CACHE_RECORD_SOURCE_ROOT}/src
+    ${tree_sitter_SOURCE_DIR}/lib/include
+    ${_ripwire_generated_dir}
+    src/infra
+    third_party
+    src)
+  target_link_libraries(ripwire_test_cache_record PRIVATE tree-sitter doctest::doctest Threads::Threads)
+  if(RIPWIRE_CACHE_RECORD_BASELINE)
+    target_compile_definitions(ripwire_test_cache_record PRIVATE CACHE_RECORD_BASELINE_DRIVER=1)
+  else()
+    add_test(NAME ripwire.cache_record COMMAND ripwire_test_cache_record)
+  endif()
 endif()
 
 # ---- self-profiling build (src/infra/profileScope.h): -DRIPWIRE_PROFILE=ON ----
@@ -732,9 +756,9 @@ set(RIPWIRE_RUNTIME_LINK_TARGETS ripwire_probe ripwire)
 # the only ones the libstdc++ header exemption below has anything to say about (the grammars are C).
 set(RIPWIRE_OWNED_CXX_TARGETS ripwire_probe ripwire)
 if(RIPWIRE_TESTS)
-  list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
-  list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
-  list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol)
+  list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
+  list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
+  list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
 endif()
 # G1's `integer` is a CLANG-ONLY UBSan group (unsigned-integer-overflow, implicit-*-truncation,
 # implicit-integer-sign-change — the defined-but-suspicious conversions, not UB). GCC has no such group

@@ -1298,6 +1298,11 @@ struct CacheDecodeOutput
     long long&                  fileCtime;
 };
 
+struct CacheDecodeScratch
+{
+    std::vector<std::uint64_t> fileDict;
+};
+
 // tiny native-endian binary (de)serializer (the cache is host-local, never shipped)
 struct ByteW
 {
@@ -1322,14 +1327,76 @@ struct ByteW
 struct ByteR
 {
     const char* p; const char* end; bool ok = true;
-    std::uint8_t  u8 () { if( p >= end ) { ok = false; return 0; } return std::uint8_t( *p++ ); }
-    std::uint32_t u32() { std::uint32_t v = 0; if( p + 4 > end ) { ok = false; return 0; } std::memcpy( &v, p, 4 ); p += 4; return v; }
-    std::uint64_t u64() { std::uint64_t v = 0; if( p + 8 > end ) { ok = false; return 0; } std::memcpy( &v, p, 8 ); p += 8; return v; }
-    std::string_view view() { const std::uint32_t n = u32(); if( !ok || p + n > end ) { ok = false; return {}; } std::string_view s( p, n ); p += n; return s; }
+    std::size_t remaining() const noexcept { return p <= end ? std::size_t( end - p ) : 0; }
+    const char* take( std::size_t n )
+    {
+        if( !ok || n > remaining() )
+        {
+            ok = false;
+            return nullptr;
+        }
+        const char* out = p;
+        p += n;
+        return out;
+    }
+    std::uint8_t u8()
+    {
+        const char* src = take( 1 );
+        return src ? std::uint8_t( *src ) : 0;
+    }
+    std::uint32_t u32()
+    {
+        std::uint32_t v = 0;
+        const char* src = take( sizeof( v ) );
+        if( src )
+        {
+            std::memcpy( &v, src, sizeof( v ) );
+        }
+        return v;
+    }
+    std::uint64_t u64()
+    {
+        std::uint64_t v = 0;
+        const char* src = take( sizeof( v ) );
+        if( src )
+        {
+            std::memcpy( &v, src, sizeof( v ) );
+        }
+        return v;
+    }
+    std::string_view view()
+    {
+        const std::uint32_t n = u32();
+        const char* src = take( n );
+        return src ? std::string_view( src, n ) : std::string_view{};
+    }
     std::string      str () { const std::string_view s = view(); return ok ? std::string( s ) : std::string{}; }
     bool rawInto( void* dst, std::size_t n )   // B0.2: bulk array read — overflow-safe bound, memcpy into caller storage
-    { if( !ok || std::size_t( end - p ) < n ) { ok = false; return false; } if( n ) { std::memcpy( dst, p, n ); p += n; } return true; }
+    {
+        const char* src = take( n );
+        if( !src )
+        {
+            return false;
+        }
+        if( n )
+        {
+            std::memcpy( dst, src, n );
+        }
+        return true;
+    }
 };
+
+inline bool cacheRecordCountFits( ByteR& r, std::uint32_t recordCount, std::size_t minRecordBytes ) noexcept
+{
+    VERIFY( minRecordBytes > 0 );
+    if( recordCount <= r.remaining() / minRecordBytes )
+    {
+        return true;
+    }
+    DEGRADED_PATH_ALERT( "ingest: cache record count exceeds remaining bytes — cache treated as corrupt" );
+    r.ok = false;
+    return false;
+}
 
 // withLex (B0.2 / v10 H3): the RICH family (captureValueUses=true) persists each def's doc/body subtoken
 // stats. v10 encoding: the FILE record carries a sorted per-file subtoken DICTIONARY (see saveCache), and
@@ -1611,17 +1678,6 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
     constexpr std::size_t kMinRouteDefRecordBytes = 13;   // B6.3: 1×u32 (line) + 1×u8 (method) + 2×str(len u32, empty)
     constexpr std::size_t kMinRouteUseRecordBytes = 13;   // B6.3: 2×u32 (startByte,line) + 1×u8 (method) + 1×str(len u32, empty)
     constexpr std::size_t kMinConstOpenRecordBytes = 13;  // parser version 82: 2×u32 (startByte,endByte) + 1×u8 (namespaceOnly) + 1×str(len u32, empty)
-    const auto countFits = [ &r ]( std::uint32_t recordCount, std::size_t minRecordBytes ) noexcept
-    {
-        if( recordCount <= std::size_t( r.end - r.p ) / minRecordBytes )
-        {
-            return true;
-        }
-        DEGRADED_PATH_ALERT( "ingest: cache record count exceeds remaining bytes — cache treated as corrupt" );
-        r.ok = false;
-        return false;
-    };
-
     relOut       = r.str();
     ffOut.hash      = r.u64();
     ffOut.sizeBytes = (long long)r.u64();   // A4-P7 stat-gate discriminator
@@ -1640,7 +1696,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         // H3 (v10): the file's subtoken dictionary — def rows below index into it. Must be strictly
         // ascending (readDef's sorted-row invariant hangs on it); anything else is corrupt.
         const std::uint32_t dictCount = r.u32();
-        if( !countFits( dictCount, sizeof( std::uint64_t ) ) )
+        if( !cacheRecordCountFits( r, dictCount, sizeof( std::uint64_t ) ) )
         {
             return false;
         }
@@ -1660,7 +1716,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         }
     }
     const std::uint32_t nd = r.u32();
-    if( !countFits( nd, kMinDefRecordBytes ) )
+    if( !cacheRecordCountFits( r, nd, kMinDefRecordBytes ) )
     {
         return false;
     }
@@ -1670,7 +1726,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.defs.push_back( readDef( r, captureValueUses, fileDict ) );
     }
     const std::uint32_t nr = r.u32();
-    if( !countFits( nr, kMinRefRecordBytes ) )
+    if( !cacheRecordCountFits( r, nr, kMinRefRecordBytes ) )
     {
         return false;
     }
@@ -1680,7 +1736,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.refs.push_back( readRef( r ) );
     }
     const std::uint32_t ni = r.u32();
-    if( !countFits( ni, kMinIncRecordBytes ) )
+    if( !cacheRecordCountFits( r, ni, kMinIncRecordBytes ) )
     {
         return false;
     }
@@ -1694,7 +1750,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.incs.push_back( Include { 0, isAngle, isLazy, isSymbolic, byte, r.str() } );
     }
     const std::uint32_t nb = r.u32();
-    if( !countFits( nb, kMinBindRecordBytes ) )
+    if( !cacheRecordCountFits( r, nb, kMinBindRecordBytes ) )
     {
         return false;
     }
@@ -1704,7 +1760,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.binds.push_back( readBind( r ) );
     }
     const std::uint32_t na = r.u32();
-    if( !countFits( na, kMinFfiRecordBytes ) )
+    if( !cacheRecordCountFits( r, na, kMinFfiRecordBytes ) )
     {
         return false;
     }
@@ -1714,7 +1770,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.ffis.push_back( readFfi( r ) );
     }
     const std::uint32_t nrd = r.u32();
-    if( !countFits( nrd, kMinRouteDefRecordBytes ) )
+    if( !cacheRecordCountFits( r, nrd, kMinRouteDefRecordBytes ) )
     {
         return false;
     }
@@ -1724,7 +1780,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.routeDefs.push_back( readRouteDef( r ) ); // B6.3
     }
     const std::uint32_t nru = r.u32();
-    if( !countFits( nru, kMinRouteUseRecordBytes ) )
+    if( !cacheRecordCountFits( r, nru, kMinRouteUseRecordBytes ) )
     {
         return false;
     }
@@ -1734,7 +1790,7 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
         ffOut.routeUses.push_back( readRouteUse( r ) ); // B6.3
     }
     const std::uint32_t nco = r.u32();
-    if( !countFits( nco, kMinConstOpenRecordBytes ) )
+    if( !cacheRecordCountFits( r, nco, kMinConstOpenRecordBytes ) )
     {
         return false;
     }
@@ -1755,7 +1811,8 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
 // on this path so filesystem and future remote repositories cannot disagree about what bytes are valid.
 // Outputs are replaced only after the complete record has passed checksum, identity, count and bounds
 // validation; a rejected record therefore cannot leak partial facts into its caller.
-inline bool decodeCacheRecord( std::string_view record, const CacheRecordExpectation& expected, CacheDecodeOutput& output )
+inline bool decodeCacheRecordWithScratch( std::string_view record, const CacheRecordExpectation& expected, CacheDecodeOutput& output,
+                                          CacheDecodeScratch& scratch )
 {
     if( recordSum32( record ) != expected.sum )
     {
@@ -1763,11 +1820,11 @@ inline bool decodeCacheRecord( std::string_view record, const CacheRecordExpecta
         return false;
     }
 
-    ByteR                     r{ record.data(), record.data() + record.size() };
-    std::vector<std::uint64_t> fileDict;
-    std::string               relativePath;
-    FileFacts                 facts;
-    if( !readFileRecord( r, expected.captureValueUses, fileDict, relativePath, facts ) )
+    ByteR       r{ record.data(), record.data() + record.size() };
+    std::string relativePath;
+    FileFacts   facts;
+    scratch.fileDict.clear();
+    if( !readFileRecord( r, expected.captureValueUses, scratch.fileDict, relativePath, facts ) )
     {
         return false;
     }
@@ -1800,6 +1857,12 @@ inline bool decodeCacheRecord( std::string_view record, const CacheRecordExpecta
     output.fileMtime  = facts.mtimeNs;
     output.fileCtime  = facts.ctimeNs;
     return true;
+}
+
+inline bool decodeCacheRecord( std::string_view record, const CacheRecordExpectation& expected, CacheDecodeOutput& output )
+{
+    CacheDecodeScratch scratch;
+    return decodeCacheRecordWithScratch( record, expected, output, scratch );
 }
 
 // What a load learned about the blob, beyond the facts themselves. Three numbers that used to be one
@@ -1889,6 +1952,7 @@ inline HashMap<std::string, FileFacts> loadCache( const std::string& path, std::
     constexpr std::uint64_t kReadSpanCap = 32ull * 1024 * 1024;
     constexpr std::uint64_t kGapCap      = 256ull * 1024;   // skip-over budget: cheaper than a second syscall
     std::string fileBuf;   // the coalesced span currently in memory
+    CacheDecodeScratch decodeScratch;
     {
         PROFILE_SCOPE_DESCRIBE( "ingest/loadCache: deserialize file records" );
         std::size_t i = 0;
@@ -1925,7 +1989,7 @@ inline HashMap<std::string, FileFacts> loadCache( const std::string& path, std::
                 const CacheRecordExpectation expected{ relativePath, e.pathHash, e.contentHash, e.recSum, captureValueUses };
                 CacheDecodeOutput output{ ff.defs, ff.refs, ff.incs, ff.binds, ff.ffis, ff.routeDefs, ff.routeUses, ff.constOpens,
                                           ff.health, ff.sizeBytes, ff.mtimeNs, ff.ctimeNs };
-                if( !decodeCacheRecord( std::string_view( rec, e.recLength ), expected, output ) )
+                if( !decodeCacheRecordWithScratch( std::string_view( rec, e.recLength ), expected, output, decodeScratch ) )
                 {
                     continue;   // corrupt record → that file reparses (decodeCacheRecord already disclosed)
                 }
@@ -2055,18 +2119,40 @@ struct CacheEncodeInput
     bool                              captureValueUses = true;
 };
 
-// Serialize ONE existing v18 per-file record without its blob header or offset-table row. The order and
-// widths below are the filesystem format's byte contract; saveCache appends these bytes unchanged and a
-// remote repository can store the same independently checksummed unit without reinterpreting it.
-inline EncodedCacheRecord encodeCacheRecord( std::uint32_t fileId, const CachePathKeys& keys,
-                                             const CacheFileIndexes& indexes, const CacheEncodeInput& input )
+// Caller-owned hot scratch for serializing many records. clear() retains every allocation so saveCache's
+// file loop grows each working array only to the largest record seen, rather than reallocating per file.
+struct CacheEncodeScratch
+{
+    std::vector<std::uint64_t> fileDict;
+    std::vector<LexPair>       mergeA, mergeB;
+    std::vector<std::size_t>   runOffsets, nextRunOffsets;
+    std::vector<std::uint32_t> pairDictIndex;
+
+    void clear()
+    {
+        fileDict.clear();
+        mergeA.clear();
+        mergeB.clear();
+        runOffsets.clear();
+        nextRunOffsets.clear();
+        pairDictIndex.clear();
+    }
+};
+
+// Append ONE existing v18 per-file record directly to a caller's destination. The returned table entry
+// authenticates exactly the newly appended span; bytes already in the destination are neither copied nor
+// included in the checksum. The order and widths below are the filesystem format's byte contract.
+inline CacheEntry appendCacheRecord( ByteW& w, std::uint32_t fileId, const CachePathKeys& keys,
+                                     const CacheFileIndexes& indexes, const CacheEncodeInput& input,
+                                     CacheEncodeScratch& scratch )
 {
     VERIFY( fileId < keys.rels.size() && fileId < keys.pathHashes.size() );
     VERIFY( fileId < indexes.defIndex.size() && fileId < indexes.refIndex.size() && fileId < indexes.incIndex.size()
             && fileId < indexes.bindIndex.size() && fileId < indexes.ffiIndex.size() && fileId < indexes.routeDefIndex.size()
             && fileId < indexes.routeUseIndex.size() && fileId < indexes.constOpenIndex.size() );
 
-    ByteW w;
+    scratch.clear();
+    const std::size_t recordOffset = w.b.size();
     w.str( keys.rels[fileId] );
     w.u64( fileId < input.fileHash.size() ? input.fileHash[fileId] : 0 );
     w.u64( fileId < input.fileSize.size() ? (std::uint64_t)input.fileSize[fileId] : (std::uint64_t)-1 );
@@ -2077,10 +2163,12 @@ inline EncodedCacheRecord encodeCacheRecord( std::uint32_t fileId, const CachePa
         w.u32( health.errNodes ); w.u32( health.errBytes ); w.u32( health.fileBytes ); w.u32( health.wsBytes );
     }
 
-    std::vector<std::uint64_t> fileDict;
-    std::vector<LexPair>       mergeA, mergeB;
-    std::vector<std::size_t>   runOffsets, nextRunOffsets;
-    std::vector<std::uint32_t> pairDictIndex;
+    auto& fileDict       = scratch.fileDict;
+    auto& mergeA         = scratch.mergeA;
+    auto& mergeB         = scratch.mergeB;
+    auto& runOffsets     = scratch.runOffsets;
+    auto& nextRunOffsets = scratch.nextRunOffsets;
+    auto& pairDictIndex  = scratch.pairDictIndex;
     if( input.captureValueUses )
     {
         runOffsets.push_back( 0 );
@@ -2192,12 +2280,23 @@ inline EncodedCacheRecord encodeCacheRecord( std::uint32_t fileId, const CachePa
         w.str( input.constOpens[i].written );
     }
 
-    EncodedCacheRecord record;
-    record.pathHash    = keys.pathHashes[fileId];
-    record.contentHash = fileId < input.fileHash.size() ? input.fileHash[fileId] : 0;
-    record.sum         = recordSum32( w.b );
-    record.bytes       = std::move( w.b );
-    return record;
+    const std::size_t recordLength = w.b.size() - recordOffset;
+    VERIFY( recordLength <= std::numeric_limits<std::uint32_t>::max() );
+    const std::string_view record( w.b.data() + recordOffset, recordLength );
+    return CacheEntry{ keys.pathHashes[fileId], std::uint64_t( recordOffset ),
+                       fileId < input.fileHash.size() ? input.fileHash[fileId] : 0,
+                       std::uint32_t( recordLength ), recordSum32( record ) };
+}
+
+// The independently owned form is the remote/Redis seam. It shares the append implementation so the
+// filesystem and remote representations cannot drift, then transfers the destination buffer without a copy.
+inline EncodedCacheRecord encodeCacheRecord( std::uint32_t fileId, const CachePathKeys& keys,
+                                             const CacheFileIndexes& indexes, const CacheEncodeInput& input )
+{
+    ByteW              w;
+    CacheEncodeScratch scratch;
+    const CacheEntry   entry = appendCacheRecord( w, fileId, keys, indexes, input, scratch );
+    return EncodedCacheRecord{ std::move( w.b ), entry.pathHash, entry.contentHash, entry.recSum };
 }
 
 // One planned output row of a v15 write: either a file THIS run crawled (fileIndex valid) or a record
@@ -2372,7 +2471,8 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
         PROFILE_SCOPE_DESCRIBE( "ingest/saveCache: serialize records" );
         const CacheEncodeInput input{ fileHash, fileSize, fileMtime, fileCtime, fileHealth, defs, refs, incs, binds, ffis,
                                       routeDefs, routeUses, constOpens, captureValueUses };
-        std::string carryBuf;   // one carry-over record, verified before it is appended
+        CacheEncodeScratch encodeScratch;   // one allocation high-water mark shared by every fresh record
+        std::string        carryBuf;         // one carry-over record, verified before it is appended
         for( const CacheWriteRow& row : plan )
         {
             if( row.fileIndex == kNoCacheIndex )
@@ -2384,11 +2484,7 @@ inline void saveCache( const std::string& path, std::string_view rootDir, const 
                 }
                 continue;
             }
-            const std::size_t        recOffset = w.b.size();
-            const EncodedCacheRecord record    = encodeCacheRecord( row.fileIndex, keys, ix, input );
-            w.raw( record.bytes.data(), record.bytes.size() );
-            table.push_back( CacheEntry{ record.pathHash, std::uint64_t( recOffset ), record.contentHash,
-                                         std::uint32_t( record.bytes.size() ), record.sum } );
+            table.push_back( appendCacheRecord( w, row.fileIndex, keys, ix, input, encodeScratch ) );
         }
     }   // symmetric bare scope: serialize-records profiling span
 
