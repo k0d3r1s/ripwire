@@ -2362,7 +2362,9 @@ int emitCommunityDrill( const rw::Config& cfg, const rw::IngestResult& ing, cons
                  "other modules. size= is the module's TRUE member count; shown=/capped= are this page. partition= is the FULL label "
                  "space (every id 0..partition-1, incl. isolated singletons) — the range the id= argument ranges over; modules= counts "
                  "the NON-isolated communities (size>=2), the SAME predicate the communities-listing verb's modules= uses, so parent "
-                 "and child agree. {}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cdSingleRoot ) );
+                 "and child agree. This verb PAGES its member list, so a cut page carries the standard quartet: total= is the full member "
+                 "count the page was taken from, has_more=\"1\" says rows remain past this page, next_offset= is the value to paste back as "
+                 "offset= to get them, and limit=/offset= are the window you asked for (limit=0 means the default cap). {}{}-->{}", rw::graphCountFloorBrief( g.unindexedFiles > 0 ).c_str(), rw::renderDisclosure( prD, rw::DiscloseAs::LegendClause ).c_str(), rw::rootRelPathsLegend( cdSingleRoot ) );
     rw::emitTo( stdout, "<community id=\"{}\" size=\"{}\" dir=\"{}\" label=\"{}\" bridges=\"{}\" shown_bridges=\"{}\" bridges_capped=\"{}\" partition=\"{}\" modules=\"{}\"{}{}{}>",
                  want, std::size_t( mem.size() ), ex( presentation.directory[ want ] ).c_str(), ex( presentation.label[ want ] ).c_str(),
                  peers.size(), shownBridges, unsigned( shownBridges < peers.size() ), K, modulesNonIsolated,
