@@ -56,19 +56,57 @@ mkdir -p "$SHORT" "$DEEP"
 cp -R "$FIX/." "$SHORT/"
 cp -R "$FIX/." "$DEEP/"
 DEPTH_DELTA=$(( ${#DEEP} - ${#SHORT} ))
+HOSTILE_IGNORE="$TMP/global-ignore"
+HOSTILE_CONFIG="$TMP/global-gitconfig"
+HOSTILE_HOOKS="$TMP/global-hooks"
+HOSTILE_FSMONITOR="$TMP/global-fsmonitor"
+HOSTILE_FSMONITOR_SENTINEL="$TMP/global-fsmonitor-ran"
+HOSTILE_ATTRIBUTES="$TMP/global-attributes"
+HOSTILE_FILTER="$TMP/global-filter"
+HOSTILE_SIGNER="$TMP/global-signer"
+mkdir -p "$HOSTILE_HOOKS" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_HOOKS/pre-commit" || exit 1
+printf '#!/bin/sh\n: > "%s"\nexit 97\n' "$HOSTILE_FSMONITOR_SENTINEL" > "$HOSTILE_FSMONITOR" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_FILTER" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_SIGNER" || exit 1
+chmod +x "$HOSTILE_HOOKS/pre-commit" "$HOSTILE_FSMONITOR" "$HOSTILE_FILTER" "$HOSTILE_SIGNER" || exit 1
+printf 'geometry.cpp\n' > "$HOSTILE_IGNORE" || exit 1
+printf '*.cpp filter=hostile\n' > "$HOSTILE_ATTRIBUTES" || exit 1
+printf '[core]\n\texcludesFile = %s\n\tattributesFile = %s\n\thooksPath = %s\n\tfsmonitor = %s\n[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = %s\n[filter "hostile"]\n\tclean = %s\n\trequired = true\n' \
+  "$HOSTILE_IGNORE" "$HOSTILE_ATTRIBUTES" "$HOSTILE_HOOKS" "$HOSTILE_FSMONITOR" "$HOSTILE_SIGNER" "$HOSTILE_FILTER" > "$HOSTILE_CONFIG" || exit 1
+unset GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+export GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$HOSTILE_CONFIG"
 
 # Identical git history in both, so the churn/co-change/ownership lenses compare like with like rather than
 # self-skipping. Fixed identity + fixed dates ⇒ identical commit SHAs (git hashes content, never location);
 # -b main pins the default branch (an ambient init.defaultBranch is a known cross-machine gate trap).
 seed_git(){
   ( cd "$1" || exit 1
-    git init -q -b main >/dev/null 2>&1
-    git config user.email rw@example.invalid; git config user.name ripwire
-    git add -A >/dev/null 2>&1
+    git init -q -b main --template= >/dev/null 2>&1 || exit 1
+    git config --local user.email rw@example.invalid || exit 1
+    git config --local user.name ripwire || exit 1
+    # The hostile global config above makes ignore/attributes/signing/hooks/fsmonitor isolation observable
+    # in clean CI. These local settings also govern ripwire's Git subprocess; template suppression prevents
+    # ambient hooks from being copied before the repository config exists.
+    git config --local commit.gpgSign false || exit 1
+    git config --local core.excludesFile /dev/null || exit 1
+    git config --local core.attributesFile /dev/null || exit 1
+    git config --local core.hooksPath /dev/null || exit 1
+    git config --local core.fsmonitor false || exit 1
+    git add -A >/dev/null 2>&1 || exit 1
     GIT_AUTHOR_DATE='2026-01-01T00:00:00 +0000' GIT_COMMITTER_DATE='2026-01-01T00:00:00 +0000' \
-      git commit -q -m seed >/dev/null 2>&1 ) || true
+      git commit -q -m seed >/dev/null 2>&1 )
 }
-seed_git "$SHORT"; seed_git "$DEEP"
+seed_git "$SHORT" || { no "short-depth fixture Git seed failed"; exit 1; }
+seed_git "$DEEP" || { no "deep fixture Git seed failed"; exit 1; }
+git -C "$SHORT" ls-files --error-unmatch geometry.cpp >/dev/null 2>&1 \
+  || { no "short-depth fixture omitted geometry.cpp from HEAD"; exit 1; }
+git -C "$DEEP" ls-files --error-unmatch geometry.cpp >/dev/null 2>&1 \
+  || { no "deep fixture omitted geometry.cpp from HEAD"; exit 1; }
+SHORT_HEAD="$( git -C "$SHORT" rev-parse HEAD 2>/dev/null )" || { no "short-depth fixture has no HEAD"; exit 1; }
+DEEP_HEAD="$( git -C "$DEEP" rev-parse HEAD 2>/dev/null )" || { no "deep fixture has no HEAD"; exit 1; }
+[ "$SHORT_HEAD" = "$DEEP_HEAD" ] || { no "fixture Git histories differ across checkout depth"; exit 1; }
+[ ! -e "$HOSTILE_FSMONITOR_SENTINEL" ] || { no "hostile global fsmonitor ran"; exit 1; }
 
 # ── the verb matrix ─────────────────────────────────────────────────────────────────────────────────────
 # One entry per emitted document shape. Deliberately EXCLUDED, with reasons, so the omissions are a

@@ -17,15 +17,49 @@ ok(){ echo "  PASS  $1"; }
 no(){ echo "  FAIL  $1"; fail=1; }
 
 REPO="$(mktemp -d)"; trap 'rm -rf "$REPO"' EXIT
+unset GIT_CONFIG GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+export GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 cd "$REPO" || exit 1
-git init -q; git config user.email x@y; git config user.name x
+git init -q --template= || exit 1
+HOSTILE_IGNORE="$REPO/.git/global-ignore"
+HOSTILE_CONFIG="$REPO/.git/global-gitconfig"
+HOSTILE_HOOKS="$REPO/.git/global-hooks"
+HOSTILE_FSMONITOR="$REPO/.git/global-fsmonitor"
+HOSTILE_FSMONITOR_SENTINEL="$REPO/.git/global-fsmonitor-ran"
+HOSTILE_ATTRIBUTES="$REPO/.git/global-attributes"
+HOSTILE_FILTER="$REPO/.git/global-filter"
+HOSTILE_SIGNER="$REPO/.git/global-signer"
+mkdir -p "$HOSTILE_HOOKS" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_HOOKS/pre-commit" || exit 1
+printf '#!/bin/sh\n: > "%s"\nexit 97\n' "$HOSTILE_FSMONITOR_SENTINEL" > "$HOSTILE_FSMONITOR" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_FILTER" || exit 1
+printf '#!/bin/sh\nexit 97\n' > "$HOSTILE_SIGNER" || exit 1
+chmod +x "$HOSTILE_HOOKS/pre-commit" "$HOSTILE_FSMONITOR" "$HOSTILE_FILTER" "$HOSTILE_SIGNER" || exit 1
+printf 'src/core/\n' > "$HOSTILE_IGNORE" || exit 1
+printf '*.cpp filter=hostile\n' > "$HOSTILE_ATTRIBUTES" || exit 1
+printf '[core]\n\texcludesFile = %s\n\tattributesFile = %s\n\thooksPath = %s\n\tfsmonitor = %s\n[commit]\n\tgpgSign = true\n[gpg]\n\tprogram = %s\n[filter "hostile"]\n\tclean = %s\n\trequired = true\n' \
+  "$HOSTILE_IGNORE" "$HOSTILE_ATTRIBUTES" "$HOSTILE_HOOKS" "$HOSTILE_FSMONITOR" "$HOSTILE_SIGNER" "$HOSTILE_FILTER" > "$HOSTILE_CONFIG" || exit 1
+export GIT_CONFIG_GLOBAL="$HOSTILE_CONFIG"
+git config --local user.email x@y || exit 1
+git config --local user.name x || exit 1
+# The hostile global config above makes ignore/attributes/signing/hooks/fsmonitor isolation part of the
+# gate rather than an ambient-machine-only repair. The local overrides keep ripwire's own Git subprocess
+# isolated too; the empty template prevents executable developer templates from entering the repository.
+git config --local core.excludesFile /dev/null || exit 1
+git config --local core.attributesFile /dev/null || exit 1
+git config --local core.hooksPath /dev/null || exit 1
+git config --local core.fsmonitor false || exit 1
+git config --local commit.gpgSign false || exit 1
 mkdir -p src/core tools
 # the collision trio: a 4-param module-level Python `add` (scope-less → bare-name canonId) vs a 2-param
 # C `add` declared in a header (the PUBLIC surface) + its non-header definition
 printf 'def add(section, cmd, what, opts):\n    return [section, cmd, what, opts]\n' > tools/capture.py
 printf 'int add( int a, int b );\nint scale( int v, int k );\n' > src/core/math.h
 printf '#include "math.h"\nint add( int a, int b ){ return a + b; }\nint scale( int v, int k ){ return v * k; }\n' > src/core/math.cpp
-git add -A; git commit -qm init
+git add -A || exit 1
+git commit -qm init || exit 1
+git ls-files --error-unmatch src/core/math.h tools/capture.py >/dev/null 2>&1 || exit 1
+[ ! -e "$HOSTILE_FSMONITOR_SENTINEL" ] || { echo "hostile global fsmonitor ran"; exit 1; }
 
 # 1) CLEAN tree (working tree == HEAD) → vacuously no regressions, exit 0, and no api-surface row at all
 clean_out="$("$BIN" "$REPO" --quality-delta --no-cache 2>/dev/null)"; clean_rc=$?
@@ -56,5 +90,6 @@ echo "$edit_out" | grep -q 'kind="api-surface" sym="scale" was="2" now="3" surfa
 git checkout -q -- src/core/math.h src/core/math.cpp
 r1="$("$BIN" "$REPO" --quality-delta --no-cache 2>/dev/null)"; r2="$("$BIN" "$REPO" --quality-delta --no-cache 2>/dev/null)"
 [ "$r1" = "$r2" ] && ok "--quality-delta deterministic run-to-run" || no "--quality-delta non-deterministic"
+[ ! -e "$HOSTILE_FSMONITOR_SENTINEL" ] || { no "hostile global fsmonitor ran"; exit 1; }
 
 [ "$fail" -eq 0 ] && echo "ALL PASS" || { echo "SOME CHECKS FAILED"; exit 1; }

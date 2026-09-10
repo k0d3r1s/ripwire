@@ -1,6 +1,6 @@
 # ripwire documentation
 
-Fourteen entries, each written for one reader. Start with the row that matches why you are here.
+Sixteen entries, each written for one reader. Start with the row that matches why you are here.
 
 | File | Who it is for | What it answers |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ Fourteen entries, each written for one reader. Start with the row that matches w
 | **[`LOCALS_INDEXING.md`](LOCALS_INDEXING.md)** | Anyone weighing `--naming-locals`, or extending the naming lens | The design record for indexing a function's locals and gating naming predicates on them: why `locals=` is a disclosed floor and absent rather than zero for uncovered languages, why Phase 2 deliberately breaks `naminglens.h`'s own stated invariant, and the calibration blocker — cited against this lens's own withdrawn rule — that keeps it opt-in. |
 | **[`SUBSTITUTION_METER.md`](SUBSTITUTION_METER.md)** | Anyone asking whether agents actually reach for this tool | The per-tool-call meter inside `hooks/ripwire-nudge.sh`: why the unit is a call and not a task (the task-success eval is dead on power grounds), the JSONL row schema, the command-line classifier's rule table including the rtk unwrap, the A/B arm that ships built-but-dormant, and an explicit list of what the meter cannot see — starting with the MCP calls no hook is shown. |
 | **[`CODEX_ORCHESTRATION.md`](CODEX_ORCHESTRATION.md)** | Anyone orchestrating parallel Codex lanes | The deterministic model/effort policy emitted by `--plan-lanes`, the structural signals and caveats behind it, the task-matched agent roles used to implement it, and the verification record. |
+| **[`plans/2026-09-10-redis-cache-backend.md`](plans/2026-09-10-redis-cache-backend.md)** | Maintainers implementing shared cache storage | The gate-first implementation plan for an opt-in Redis cache backend, including policy precedence, the RESP2 boundary, key/versioning contracts, security constraints, and staged verification. |
 | **[`LINEAGE.md`](LINEAGE.md)** | Anyone asking what is actually new here | Every idea folded into the tool, row by row: the paper, specification or repository it came from, the one-line lesson taken, and the flag or source file where that lesson lives — plus the labelled survey of the wider field, kept explicitly separate from what was borrowed. |
 | **[`docs_commands_build.py`](docs_commands_build.py)** | Maintainers | The generator behind `COMMANDS.md`. Reads the binary's `--help` and a recorded showcase capture; `--check` is the drift comparison that `test/docscommandscheck.sh` runs. |
 | **[`lineage-paper-dates.tsv`](lineage-paper-dates.tsv)** | Maintainers | arXiv id -> publication date for every 2026 paper in `LINEAGE.md`. The ID stem does not track the date (`2607.09691` was published 2026-06-19), so the README's recency claim is re-derived from this file by `readmedriftcheck.sh` arm (H2) rather than from the ids. Adding a 2026 paper without a date row fails that arm. |

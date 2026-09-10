@@ -42,6 +42,9 @@ prof*/
 # macOS
 .DS_Store
 
+# generated agent-session guard/compaction telemetry
+/.claude/logs/incident-log.md
+
 # python
 __pycache__/
 *.pyc
