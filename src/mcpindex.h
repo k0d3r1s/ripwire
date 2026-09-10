@@ -598,7 +598,7 @@ inline std::string mcpCachePath( const std::string& root )
 inline IngestResult mcpIngestRoot( const std::string& root, const std::shared_ptr<const CachePolicy>& policy,
                                    std::string_view label = {} )
 {
-    if( !policy || policy->kind != CacheBackendKind::Redis )
+    if( !policy || policy->kind == CacheBackendKind::File )
     {
         return ingest( root.c_str(), {}, mcpCachePath( root ), kDefaultMaxFileBytes, true, label );
     }
@@ -1086,10 +1086,10 @@ inline std::uint64_t gitHeadMoveToken( const std::string& root )
 // above, gated first on the file count so a small repo does not even probe git.
 inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t fileCount )
 {
-    // Temporary Task 5 boundary: Task 6 must route BOTH HEAD ingest and derived snapshot storage
-    // before Redis mode may launch this filesystem warmer. Check before probing HEAD or spawning.
+    // Only File policy may launch this filesystem warmer; Disabled must never populate either layer.
+    // Temporary Redis boundary: Task 6 must route BOTH HEAD ingest and derived snapshot storage.
     const auto& policy = mcpIndexSlot().cachePolicy;
-    if( policy && policy->kind == CacheBackendKind::Redis )
+    if( !policy || policy->kind != CacheBackendKind::File )
     {
         return;
     }
@@ -1200,7 +1200,7 @@ inline const McpIndex& getIndex( const std::string& root )
     // Multi-root workspace key (A11): per-root cache context, then merge the independent ingests.
     const auto wsIt = mcpWorkspaceRegistry().find( root );
     const bool isWorkspace = wsIt != mcpWorkspaceRegistry().end() && wsIt->second.size() >= 2;
-    ix.cacheFile = ix.cachePolicy && ix.cachePolicy->kind == CacheBackendKind::Redis ? std::string{} : mcpCachePath( root );
+    ix.cacheFile = ix.cachePolicy && ix.cachePolicy->kind != CacheBackendKind::File ? std::string{} : mcpCachePath( root );
     {
         // Phase-M: serialize this rebuild's ingest against a concurrent qsnap-prefetch worker (ingest() writes
         // single-writer process-global query caches — §2b). Uncontended on the single request thread; only the

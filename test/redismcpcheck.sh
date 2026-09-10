@@ -45,11 +45,11 @@ with tempfile.TemporaryDirectory(prefix="redismcp-") as temporary:
             for i in range(3): (path / f"file{i}.cpp").write_text(f"int target{i}() {{ return {i}; }}\n")
             git(path, "add", "."); git(path, "commit", "-qm", "fixture")
             return path
-        def start(name, checkout, *flags):
+        def start(name, checkout, *flags, cache_flags=("--cache=redis",)):
             private = scratch / name; private.mkdir()
             for d in ("tmp", "xdg", "home"): (private / d).mkdir()
             stderr = (private / "stderr").open("w+")
-            process = subprocess.Popen([str(binary), "--mcp", "--cache=redis", *flags], cwd=checkout,
+            process = subprocess.Popen([str(binary), "--mcp", *cache_flags, *flags], cwd=checkout,
                                        env=dict(env, TMPDIR=str(private / "tmp"), XDG_CACHE_HOME=str(private / "xdg"), HOME=str(private / "home")),
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, text=True)
             processes.append(process)
@@ -164,6 +164,22 @@ with tempfile.TemporaryDirectory(prefix="redismcp-") as temporary:
             expected = {"a.cpp"} if checkout == nongit else {f"file{i}.cpp" for i in range(3)}
             assert files == expected, (checkout, files)
         print("  PASS  HTTP eager foreground build reuses the same Redis policy")
+        # Disabled overrides Redis selection, and must not silently become File in MCP. A real
+        # HEAD move at threshold 1 also fences the filesystem snapshot prefetch path.
+        for mode, cache_flags in (("redis-no-cache", ("--cache=redis", "--no-cache")), ("no-cache", ("--no-cache",))):
+            offset = admin("command_log")["next_index"]
+            p, private, err = start(mode, a, cache_flags=cache_flags)
+            request(p, a, 1)
+            git(a, "commit", "--allow-empty", "-qm", mode)
+            request(p, a, 2)
+            (a / "file0.cpp").write_text("int disabled_target() { return 9; }\n")
+            reply = request(p, a, 3, symbol="disabled_target")
+            assert json.loads(reply["result"]["content"][0]["text"])["symbol"]["name"] == "disabled_target", reply
+            request(p, a, 4, "ping")
+            diagnostic = finish(p, private, err)
+            assert re.findall(r"cache-stats reparsed=(\d+)", diagnostic) == ["3", "3"], diagnostic
+            assert not commands(offset), "Disabled cache contacted Redis"
+        print("  PASS  Disabled and Redis plus --no-cache rebuild without local blobs, Redis I/O or snapshot prefetch")
     finally:
         for process in processes:
             if process.poll() is None: process.kill(); process.wait(timeout=15)
