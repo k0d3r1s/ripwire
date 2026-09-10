@@ -26,6 +26,7 @@ cat > "$TMP/redis_client_gate.cpp" <<'CPP'
 #include <string_view>
 #include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace rw
@@ -180,6 +181,15 @@ int main( int argc, char** argv )
         std::cout << ( hasNoChild ? "reaped\n" : "child-leak\n" );
         return failures == 0 && hasNoChild ? 0 : 1;
     }
+    if( mode == "fd-reuse" )
+    {
+        close( STDIN_FILENO );
+        close( STDOUT_FILENO );
+        const rw::RedisResult result = client.command( { "PING" } );
+        errno = 0;
+        const bool hasNoChild = waitpid( -1, nullptr, WNOHANG ) == -1 && errno == ECHILD;
+        return result && hasNoChild ? 0 : 1;
+    }
     if( mode == "remote-resolution" )
     {
         rw::RedisClientTestPeer::resolverAddresses( { "192.0.2.1" } );
@@ -215,6 +225,37 @@ if ! "${CXX:-c++}" -std=c++23 -pthread -DRIPWIRE_REDIS_TESTING=1 -Isrc "$TMP/red
     exit 1
 fi
 CLIENT="$TMP/redis_client_gate"
+
+python3 - "$TMP" <<'PY'
+import pathlib, struct, sys
+root = pathlib.Path(sys.argv[1])
+
+def packet(host_field, port_field, overrides, name):
+    raw = struct.pack("=IIII", 9, 4, 0, len(overrides))
+    raw += host_field
+    raw += port_field
+    raw += b"".join(overrides + [b"\0" * 46] * (16 - len(overrides)))
+    raw += b"\0" * (-len(raw) % 4)
+    (root / name).write_bytes(raw)
+
+valid_host = b"localhost\0" + b"\0" * (4097 - 10)
+valid_port = b"6379\0\0"
+packet(valid_host, valid_port, [b"1" * 46], "resolver-bad-override.bin")
+packet(b"h" * 4097, valid_port, [], "resolver-bad-host.bin")
+packet(valid_host, b"6" * 6, [], "resolver-bad-port.bin")
+PY
+resolver_packet_ok=1
+for resolver_packet in "$TMP/resolver-bad-override.bin" "$TMP/resolver-bad-host.bin" "$TMP/resolver-bad-port.bin"
+do
+    set +e
+    "$CLIENT" --redis-resolver-helper <"$resolver_packet" >"$TMP/resolver-invalid.out" 2>"$TMP/resolver-invalid.err"
+    resolver_packet_rc=$?
+    set -e
+    if [ "$resolver_packet_rc" -eq 0 ] || [ -s "$TMP/resolver-invalid.out" ] || [ -s "$TMP/resolver-invalid.err" ]; then
+        resolver_packet_ok=0
+    fi
+done
+if [ "$resolver_packet_ok" -eq 1 ]; then ok "resolver helper rejects unterminated fixed strings without output"; else no "resolver helper scanned or accepted an unterminated fixed string"; fi
 
 mkdir -m 700 "$TMP/safe"
 python3 "$ROOT/test/redis_stub.py" --unix "$TMP/safe/redis.sock" --username gate-user --password gate-password --log "$TMP/commands.bin" >"$TMP/stub.json" &
@@ -294,7 +335,7 @@ if "$CLIENT" "$UNIX" gate-user gate-password 500 basic >"$TMP/unix.out" 2>"$TMP/
 if "$CLIENT" "$TCP" gate-user gate-password 500 eintr >"$TMP/eintr.out" 2>&1; then ok "EINTR retries preserve the operation deadline"; else no "injected EINTR was not retried"; fi
 if "$CLIENT" "$UNIX" gate-user gate-password 500 eintr >"$TMP/eintr-unix.out" 2>&1; then ok "Unix path and connect EINTR retries preserve the deadline"; else no "Unix EINTR was not retried"; fi
 
-for eintr_case in getsockopt getpeername
+for eintr_case in pipe-request pipe-response getsockopt getpeername
 do
     set +e
     "$CLIENT" "$TCP" gate-user gate-password 40 eintr-family "$eintr_case" >"$TMP/eintr-$eintr_case.out" 2>&1
@@ -353,6 +394,16 @@ elif "$CLIENT" "redis://localhost:$TCP_PORT/0" gate-user gate-password 1000 conc
     ok "concurrent same-process DNS resolution is bounded and reaps helpers"
 else
     no "concurrent resolver calls deadlocked failed or leaked children"
+fi
+FD_REUSE_START="$( next_index )"
+set +e
+"$CLIENT" "redis://localhost:$TCP_PORT/0" gate-user gate-password 500 fd-reuse >"$TMP/fd-reuse.out" 2>"$TMP/fd-reuse.err"
+fd_reuse_rc=$?
+set -e
+if [ "$fd_reuse_rc" -eq 0 ] && command_log_has_argument_since "$FD_REUSE_START" PING; then
+    ok "resolver helper channels survive parent fd 0 and 1 reuse"
+else
+    no "resolver helper file actions closed a reused channel or leaked a child"
 fi
 if [ "$remote_rc" -ne 0 ] && grep -q 'redis tcp: connect' "$TMP/remote.out"; then ok "hostname resolving only remote is refused"; else no "remote-only hostname was not refused"; fi
 if [ "$mixed_rc" -ne 0 ] && grep -q 'redis tcp: connect' "$TMP/mixed.out"; then ok "mixed loopback and remote resolution is refused"; else no "mixed hostname was not refused"; fi

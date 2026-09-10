@@ -49,7 +49,7 @@ constexpr std::size_t kMaximumResolverHostBytes = 4096;
 
 enum class EndpointKind : std::uint8_t { Tcp, Unix };
 enum class ParseStatus : std::uint8_t { Complete, NeedMore, Invalid };
-enum class InterruptibleCall : std::uint8_t { Fcntl, Connect, GetSockOpt, GetPeerName, Stat, Lstat, UnixPeer, Count };
+enum class InterruptibleCall : std::uint8_t { PipeRequest, PipeResponse, Fcntl, Connect, GetSockOpt, GetPeerName, Stat, Lstat, UnixPeer, Count };
 
 struct Endpoint
 {
@@ -405,12 +405,38 @@ int retryFcntl( const int descriptor, const int command, const int argument, con
     return -1;
 }
 
+RedisFailure retryPipe( int descriptors[2], const InterruptibleCall call, const Deadline deadline ) noexcept
+{
+    int result = -1;
+    do
+    {
+        if( remainingMilliseconds( deadline ) == 0 )
+        {
+            errno = ETIMEDOUT;
+            return RedisFailure::Timeout;
+        }
+        result = injectInterruption( call ) ? -1 : pipe( descriptors );
+    } while( result != 0 && errno == EINTR );
+    return result == 0 ? RedisFailure::None : RedisFailure::Connect;
+}
+
 bool setDescriptorFlags( const int descriptor, const Deadline deadline ) noexcept
 {
     const int descriptorFlags = retryFcntl( descriptor, F_GETFD, 0, deadline );
     const int statusFlags = retryFcntl( descriptor, F_GETFL, 0, deadline );
     return descriptorFlags >= 0 && statusFlags >= 0 && retryFcntl( descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC, deadline ) == 0
            && retryFcntl( descriptor, F_SETFL, statusFlags | O_NONBLOCK, deadline ) == 0;
+}
+
+bool setResolverChildDescriptorFlag( const int descriptor, const int target, const Deadline deadline ) noexcept
+{
+    const int flags = retryFcntl( descriptor, F_GETFD, 0, deadline );
+    if( flags < 0 )
+    {
+        return false;
+    }
+    const int childFlags = descriptor == target ? flags & ~FD_CLOEXEC : flags | FD_CLOEXEC;
+    return retryFcntl( descriptor, F_SETFD, childFlags, deadline ) == 0;
 }
 
 int remainingMilliseconds( const Deadline deadline ) noexcept
@@ -633,6 +659,65 @@ bool writeFixedPacket( const int descriptor, const void* source, const std::size
     return true;
 }
 
+template<std::size_t Size>
+bool exactFixedString( const std::array<char, Size>& bytes, const std::uint32_t length, std::string_view& value ) noexcept
+{
+    if( length == 0 || length >= Size || bytes[length] != '\0' || std::memchr( bytes.data(), '\0', length ) != nullptr )
+    {
+        return false;
+    }
+    value = std::string_view( bytes.data(), length );
+    return true;
+}
+
+template<std::size_t Size>
+bool boundedFixedString( const std::array<char, Size>& bytes, std::string_view& value ) noexcept
+{
+    const void* terminator = std::memchr( bytes.data(), '\0', Size );
+    if( terminator == nullptr || terminator == bytes.data() )
+    {
+        return false;
+    }
+    value = std::string_view( bytes.data(), static_cast<const char*>( terminator ) - bytes.data() );
+    return true;
+}
+
+bool validateResolverRequest( const ResolverRequest& request ) noexcept
+{
+    std::string_view host;
+    std::string_view port;
+    if( request.overrideCount > request.overrideAddresses.size() || !exactFixedString( request.host, request.hostLength, host )
+        || !exactFixedString( request.port, request.portLength, port ) )
+    {
+        return false;
+    }
+    for( std::size_t addressIndex = 0; addressIndex < request.overrideCount; ++addressIndex )
+    {
+        std::string_view address;
+        if( !boundedFixedString( request.overrideAddresses[addressIndex], address ) )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void resolveOverrideAddresses( const ResolverRequest& request, ResolverPacket& packet ) noexcept
+{
+    std::uint32_t port = 0;
+    packet.status = parseUnsigned( std::string_view( request.port.data(), request.portLength ), port, 65535 ) ? 0 : -1;
+    for( std::size_t addressIndex = 0; addressIndex < request.overrideCount && packet.status == 0; ++addressIndex )
+    {
+        std::string_view address;
+        if( !boundedFixedString( request.overrideAddresses[addressIndex], address )
+            || !appendNumericAddress( address, static_cast<std::uint16_t>( port ), packet ) )
+        {
+            packet.status = -1;
+            packet.addressCount = 0;
+        }
+    }
+}
+
 void resolveRequest( const ResolverRequest& request, ResolverPacket& packet ) noexcept
 {
     if( request.delayMilliseconds > 0 )
@@ -642,16 +727,7 @@ void resolveRequest( const ResolverRequest& request, ResolverPacket& packet ) no
     }
     if( request.overrideCount > 0 )
     {
-        std::uint32_t port = 0;
-        packet.status = parseUnsigned( std::string_view( request.port.data(), request.portLength ), port, 65535 ) ? 0 : -1;
-        for( std::size_t addressIndex = 0; addressIndex < request.overrideCount && packet.status == 0; ++addressIndex )
-        {
-            if( !appendNumericAddress( request.overrideAddresses[addressIndex].data(), static_cast<std::uint16_t>( port ), packet ) )
-            {
-                packet.status = -1;
-                packet.addressCount = 0;
-            }
-        }
+        resolveOverrideAddresses( request, packet );
         return;
     }
     addrinfo hints{};
@@ -737,13 +813,22 @@ std::string currentExecutablePath()
 #endif
 }
 
+bool addResolverDupAction( posix_spawn_file_actions_t& actions, const int descriptor, const int target ) noexcept
+{
+    return descriptor == target || posix_spawn_file_actions_adddup2( &actions, descriptor, target ) == 0;
+}
+
+bool addResolverCloseAction( posix_spawn_file_actions_t& actions, const int descriptor ) noexcept
+{
+    return descriptor == STDIN_FILENO || descriptor == STDOUT_FILENO || posix_spawn_file_actions_addclose( &actions, descriptor ) == 0;
+}
+
 bool addResolverSpawnActions( posix_spawn_file_actions_t& actions, const int requestInput, const int requestOutput, const int responseInput,
                               const int responseOutput ) noexcept
 {
-    return posix_spawn_file_actions_adddup2( &actions, requestInput, STDIN_FILENO ) == 0
-           && posix_spawn_file_actions_adddup2( &actions, responseOutput, STDOUT_FILENO ) == 0
-           && posix_spawn_file_actions_addclose( &actions, requestInput ) == 0 && posix_spawn_file_actions_addclose( &actions, requestOutput ) == 0
-           && posix_spawn_file_actions_addclose( &actions, responseInput ) == 0 && posix_spawn_file_actions_addclose( &actions, responseOutput ) == 0;
+    return addResolverDupAction( actions, requestInput, STDIN_FILENO ) && addResolverDupAction( actions, responseOutput, STDOUT_FILENO )
+           && addResolverCloseAction( actions, requestInput ) && addResolverCloseAction( actions, requestOutput )
+           && addResolverCloseAction( actions, responseInput ) && addResolverCloseAction( actions, responseOutput );
 }
 
 pid_t spawnResolver( const std::string& executable, const int requestInput, const int requestOutput, const int responseInput,
@@ -832,23 +917,25 @@ RedisFailure resolveAddresses( const Endpoint& endpoint, const Deadline deadline
     {
         return RedisFailure::Connect;
     }
-    int requestDescriptors[2]{};
-    int responseDescriptors[2]{};
-    if( pipe( requestDescriptors ) != 0 || pipe( responseDescriptors ) != 0 )
+    int requestDescriptors[2]{ -1, -1 };
+    RedisFailure pipeFailure = retryPipe( requestDescriptors, InterruptibleCall::PipeRequest, deadline );
+    if( pipeFailure != RedisFailure::None )
     {
-        if( requestDescriptors[0] > 0 )
-        {
-            close( requestDescriptors[0] );
-            close( requestDescriptors[1] );
-        }
-        return remainingMilliseconds( deadline ) == 0 ? RedisFailure::Timeout : RedisFailure::Connect;
+        return pipeFailure;
     }
     SocketHandle requestInput( requestDescriptors[0] );
     SocketHandle requestOutput( requestDescriptors[1] );
+    int responseDescriptors[2]{ -1, -1 };
+    pipeFailure = retryPipe( responseDescriptors, InterruptibleCall::PipeResponse, deadline );
+    if( pipeFailure != RedisFailure::None )
+    {
+        return pipeFailure;
+    }
     SocketHandle responseInput( responseDescriptors[0] );
     SocketHandle responseOutput( responseDescriptors[1] );
     if( !setDescriptorFlags( requestOutput.get(), deadline ) || !setDescriptorFlags( responseInput.get(), deadline )
-        || retryFcntl( requestInput.get(), F_SETFD, FD_CLOEXEC, deadline ) != 0 || retryFcntl( responseOutput.get(), F_SETFD, FD_CLOEXEC, deadline ) != 0 )
+        || !setResolverChildDescriptorFlag( requestInput.get(), STDIN_FILENO, deadline )
+        || !setResolverChildDescriptorFlag( responseOutput.get(), STDOUT_FILENO, deadline ) )
     {
         return remainingMilliseconds( deadline ) == 0 ? RedisFailure::Timeout : RedisFailure::Connect;
     }
@@ -1616,13 +1703,10 @@ int runRedisResolverHelperIfRequested( const int argumentCount, char** arguments
         return -1;
     }
     ResolverRequest request;
-    if( !readFixedPacket( STDIN_FILENO, &request, sizeof( request ) ) || request.hostLength == 0 || request.hostLength > kMaximumResolverHostBytes
-        || request.portLength == 0 || request.portLength >= request.port.size() || request.overrideCount > request.overrideAddresses.size() )
+    if( !readFixedPacket( STDIN_FILENO, &request, sizeof( request ) ) || !validateResolverRequest( request ) )
     {
         return 1;
     }
-    request.host[request.hostLength] = '\0';
-    request.port[request.portLength] = '\0';
     ResolverPacket packet;
     resolveRequest( request, packet );
     return writeFixedPacket( STDOUT_FILENO, &packet, sizeof( packet ) ) ? 0 : 1;
@@ -1801,7 +1885,7 @@ void RedisClient::injectRepeatedEintrForTesting( const std::string_view call, co
 {
 #if defined( RIPWIRE_REDIS_TESTING )
     constexpr std::array<std::string_view, static_cast<std::size_t>( InterruptibleCall::Count )> names{
-        "fcntl", "connect", "getsockopt", "getpeername", "stat", "lstat", "unix-peer"
+        "pipe-request", "pipe-response", "fcntl", "connect", "getsockopt", "getpeername", "stat", "lstat", "unix-peer"
     };
     for( std::size_t callIndex = 0; callIndex < names.size(); ++callIndex )
     {
