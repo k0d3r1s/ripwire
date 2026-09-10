@@ -494,6 +494,7 @@ add_ts_object(tstsx ${ts_typescript_SOURCE_DIR}/tsx/src)
 # Later stages (graph/rank/serialize/main) get appended here. ingest.cpp + infra's
 # diagnostics.cpp (VERIFY/DEGRADED handlers link partner) are the foundation.
 set(RIPWIRE_SRCS
+  src/cache_backend.cpp
   src/ingest.cpp
   src/pagerank.cpp
   src/infra/diagnostics.cpp

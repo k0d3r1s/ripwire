@@ -84,7 +84,8 @@ struct Config
     std::string_view evalSkills;                           // --eval-skills=FILE: labelled skill-ROUTING eval — ROOT is a
                                                            // skills directory, FILE is the prompt→permitted-skill(s)
                                                            // corpus
-    std::string_view cacheFile;                            // --cache=PATH: incremental index (re-parse only changed)
+    std::string_view cacheFile;                            // --cache=PATH|redis: filesystem path or Redis backend activation
+    bool             cacheWasExplicit = false;             // distinguishes absent --cache from its non-empty parsed value
     std::string_view indexOut;                             // --index-out=BASE: CI generate-and-exit. Cold-parses the tree
                                                            // TWICE — lean then rich — writing BASE.lean.ripwirecache +
                                                            // BASE.rich.ripwirecache (both families: --for/--exemplar/--metrics
@@ -2400,6 +2401,10 @@ inline constexpr char kHelpTail[] =
         "                               then identical to the plain default map, but not byte-identical: the map-diff header keeps\n"
         "                               its changed= and at= stamp). Want only-changed instead? --pr-context.\n"
         "    --cache=PATH               incremental cache at PATH (re-parse only changed files)\n"
+        "                               pass --cache=redis to use RIPWIRE_REDIS_URL and RIPWIRE_REDIS_NAMESPACE;\n"
+        "                               RIPWIRE_CACHE_BACKEND=redis activates it when --cache is absent. Credentials use\n"
+        "                               RIPWIRE_REDIS_USERNAME/PASSWORD only; see RIPWIRE_REDIS_PROJECT, RIPWIRE_REDIS_TTL_DAYS,\n"
+        "                               RIPWIRE_REDIS_TIMEOUT_MS, and RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE.\n"
         "    --index-out=BASE           cold-parse the tree, write the committable index artifact, and exit without a map\n"
         "                               CI generate-and-exit: cold-parse the tree and write the committable index artifact,\n"
         "                               then exit 0 with NO map on stdout. Writes BOTH families — BASE.lean.ripwirecache (map/\n"
@@ -2904,7 +2909,7 @@ inline constexpr ViewFlag kViewFlags[] =
     { "--help-task=",   &Config::helpTask        , EmptyValue::Refuse, "a task in words",                        "--help-task=\"review my changes before push\"" },
 
     // cache, index, history
-    { "--cache=",       &Config::cacheFile       , EmptyValue::Refuse, "a cache file path",                      "--cache=.ripwirecache" },
+    { "--cache=",       &Config::cacheFile       , EmptyValue::Refuse, "a cache file path or redis",             "--cache=redis", &Config::cacheWasExplicit },
     { "--index-out=",   &Config::indexOut        , EmptyValue::Refuse, "a base path for the index artifacts",    "--index-out=.ripwire/index" },
     { "--since=",       &Config::since           , EmptyValue::Refuse, "a git revision or date",                 "--since=HEAD~20" },
     { "--scip=",        &Config::scipIndex       , EmptyValue::Refuse, "a SCIP index file path",                 "--scip=index.scip" },

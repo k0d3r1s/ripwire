@@ -3,6 +3,7 @@
 // ingest() comes from ingest.cpp (real, tree-sitter) or stub_ingest.cpp (test).
 
 #include "model.h"
+#include "cache_backend.h"          // immutable cache selection + per-root Redis project identity
 #include "nextverb.h"              // P3 (L7): next= on every enumerated root (the verbs_*.h fragments read it from here)
 #include "infra/stdinline.h"       // R4: readByteSafeLine — the ONE byte-safe stdin line reader (--from-trace=- / --batch=-)
 #include "ingest.h"
@@ -2685,6 +2686,85 @@ static bool cachePathIsDirectory( const std::string& cachePath )
     return true;
 }
 
+static std::shared_ptr<const rw::CachePolicy> resolveDispatchCachePolicy( const rw::Config& cfg )
+{
+    rw::CacheSelectionInput selection;
+    selection.noCache = cfg.noCache;
+    selection.cacheWasExplicit = cfg.cacheWasExplicit;
+    selection.explicitCache = cfg.cacheFile;
+    if( const char* environmentBackend = std::getenv( "RIPWIRE_CACHE_BACKEND" ) )
+    {
+        selection.environmentBackend = environmentBackend;
+    }
+
+    std::shared_ptr<const rw::CachePolicy> policy;
+    std::string error;
+    if( !rw::resolveCachePolicy( selection, policy, error ) )
+    {
+        std::fprintf( stderr, "ripwire: %s\n", error.c_str() );
+        return {};
+    }
+    if( cfg.roots.size() >= 2 && policy->kind == rw::CacheBackendKind::File && !policy->explicitFilePath.empty() )
+    {
+        std::fputs( "ripwire: --cache=PATH is single-root only in a multi-root workspace — a workspace uses one auto cache blob PER root "
+                    "(drop --cache, or use --no-cache)\n", stderr );
+        return {};
+    }
+    return policy;
+}
+
+static bool prepareCacheContexts( const std::shared_ptr<const rw::CachePolicy>& policy, const std::vector<rw::WorkspaceRoot>& workspace,
+                                  const bool multiRoot, const std::string& root, const bool captureValueUses,
+                                  std::vector<rw::CacheContext>& out )
+{
+    namespace fs = std::filesystem;
+    if( policy->kind == rw::CacheBackendKind::File && !policy->explicitFilePath.empty() )
+    {
+        std::error_code cacheError;
+        const fs::path cacheDirectory = fs::path( policy->explicitFilePath ).parent_path();
+        if( cachePathIsDirectory( policy->explicitFilePath ) )
+        {
+            return false;
+        }
+        if( !cacheDirectory.empty() && !fs::is_directory( cacheDirectory, cacheError ) )
+        {
+            std::fprintf( stderr, "ripwire: --cache=%s: the directory '%s' does not exist, so nothing could ever be written there "
+                                  "(the map would be served and the cache silently lost); create it, or pass a path under an existing directory\n",
+                          policy->explicitFilePath.c_str(), cacheDirectory.string().c_str() );
+            return false;
+        }
+    }
+
+    const auto addRoot = [&]( const std::string_view contextRoot ) -> bool
+    {
+        rw::CacheContext context;
+        std::string error;
+        if( !rw::cacheContextForRoot( policy, contextRoot, captureValueUses, context, error ) )
+        {
+            std::fprintf( stderr, "ripwire: %s\n", error.c_str() );
+            return false;
+        }
+        if( context.policy->kind == rw::CacheBackendKind::File && context.filePath.empty() )
+        {
+            context.filePath = defaultCachePath( std::string( contextRoot ), captureValueUses );
+        }
+        out.push_back( std::move( context ) );
+        return true;
+    };
+
+    out.clear();
+    out.reserve( multiRoot ? workspace.size() : 1 );
+    if( multiRoot )
+    {
+        for( const rw::WorkspaceRoot& workspaceRoot : workspace )
+        {
+            if( !addRoot( workspaceRoot.arg ) ) { return false; }
+        }
+        return true;
+    }
+    return addRoot( root );
+}
+
 static int dispatchMain( const rw::Config& cfg, char** argv );
 
 // the key for a SHARED root (`r` = the map family, `ctx` = the bundle family), from the flags that shaped it
@@ -2802,6 +2882,9 @@ int main( int argc, char** argv )
 static int dispatchMain( const rw::Config& cfg, char** argv )
 {
     using namespace rw;
+
+    const std::shared_ptr<const CachePolicy> cachePolicy = resolveDispatchCachePolicy( cfg );
+    if( !cachePolicy ) { return 1; }
 
     // L2: --json refuses LOUDLY for any verb it doesn't (yet) support — see jsonUnsupportedVerb's ALLOW-list
     // rationale. Checked before ANY dispatch — including the CLI edit bridge below, which used to run AHEAD of
@@ -2997,10 +3080,6 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
         if( !cfg.indexOut.empty() )
         {
             return refuse( "--index-out", "the committable index artifact is per-repo; generate one per root" );
-        }
-        if( !cfg.cacheFile.empty() )
-        {
-            return refuse( "--cache=PATH", "a workspace uses one auto cache blob PER root (drop --cache, or use --no-cache)" );
         }
         if( !cfg.scipIndex.empty() )
         {
@@ -3404,6 +3483,10 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
     const bool        multiRoot = ws.size() >= 2;
     const std::string root( multiRoot ? ws[0].arg : resolvedRoots[0] );   // single-root alias; multi-root sites branch on `ws`
 
+    const bool needsValueUses = rw::needsValueUses( cfg );
+    std::vector<CacheContext> cacheContexts;
+    if( !prepareCacheContexts( cachePolicy, ws, multiRoot, root, needsValueUses, cacheContexts ) ) { return 1; }
+
     // M7 (capture-audit 2026-09-04, lens 6 F6/F21) — a file the USER NAMED that cannot be opened is a
     // REFUSAL, and it is decided HERE, before the crawl, so it costs nothing and cannot be mistaken for a
     // result. --scip and --cache were the family's two degraders:
@@ -3476,27 +3559,6 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
             return 1;
         }
     }
-    if( !cfg.cacheFile.empty() )
-    {
-        namespace fs = std::filesystem;
-        const std::string cachePath( cfg.cacheFile );
-        std::error_code   cacheEc;
-        // The file need not EXIST — a cold first run is the normal case — but the directory that would hold
-        // it must, or the write at the end of the run silently does nothing.
-        const fs::path    cacheDir = fs::path( cachePath ).parent_path();
-        if( cachePathIsDirectory( cachePath ) )
-        {
-            return 1;   // the refusal is on stderr (cachePathIsDirectory)
-        }
-        if( !cacheDir.empty() && !fs::is_directory( cacheDir, cacheEc ) )
-        {
-            std::fprintf( stderr, "ripwire: --cache=%s: the directory '%s' does not exist, so nothing could ever be written there "
-                                  "(the map would be served and the cache silently lost); create it, or pass a path under an existing directory\n",
-                          cachePath.c_str(), cacheDir.string().c_str() );
-            return 1;
-        }
-    }
-
     // --index-out=BASE (both-families amendment): the CI generate-and-exit path.
     // Cold-parse the tree TWICE — once lean, once rich — writing BASE.lean.ripwirecache and
     // BASE.rich.ripwirecache, then exit 0 WITHOUT emitting a map. Both families ship because the flagship
@@ -3546,8 +3608,6 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
     // /--context-ratio/--nonlocal-state/--quality-panel — the local-reasoning lens counts read/write sites, and
     // nonlocal-state's attribution is read/write USE SITES by definition, so a lean ingest would hand either a
     // confident, wrong zero; --quality-panel builds two of its six families out of exactly those two lenses.
-    const bool needsValueUses = rw::needsValueUses( cfg );   // cli.h — ONE definition, and --doctor's
-                                                            // rich_verbs= roster is derived from it
     IngestResult ing;
     if( multiRoot )
     {
@@ -3557,28 +3617,17 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
         // ONLY root2's blob — root1's load is a pure warm hit (RIPWIRE_CACHE_STATS proves it per root).
         std::vector<IngestResult> parts;
         parts.reserve( ws.size() );
-        for( const WorkspaceRoot& r : ws )
+        for( std::size_t rootIndex = 0; rootIndex < ws.size(); ++rootIndex )
         {
-            std::string cachePath;
-            if( !cfg.noCache )
-            {
-                cachePath = defaultCachePath( r.arg, needsValueUses );
-            }
-            parts.push_back( ingest( r.arg.c_str(), cfg.excludes, cachePath, cfg.maxFileBytes, needsValueUses,
+            const WorkspaceRoot& r = ws[rootIndex];
+            parts.push_back( ingest( r.arg.c_str(), cfg.excludes, cacheContexts[rootIndex].filePath, cfg.maxFileBytes, needsValueUses,
                                      /*excludeLabel=*/r.label, /*respectGitignore=*/!cfg.noIgnore ) );
         }
         ing = mergeWorkspaceIngests( ws, parts );
     }
     else
     {
-        std::string      autoCache;
-        std::string_view cacheArg = cfg.cacheFile;
-        if( cacheArg.empty() && !cfg.noCache )
-        {
-            autoCache = defaultCachePath( root, needsValueUses );
-            cacheArg  = autoCache;
-        }
-        ing = ingest( root.c_str(), cfg.excludes, cacheArg, cfg.maxFileBytes, needsValueUses,
+        ing = ingest( root.c_str(), cfg.excludes, cacheContexts[0].filePath, cfg.maxFileBytes, needsValueUses,
                       /*excludeLabel=*/{}, /*respectGitignore=*/!cfg.noIgnore );
     }
     if( cfg.ignoreTests )
