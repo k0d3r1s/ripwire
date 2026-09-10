@@ -653,6 +653,14 @@ if(RIPWIRE_TESTS)
   target_link_libraries(ripwire_test_redis_protocol PRIVATE doctest::doctest Threads::Threads)
   add_test(NAME ripwire.redis_protocol COMMAND ripwire_test_redis_protocol)
 
+  # Default-argument MCP API driver: shell gates supply requests and observe real cache artifacts.
+  add_executable(ripwire_test_mcp_api test/mcp_api_driver.cpp ${RIPWIRE_SRCS} ${RIPWIRE_TS_OBJECTS})
+  target_include_directories(ripwire_test_mcp_api PRIVATE
+    ${tree_sitter_SOURCE_DIR}/lib/include ${_ripwire_generated_dir} src/infra third_party src)
+  target_link_libraries(ripwire_test_mcp_api PRIVATE tree-sitter Threads::Threads)
+  target_compile_definitions(ripwire_test_mcp_api PRIVATE PROFILE_ENABLED=0)
+  add_dependencies(ripwire_test_mcp_api ripwire_version_stamp)
+
   add_executable(ripwire_test_cache_record
     test/cache_record_unit.cpp
     src/cache_backend.cpp
@@ -762,6 +770,9 @@ if(RIPWIRE_TESTS)
   list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
   list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
   list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_csr ripwire_test_pagerank ripwire_test_radix ripwire_test_redis_protocol ripwire_test_cache_record)
+  list(APPEND RIPWIRE_RUNTIME_COMPILE_TARGETS ripwire_test_mcp_api)
+  list(APPEND RIPWIRE_RUNTIME_LINK_TARGETS ripwire_test_mcp_api)
+  list(APPEND RIPWIRE_OWNED_CXX_TARGETS ripwire_test_mcp_api)
 endif()
 # G1's `integer` is a CLANG-ONLY UBSan group (unsigned-integer-overflow, implicit-*-truncation,
 # implicit-integer-sign-change — the defined-but-suspicious conversions, not UB). GCC has no such group

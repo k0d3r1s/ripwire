@@ -41,6 +41,7 @@ set -u
 ROOT="$( cd "$( dirname "$0" )/.." && pwd )"
 BIN="${1:-${RIPWIRE_BIN:-$ROOT/build/ripwire}}"
 [ "${BIN#/}" = "$BIN" ] && BIN="$ROOT/$BIN"
+MCP_BIN="${RIPWIRE_MCP_API_BIN:-$BIN}"   # optional direct runMcp() driver; CLI-only arms still use BIN
 FIX="$ROOT/test/fixture"
 TMP="$( mktemp -d )"; trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -52,7 +53,7 @@ no(){ printf '  FAIL  %s\n' "$*"; fail=1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 required"; exit 2; }
 command -v git     >/dev/null 2>&1 || { echo "git required"; exit 2; }
 
-echo "qsnapprefetchcheck: BIN=$BIN"
+echo "qsnapprefetchcheck: BIN=$BIN MCP_BIN=$MCP_BIN"
 
 # ── a checksum-validator for a qsnap blob: magic "QSNP" + fnv1a64 trailer over the body (native LE) ──
 validate_qsnap() {
@@ -98,7 +99,7 @@ if "error" in r: print("__ERROR__:" + r["error"].get("message",""))
 else: print(r["result"]["content"][0]["text"])
 '
 }
-wait_for_id() { local i; for i in $( seq 1 200 ); do grep -q "\"id\":$2" "$1" 2>/dev/null && return 0; sleep 0.05; done; return 1; }
+wait_for_id() { local _i; for _i in $( seq 1 200 ); do grep -q "\"id\":$2" "$1" 2>/dev/null && return 0; sleep 0.05; done; return 1; }
 # The private cache root adds ripwire/ below TMPDIR, then the blob family adds its 2-hex shard.
 blob_paths() { find "$1" -maxdepth 3 -type f -name "$2" 2>/dev/null; }
 blob_first() { blob_paths "$1" "$2" | head -1; }
@@ -113,51 +114,53 @@ qsnap_count() { blob_paths "$1" 'ripwire-qsnap-*.bin' | grep -c . ; }
 if stat --version >/dev/null 2>&1; then inode_mtime(){ stat -c '%i %Y' "$1" 2>/dev/null || echo "MISSING"; }   # GNU coreutils
 else                                    inode_mtime(){ stat -f '%i %m' "$1" 2>/dev/null || echo "MISSING"; }   # BSD / macOS
 fi
-assert_no_tsan() { grep -q "ThreadSanitizer" "$1" 2>/dev/null && no "TSan WARNING in server stderr ($2)" || ok "no ThreadSanitizer warning in server stderr ($2)"; }
+assert_no_tsan() {
+    if grep -q "ThreadSanitizer" "$1" 2>/dev/null; then no "TSan WARNING in server stderr ($2)"
+    else ok "no ThreadSanitizer warning in server stderr ($2)"; fi
+}
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 echo
 echo "=== (a) atomic publish: no torn read — tmp+rename, checksum-valid, no residue ==="
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-read A_W A_C <<<"$( new_repo )"
+read -r A_W A_C <<<"$( new_repo )"
 # a background sampler: while quality_delta rewrites the qsnap repeatedly, the file must ALWAYS be ABSENT or
 # checksum-VALID — never a non-empty partial one (the torn-read the direct-ofstream write allowed).
-SAMPLE_BAD=0
-( for i in $( seq 1 400 ); do
+( for _i in $( seq 1 400 ); do
     f="$( blob_first "$A_C" 'ripwire-qsnap-*.bin' )"
     [ -n "$f" ] && { v="$( validate_qsnap "$f" )"; [ "$v" = "INVALID" ] && echo bad >>"$A_W/sampler.flag"; }
   done ) &
 SAMPLER=$!
-for i in $( seq 1 12 ); do
-    rm -f $( blob_paths "$A_C" 'ripwire-qsnap-*.bin' )
+for _i in $( seq 1 12 ); do
+    while IFS= read -r blob; do rm -f -- "$blob"; done < <( blob_paths "$A_C" 'ripwire-qsnap-*.bin' )
     TMPDIR="$A_C/" "$BIN" "$A_W" --quality-delta >/dev/null 2>>"$A_W/err.txt"
 done
 wait $SAMPLER 2>/dev/null
-[ -s "$A_W/sampler.flag" ] && no "(a) sampler caught a non-empty INVALID qsnap (torn read)" \
-                           || ok "(a) qsnap never observed half-written across 12 rewrites (atomic rename)"
+if [ -s "$A_W/sampler.flag" ]; then no "(a) sampler caught a non-empty INVALID qsnap (torn read)"
+else ok "(a) qsnap never observed half-written across 12 rewrites (atomic rename)"; fi
 FINAL="$( blob_first "$A_C" 'ripwire-qsnap-*.bin' )"
-[ -n "$FINAL" ] && [ "$( validate_qsnap "$FINAL" )" = "VALID" ] && ok "(a) final qsnap blob is checksum-valid" \
-                                                               || no "(a) final qsnap blob missing/invalid"
+if [ -n "$FINAL" ] && [ "$( validate_qsnap "$FINAL" )" = "VALID" ]; then ok "(a) final qsnap blob is checksum-valid"
+else no "(a) final qsnap blob missing/invalid"; fi
 # Y4: shard-aware lookup — the atomic-rename tmp file can land in either layout too.
-[ -n "$( find "$A_C" -maxdepth 3 -type f -name '*.tmp.*' 2>/dev/null )" ] \
-    && no "(a) stale *.tmp.* residue left behind (rename did not consume it)" \
-    || ok "(a) no *.tmp.* residue after writes (rename consumed the tmp)"
+if [ -n "$( find "$A_C" -maxdepth 3 -type f -name '*.tmp.*' 2>/dev/null )" ]; then
+    no "(a) stale *.tmp.* residue left behind (rename did not consume it)"
+else ok "(a) no *.tmp.* residue after writes (rename consumed the tmp)"; fi
 assert_no_tsan "$A_W/err.txt" "a"
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 echo
 echo "=== (b) NON-VACUITY: commit → prefetch fires (qsnap appears with NO quality_delta) → warm delta ==="
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-read B_W B_C <<<"$( new_repo )"
+read -r B_W B_C <<<"$( new_repo )"
 FIFO="$B_W/in.fifo"; mkfifo "$FIFO"
 TMPDIR="$B_C/" RIPWIRE_QSNAP_PREFETCH_MIN_FILES=1 RIPWIRE_MCP_TIMINGS=1 \
-    "$BIN" --mcp <"$FIFO" >"$B_W/out.txt" 2>"$B_W/err.txt" &
+    "$MCP_BIN" --mcp <"$FIFO" >"$B_W/out.txt" 2>"$B_W/err.txt" &
 SRV=$!; exec 9>"$FIFO"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize"}' >&9
 printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$B_W\",\"symbol\":\"perimeter\"}}}" >&9
 wait_for_id "$B_W/out.txt" 2 || no "(b) server never answered the warm-up read (id=2)"
-[ "$( qsnap_count "$B_C" )" -eq 0 ] && ok "(b) no qsnap before any commit (clean warm-up)" \
-                                    || no "(b) unexpected qsnap present before commit"
+if [ "$( qsnap_count "$B_C" )" -eq 0 ]; then ok "(b) no qsnap before any commit (clean warm-up)"
+else no "(b) unexpected qsnap present before commit"; fi
 
 # commit through the staleness window: edit a tracked file (bumps mtime → next request rebuilds) then commit.
 printf '\n// prefetch-trigger edit\n' >> "$B_W/geometry.cpp"
@@ -167,13 +170,13 @@ printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\
 wait_for_id "$B_W/out.txt" 3 || no "(b) server never answered the post-commit read (id=3)"
 
 APPEARED=0
-for i in $( seq 1 120 ); do [ "$( qsnap_count "$B_C" )" -ge 1 ] && { APPEARED=1; break; }; sleep 0.05; done
-[ "$APPEARED" -eq 1 ] && ok "(b) qsnap for the NEW sha appeared WITHOUT any quality_delta (prefetch fired — non-vacuous)" \
-                      || no "(b) qsnap never appeared after the commit — prefetch did NOT fire"
-grep -q "ripwire-prefetch spawn" "$B_W/err.txt" && ok "(b) server logged a prefetch spawn" \
-                                                || no "(b) no prefetch spawn logged"
+for _i in $( seq 1 120 ); do [ "$( qsnap_count "$B_C" )" -ge 1 ] && { APPEARED=1; break; }; sleep 0.05; done
+if [ "$APPEARED" -eq 1 ]; then ok "(b) qsnap for the NEW sha appeared WITHOUT any quality_delta (prefetch fired — non-vacuous)"
+else no "(b) qsnap never appeared after the commit — prefetch did NOT fire"; fi
+if grep -q "ripwire-prefetch spawn" "$B_W/err.txt"; then ok "(b) server logged a prefetch spawn"
+else no "(b) no prefetch spawn logged"; fi
 # wait for the worker to finish writing, then snapshot the file identity.
-for i in $( seq 1 60 ); do grep -q "ripwire-prefetch done" "$B_W/err.txt" && break; sleep 0.05; done
+for _i in $( seq 1 60 ); do grep -q "ripwire-prefetch done" "$B_W/err.txt" && break; sleep 0.05; done
 PF="$( blob_first "$B_C" 'ripwire-qsnap-*.bin' )"
 ID_BEFORE="$( inode_mtime "$PF" )"
 
@@ -186,13 +189,13 @@ case "$QD" in
   *baseline*) ok "(b) quality_delta returned a well-formed result ($( echo "$QD" | head -c 60 )…)";;
   *) no "(b) quality_delta did not return a baseline result: $( echo "$QD" | head -c 120 )";;
 esac
-[ "$ID_BEFORE" = "$ID_AFTER" ] && [ "$ID_BEFORE" != "MISSING" ] \
-    && ok "(b) quality_delta served the prewarmed qsnap un-rewritten (WARM path: inode/mtime unchanged)" \
-    || no "(b) qsnap was rewritten by quality_delta (COLD path — prefetch did not warm it): '$ID_BEFORE' -> '$ID_AFTER'"
+if [ "$ID_BEFORE" = "$ID_AFTER" ] && [ "$ID_BEFORE" != "MISSING" ]; then
+    ok "(b) quality_delta served the prewarmed qsnap un-rewritten (WARM path: inode/mtime unchanged)"
+else no "(b) qsnap was rewritten by quality_delta (COLD path — prefetch did not warm it): '$ID_BEFORE' -> '$ID_AFTER'"; fi
 
 # measured warm-vs-cold delta on THIS corpus (report-only; the win is corpus-dependent, §8).
 WARM_MS="$( grep 'verb=quality_delta' "$B_W/err.txt" | tail -1 | sed -E 's/.*wall_ms=([0-9.]+).*/\1/' )"
-rm -f $( blob_paths "$B_C" 'ripwire-qsnap-*.bin' )        # force a COLD control (Y4: shard-aware)
+while IFS= read -r blob; do rm -f -- "$blob"; done < <( blob_paths "$B_C" 'ripwire-qsnap-*.bin' )   # force a COLD control
 printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"quality_delta\",\"arguments\":{\"path\":\"$B_W\"}}}" >&9
 wait_for_id "$B_W/out.txt" 5
 COLD_MS="$( grep 'verb=quality_delta' "$B_W/err.txt" | tail -1 | sed -E 's/.*wall_ms=([0-9.]+).*/\1/' )"
@@ -206,10 +209,10 @@ echo "=== (c) DETERMINISM: quality_delta byte-identical prefetch-FIRED vs prefet
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 run_qd_scenario() {   # $1 = min-files threshold (1 => fires, huge => suppressed); echoes the quality_delta result text
     local w c thr="$1"
-    read w c <<<"$( new_repo )"
+    read -r w c <<<"$( new_repo )"
     local fifo="$w/in.fifo"; mkfifo "$fifo"
     TMPDIR="$c/" RIPWIRE_QSNAP_PREFETCH_MIN_FILES="$thr" RIPWIRE_MCP_TIMINGS=1 \
-        "$BIN" --mcp <"$fifo" >"$w/out.txt" 2>"$w/err.txt" &
+        "$MCP_BIN" --mcp <"$fifo" >"$w/out.txt" 2>"$w/err.txt" &
     local srv=$!; exec 8>"$fifo"
     printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize"}' >&8
     printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$w\",\"symbol\":\"perimeter\"}}}" >&8
@@ -247,10 +250,10 @@ fi
 echo
 echo "=== (d) SINGLE-FLIGHT: two rapid HEAD moves → no crash, at most one concurrent worker ==="
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
-read D_W D_C <<<"$( new_repo )"
+read -r D_W D_C <<<"$( new_repo )"
 FIFO="$D_W/in.fifo"; mkfifo "$FIFO"
 TMPDIR="$D_C/" RIPWIRE_QSNAP_PREFETCH_MIN_FILES=1 RIPWIRE_MCP_TIMINGS=1 \
-    "$BIN" --mcp <"$FIFO" >"$D_W/out.txt" 2>"$D_W/err.txt" &
+    "$MCP_BIN" --mcp <"$FIFO" >"$D_W/out.txt" 2>"$D_W/err.txt" &
 SRV=$!; exec 9>"$FIFO"
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize"}' >&9
 printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$D_W\",\"symbol\":\"perimeter\"}}}" >&9
@@ -266,8 +269,8 @@ done
 sleep 0.8
 # server still alive after rapid moves?
 printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":99,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$D_W\",\"symbol\":\"area\"}}}" >&9
-wait_for_id "$D_W/out.txt" 99 && ok "(d) server still responsive after two rapid HEAD moves (no crash)" \
-                              || no "(d) server unresponsive after rapid HEAD moves (crash?)"
+if wait_for_id "$D_W/out.txt" 99; then ok "(d) server still responsive after two rapid HEAD moves (no crash)"
+else no "(d) server unresponsive after rapid HEAD moves (crash?)"; fi
 # scan the ordered spawn/done lines; the live worker count must NEVER exceed 1.
 MAXLIVE="$( grep -E "ripwire-prefetch (spawn|done)" "$D_W/err.txt" | python3 -c '
 import sys
@@ -277,10 +280,11 @@ for ln in sys.stdin:
     elif "done" in ln: live=max(0,live-1)
 print(mx)
 ' )"
-[ "${MAXLIVE:-0}" -le 1 ] && ok "(d) at most one concurrent prefetch worker (max live=${MAXLIVE:-0}; single-flight holds)" \
-                          || no "(d) more than one concurrent worker (max live=$MAXLIVE) — single-flight broken"
+if [ "${MAXLIVE:-0}" -le 1 ]; then ok "(d) at most one concurrent prefetch worker (max live=${MAXLIVE:-0}; single-flight holds)"
+else no "(d) more than one concurrent worker (max live=$MAXLIVE) — single-flight broken"; fi
 assert_no_tsan "$D_W/err.txt" "d"
 exec 9>&-; kill $SRV 2>/dev/null; wait $SRV 2>/dev/null
 
 echo
-[ "$fail" -eq 0 ] && { echo "qsnapprefetchcheck: ALL PASS"; exit 0; } || { echo "qsnapprefetchcheck: FAIL"; exit 1; }
+if [ "$fail" -eq 0 ]; then echo "qsnapprefetchcheck: ALL PASS"; exit 0
+else echo "qsnapprefetchcheck: FAIL"; exit 1; fi

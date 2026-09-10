@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# RIPWIRE_TEST_DEPS: src/mcpindex.h,src/mcp.h,src/mcpserver.h,src/main.cpp
+# RIPWIRE_TEST_DEPS: src/mcpindex.h,src/mcp.h,src/mcpserver.h,src/main.cpp,test/mcp_api_driver.cpp,test/qsnapprefetchcheck.sh
 # Foreground MCP Redis reuse, per-root identity, failure framing and prefetch suppression.
 set -euo pipefail
 ROOT="$( cd "$( dirname "$0" )/.." && pwd )"
 BIN="${RIPWIRE_BIN:-$ROOT/build/ripwire}"
+BUILD_DIR="${RIPWIRE_TEST_BUILD_DIR:-$ROOT/build-tests}"
+cmake -Wno-deprecated -S "$ROOT" -B "$BUILD_DIR" -DRIPWIRE_TESTS=ON >/dev/null
+cmake --build "$BUILD_DIR" --target ripwire_test_mcp_api -j2 >/dev/null
+RIPWIRE_CACHE_BACKEND='' RIPWIRE_MCP_API_BIN="$BUILD_DIR/ripwire_test_mcp_api" bash "$ROOT/test/qsnapprefetchcheck.sh" "$BIN"
 python3 - "$ROOT" "$BIN" <<'PY'
 import base64, http.client, json, os, pathlib, re, select, socket, struct, subprocess, sys, tempfile, time
 

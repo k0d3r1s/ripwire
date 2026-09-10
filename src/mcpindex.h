@@ -1086,10 +1086,11 @@ inline std::uint64_t gitHeadMoveToken( const std::string& root )
 // above, gated first on the file count so a small repo does not even probe git.
 inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t fileCount )
 {
-    // Only File policy may launch this filesystem warmer; Disabled must never populate either layer.
+    // File policy (including the legacy null API default) may launch this filesystem warmer.
+    // Disabled must never populate either layer.
     // Temporary Redis boundary: Task 6 must route BOTH HEAD ingest and derived snapshot storage.
     const auto& policy = mcpIndexSlot().cachePolicy;
-    if( !policy || policy->kind != CacheBackendKind::File )
+    if( policy && policy->kind != CacheBackendKind::File )
     {
         return;
     }
