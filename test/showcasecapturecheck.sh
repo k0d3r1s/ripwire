@@ -183,19 +183,6 @@ else
     #               81.4 +/- 9, and the +/- 9 is corpus headroom, not measurement slop, since the same
     #               measurement reproduced to the digit across three root spellings and two checkouts. A
     #               caption edited to match a broken measurement still trips this.
-    #               RE-CENTERED (2026-09-09, the printf-family -> std::print conversion): 81.4 +/- 9 becomes
-    #               71.0 +/- 9 (band 62-80). MECHANISM, not a loosened tolerance: printf was an EXTERNAL name
-    #               with no node in the call graph. rw::emitTo/emitRaw/formatTo are IN-REPO and now carry
-    #               ~1,600 callers each, so PageRank ranks them into the measured top-50 — verified by
-    #               diffing the top-50 symbol sets across the change: exactly four symbols enter, and they
-    #               are emitTo (both overloads), emitRaw and formatTo. They are one-line forwarding
-    #               templates whose signature is nearly the whole function, so they add signature bytes and
-    #               almost no elidable body, which dilutes the ratio: main measures 72.3%, this tree 71.0%.
-    #               The elision itself did not regress — the population being measured changed.
-    #               NOTE FOR WHOEVER OWNS THE PUBLISHED CLAIM: main was already only 0.3 above the old floor
-    #               (72.3 vs 72.0), so this band was one small refactor away from red regardless. The
-    #               user-facing wording in --help moved with it, per (C-help); whether "~62-80%" is the
-    #               claim ripwire wants to advertise is a judgement about the product, not about this gate.
     #               RE-CENTERED (V1, 2026-08-15): was 63.1 +/- 9 (band 55-72) before --expand's <b> bodies
     #               carried sibs=/inc= file-context attributes — those attributes grow the BODY side of this
     #               ratio (not the sig side), so the elision the caption measures genuinely got bigger; this
@@ -284,15 +271,11 @@ print('OK' if not bad else 'DRIFT ' + '; '.join('top-%d caption %.1f%% vs recoun
                 *)   no "(C-recount) $verdict — the caption and its own gate disagree; re-derive with the root-neutralised methodology stated above, and fix BOTH" ;;
             esac
         fi
-        bandLow=62.0; bandHigh=80.0
-        # printed, never hand-copied: the old message quoted a centre of 81.4 that the 2026-09-09
-        # re-centering had already moved — the same stale-number drift arm (C-help) exists to catch.
-        bandCentre="$( python3 -c "print( ( $bandLow + $bandHigh ) / 2 )" )"
-        bandHalf="$(   python3 -c "print( ( $bandHigh - $bandLow ) / 2 )" )"
+        bandLow=72.0; bandHigh=90.0
         pct="$( printf '%s' "$recount" | grep '^RECOUNT_OK top-50' | grep -oE 'reduction_pct=[0-9.-]+' | cut -d= -f2 )"
         in_band="$( python3 -c "print(1 if $bandLow <= $pct <= $bandHigh else 0)" 2>/dev/null || echo 0 )"
         if [ "$in_band" = "1" ]; then
-            ok "(C-band) root-neutralised top-50 reduction is ${pct}% — inside the $bandLow-$bandHigh% regression band (centre $bandCentre +/- $bandHalf)"
+            ok "(C-band) root-neutralised top-50 reduction is ${pct}% — inside the $bandLow-$bandHigh% regression band (81.4 +/- 9)"
         else
             no "(C-band) root-neutralised top-50 reduction is ${pct}% — OUTSIDE the $bandLow-$bandHigh% regression band; --pack-signatures is eliding materially less (or more) than when this was calibrated"
         fi

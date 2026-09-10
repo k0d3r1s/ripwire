@@ -101,7 +101,7 @@ struct Config
                                                            // `<c n="NAME"/>` omits, and the only way an oracle can tell a right locality pin from
                                                            // a wrong one. Under --scip it also carries the index's own covered sites (O rows), so
                                                            // both sides of the join live in one file. stdout is untouched (src/pincensus.h).
-    bool             packSignatures  = false;              // --pack-signatures: body-elided decl skeletons (~62-80% fewer bytes at top-10/50/100, ~80% at the default top-50; root-neutralised, since the repeated path prefix is charged in both forms and is not what this elides — see test/showcasecapturecheck.sh arm C)
+    bool             packSignatures  = false;              // --pack-signatures: body-elided decl skeletons (~72-90% fewer bytes at top-10/50/100, ~80% at the default top-50; root-neutralised, since the repeated path prefix is charged in both forms and is not what this elides — see test/showcasecapturecheck.sh arm C)
     std::string_view query;                                // --query=TERMS: pure lexical (BM25) retrieval
     std::string_view grep;                                 // --grep=STR: parallel literal scan + enclosing symbol + the matched line
     bool             grepGiven = false;                    // G1/F1: --grep=/--regex= was already given once this run — a SECOND occurrence
@@ -1155,8 +1155,8 @@ inline void printUsage( std::FILE* out ) noexcept
         "                               identifies. Composes with --max-tokens (bounds the BODIES ONLY, never the bundle —\n"
         "                               see --max-tokens: past its ceiling the root says over_ceiling=\"1\" rather than cut\n"
         "                               the rows that answered) and --adaptive. 0 = off.\n"
-        "    --pack-signatures          body-elided decl skeletons — ~62-80% fewer element bytes than the same symbols'\n"
-        "                               full --expand bodies (roughly 71% at the top-50 sigs payload cap — the sigs\n"
+        "    --pack-signatures          body-elided decl skeletons — ~72-90% fewer element bytes than the same symbols'\n"
+        "                               full --expand bodies (roughly 80% at the top-50 sigs payload cap — the sigs\n"
         "                               payload is top-50 whatever --top-k is set to, and --top-k's own default is 200),\n"
         "                               measured at top-10/50/100 on this repo with the corpus-root prefix subtracted\n"
         "                               from both sides: that prefix repeats inside every element, is charged in both\n"
