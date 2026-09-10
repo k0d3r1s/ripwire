@@ -1502,7 +1502,7 @@ $ ./build/ripwire . --for="pagerank power iteration" --detail=2
 
 ### `--pack-signatures`
 
-**Answers:** body-elided decl skeletons — ~72-90% fewer element bytes than the same symbols' full --expand bodies (roughly 80% at the top-50 sigs payload cap — the sigs payload is top-50 whatever --top-k is set to, and --top-k's own default is 200), measured at top-10/50/100 on this repo with the corpus-root prefix subtracted from both sides: that prefix repeats inside every element, is charged in both forms, and is not what this elides — count it and the figure becomes a function of how deep your checkout sits.
+**Answers:** body-elided decl skeletons — ~62-80% fewer element bytes than the same symbols' full --expand bodies (roughly 71% at the top-50 sigs payload cap — the sigs payload is top-50 whatever --top-k is set to, and --top-k's own default is 200), measured at top-10/50/100 on this repo with the corpus-root prefix subtracted from both sides: that prefix repeats inside every element, is charged in both forms, and is not what this elides — count it and the figure becomes a function of how deep your checkout sits.
 
 test/showcasecapturecheck.sh (C) re-derives this range from the SAME repo every run and fails on drift. The share RISES with the result size. Like the --format=columnar sibling, a small result can invert it — a signature plus its doc comment can be bigger than a short body.
 
