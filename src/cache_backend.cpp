@@ -384,12 +384,13 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
     std::string host;
     std::string port;
     std::string path;
-    std::string lower( remote );
-    std::ranges::transform( lower, lower.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
-    if( lower.starts_with( "https://" ) || lower.starts_with( "ssh://" ) )
+    const std::size_t schemeSeparator = remote.find( "://" );
+    std::string scheme = schemeSeparator == std::string_view::npos ? std::string() : std::string( remote.substr( 0, schemeSeparator ) );
+    std::ranges::transform( scheme, scheme.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+    if( scheme == "https" || scheme == "ssh" )
     {
-        const bool ssh = lower.starts_with( "ssh://" );
-        std::string_view rest = remote.substr( ssh ? 6 : 8 );
+        const bool ssh = scheme == "ssh";
+        std::string_view rest = remote.substr( schemeSeparator + 3 );
         const std::size_t slash = rest.find( '/' );
         if( slash == std::string_view::npos )
         {
@@ -402,7 +403,6 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
         if( at != std::string_view::npos )
         {
             std::string user( authority.substr( 0, at ) );
-            std::ranges::transform( user, user.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
             if( !ssh || user != "git" || authority.find( '@', at + 1 ) != std::string_view::npos )
             {
                 error = "Git remote userinfo is not supported for Redis project identity";
@@ -435,7 +435,7 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
     else
     {
         constexpr std::string_view prefix = "git@";
-        if( !lower.starts_with( prefix ) )
+        if( !remote.starts_with( prefix ) )
         {
             error = "Git remote transport is unsupported for Redis project identity";
             return std::nullopt;

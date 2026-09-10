@@ -170,6 +170,8 @@ expect_bad_remote()
 }
 
 expect_bad_remote "credential userinfo" 'https://user:secret@example.com/Owner/Repo.git'
+expect_bad_remote "uppercase SSH username" 'ssh://GIT@example.com/Owner/Repo.git'
+expect_bad_remote "uppercase SCP username" 'GIT@example.com:Owner/Repo.git'
 expect_bad_remote "query" 'https://example.com/Owner/Repo.git?branch=main'
 expect_bad_remote "fragment" 'https://example.com/Owner/Repo.git#main'
 expect_bad_remote "percent escape" 'https://example.com/Owner%2FRepo.git'
