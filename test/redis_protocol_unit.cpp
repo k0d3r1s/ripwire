@@ -29,6 +29,11 @@ struct RedisClientTestPeer
     {
         return RedisClient::parseReplyChunksForTesting( chunks );
     }
+
+    static bool encodedBatchSize( const std::vector<std::vector<std::string_view>>& commands, std::size_t& size )
+    {
+        return RedisClient::encodedBatchSizeForTesting( commands, size );
+    }
 };
 
 }
@@ -184,4 +189,21 @@ TEST_CASE( "outbound batch ceilings fail before transport" )
     const rw::RedisResult sizeResult = client.pipeline( tooLarge );
     CHECK_FALSE( sizeResult );
     CHECK( sizeResult.failure == rw::RedisFailure::Config );
+}
+
+TEST_CASE( "outbound encoder validates projected size before copying payloads" )
+{
+    constexpr std::size_t ceiling = 8u * 1024u * 1024u;
+    constexpr std::size_t oneArgumentFraming = 16;
+    const std::string exact( ceiling - oneArgumentFraming, 'x' );
+    const std::string over( ceiling - oneArgumentFraming + 1, 'y' );
+    std::size_t encodedSize = 0;
+
+    CHECK( rw::RedisClientTestPeer::encodedBatchSize( { { exact } }, encodedSize ) );
+    CHECK( encodedSize == ceiling );
+    CHECK_FALSE( rw::RedisClientTestPeer::encodedBatchSize( { { over } }, encodedSize ) );
+
+    const std::string hugeViewBacking( 64, 'z' );
+    const std::string_view impossible( hugeViewBacking.data(), std::numeric_limits<std::size_t>::max() );
+    CHECK_FALSE( rw::RedisClientTestPeer::encodedBatchSize( { { impossible } }, encodedSize ) );
 }

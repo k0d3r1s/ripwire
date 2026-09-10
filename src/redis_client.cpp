@@ -8,12 +8,14 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
-#include <memory>
 #include <poll.h>
+#include <signal.h>
 #include <string>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -34,9 +36,11 @@ constexpr std::size_t kMaximumReplyDepth = 4;
 constexpr std::size_t kMaximumAggregateBytes = 128u * 1024u * 1024u;
 constexpr std::size_t kMaximumPipelineCommands = 256;
 constexpr std::size_t kMaximumRequestBytes = 8u * 1024u * 1024u;
+constexpr std::size_t kMaximumResolvedAddresses = 16;
 
 enum class EndpointKind : std::uint8_t { Tcp, Unix };
 enum class ParseStatus : std::uint8_t { Complete, NeedMore, Invalid };
+enum class InterruptibleCall : std::uint8_t { Fcntl, Connect, GetSockOpt, GetPeerName, Stat, Lstat, Count };
 
 struct Endpoint
 {
@@ -62,6 +66,36 @@ struct ParseOutcome
     std::vector<RedisReply> replies;
 };
 
+struct ResolvedAddress
+{
+    int family = AF_UNSPEC;
+    int socketType = SOCK_STREAM;
+    int protocol = IPPROTO_TCP;
+    socklen_t length = 0;
+    sockaddr_storage address{};
+};
+
+struct ResolverPacket
+{
+    std::int32_t status = -1;
+    std::uint32_t addressCount = 0;
+    std::array<ResolvedAddress, kMaximumResolvedAddresses> addresses{};
+};
+
+#if defined( RIPWIRE_REDIS_TESTING )
+struct RedisTestHooks
+{
+    std::array<unsigned, static_cast<std::size_t>( InterruptibleCall::Count )> eintr{};
+    std::uint32_t resolverDelayMs = 0;
+    std::vector<std::string> resolverAddresses;
+    bool peerMismatch = false;
+    bool unixPathSwap = false;
+    bool unsafeUnixOwner = false;
+};
+
+RedisTestHooks redisTestHooks;
+#endif
+
 class SocketHandle
 {
   public:
@@ -80,6 +114,14 @@ class SocketHandle
     SocketHandle& operator=( SocketHandle&& ) = delete;
     [[nodiscard]] int get() const noexcept { return value_; }
     [[nodiscard]] explicit operator bool() const noexcept { return value_ >= 0; }
+    void reset() noexcept
+    {
+        if( value_ >= 0 )
+        {
+            close( value_ );
+            value_ = -1;
+        }
+    }
 
   private:
     int value_ = -1;
@@ -310,12 +352,44 @@ bool isLoopbackAddress( const sockaddr* address ) noexcept
     return false;
 }
 
-bool setDescriptorFlags( const int descriptor ) noexcept
+bool injectInterruption( const InterruptibleCall call ) noexcept
 {
-    const int descriptorFlags = fcntl( descriptor, F_GETFD, 0 );
-    const int statusFlags = fcntl( descriptor, F_GETFL, 0 );
-    return descriptorFlags >= 0 && statusFlags >= 0 && fcntl( descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC ) == 0
-           && fcntl( descriptor, F_SETFL, statusFlags | O_NONBLOCK ) == 0;
+#if defined( RIPWIRE_REDIS_TESTING )
+    unsigned& remaining = redisTestHooks.eintr[static_cast<std::size_t>( call )];
+    if( remaining > 0 )
+    {
+        --remaining;
+        errno = EINTR;
+        return true;
+    }
+#else
+    (void)call;
+#endif
+    return false;
+}
+
+int remainingMilliseconds( Deadline deadline ) noexcept;
+
+int retryFcntl( const int descriptor, const int command, const int argument, const Deadline deadline ) noexcept
+{
+    while( remainingMilliseconds( deadline ) > 0 )
+    {
+        const int result = injectInterruption( InterruptibleCall::Fcntl ) ? -1 : fcntl( descriptor, command, argument );
+        if( result >= 0 || errno != EINTR )
+        {
+            return result;
+        }
+    }
+    errno = ETIMEDOUT;
+    return -1;
+}
+
+bool setDescriptorFlags( const int descriptor, const Deadline deadline ) noexcept
+{
+    const int descriptorFlags = retryFcntl( descriptor, F_GETFD, 0, deadline );
+    const int statusFlags = retryFcntl( descriptor, F_GETFL, 0, deadline );
+    return descriptorFlags >= 0 && statusFlags >= 0 && retryFcntl( descriptor, F_SETFD, descriptorFlags | FD_CLOEXEC, deadline ) == 0
+           && retryFcntl( descriptor, F_SETFL, statusFlags | O_NONBLOCK, deadline ) == 0;
 }
 
 int remainingMilliseconds( const Deadline deadline ) noexcept
@@ -362,11 +436,276 @@ bool waitForSocket( const int descriptor, const short events, const Deadline dea
     }
 }
 
+int retryConnect( const int descriptor, const sockaddr* address, const socklen_t addressLength, const Deadline deadline ) noexcept
+{
+    while( remainingMilliseconds( deadline ) > 0 )
+    {
+        const int result = injectInterruption( InterruptibleCall::Connect ) ? -1 : connect( descriptor, address, addressLength );
+        if( result == 0 || errno != EINTR )
+        {
+            return result;
+        }
+    }
+    errno = ETIMEDOUT;
+    return -1;
+}
+
+int retryGetSockOpt( const int descriptor, const int level, const int option, void* value, socklen_t* length, const Deadline deadline ) noexcept
+{
+    while( remainingMilliseconds( deadline ) > 0 )
+    {
+        const int result = injectInterruption( InterruptibleCall::GetSockOpt ) ? -1 : getsockopt( descriptor, level, option, value, length );
+        if( result == 0 || errno != EINTR )
+        {
+            return result;
+        }
+    }
+    errno = ETIMEDOUT;
+    return -1;
+}
+
+int retryGetPeerName( const int descriptor, sockaddr* address, socklen_t* length, const Deadline deadline ) noexcept
+{
+    while( remainingMilliseconds( deadline ) > 0 )
+    {
+        const int result = injectInterruption( InterruptibleCall::GetPeerName ) ? -1 : getpeername( descriptor, address, length );
+        if( result == 0 || errno != EINTR )
+        {
+            return result;
+        }
+    }
+    errno = ETIMEDOUT;
+    return -1;
+}
+
+bool reapResolver( const pid_t processId, const bool terminate, const Deadline deadline ) noexcept
+{
+    if( terminate )
+    {
+        while( kill( processId, SIGKILL ) != 0 && errno == EINTR ) {}
+        while( waitpid( processId, nullptr, 0 ) < 0 && errno == EINTR ) {}
+        return false;
+    }
+    while( true )
+    {
+        const pid_t result = waitpid( processId, nullptr, WNOHANG );
+        if( result == processId || ( result < 0 && errno == ECHILD ) )
+        {
+            return true;
+        }
+        if( result < 0 && errno != EINTR )
+        {
+            return false;
+        }
+        const int remaining = remainingMilliseconds( deadline );
+        if( remaining == 0 )
+        {
+            return reapResolver( processId, true, deadline );
+        }
+        while( poll( nullptr, 0, std::min( remaining, 1 ) ) < 0 && errno == EINTR ) {}
+    }
+}
+
+void resolverSleepForTesting() noexcept
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    timespec remaining{ static_cast<time_t>( redisTestHooks.resolverDelayMs / 1000u ), static_cast<long>( redisTestHooks.resolverDelayMs % 1000u ) * 1000000L };
+    while( nanosleep( &remaining, &remaining ) != 0 && errno == EINTR ) {}
+#endif
+}
+
+bool appendNumericAddressForTesting( const std::string& text, const std::uint16_t port, ResolverPacket& packet ) noexcept
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    if( packet.addressCount >= packet.addresses.size() )
+    {
+        return false;
+    }
+    ResolvedAddress& output = packet.addresses[packet.addressCount];
+    sockaddr_in ipv4{};
+    sockaddr_in6 ipv6{};
+    if( inet_pton( AF_INET, text.c_str(), &ipv4.sin_addr ) == 1 )
+    {
+        ipv4.sin_family = AF_INET;
+        ipv4.sin_port = htons( port );
+        output.family = AF_INET;
+        output.length = sizeof( ipv4 );
+        std::memcpy( &output.address, &ipv4, sizeof( ipv4 ) );
+    }
+    else if( inet_pton( AF_INET6, text.c_str(), &ipv6.sin6_addr ) == 1 )
+    {
+        ipv6.sin6_family = AF_INET6;
+        ipv6.sin6_port = htons( port );
+        output.family = AF_INET6;
+        output.length = sizeof( ipv6 );
+        std::memcpy( &output.address, &ipv6, sizeof( ipv6 ) );
+    }
+    else
+    {
+        return false;
+    }
+    ++packet.addressCount;
+    return true;
+#else
+    (void)text;
+    (void)port;
+    (void)packet;
+    return false;
+#endif
+}
+
+void resolveInChild( const Endpoint& endpoint, const int outputDescriptor ) noexcept
+{
+    resolverSleepForTesting();
+    ResolverPacket packet;
+#if defined( RIPWIRE_REDIS_TESTING )
+    if( !redisTestHooks.resolverAddresses.empty() )
+    {
+        std::uint32_t port = 0;
+        packet.status = parseUnsigned( endpoint.port, port, 65535 ) ? 0 : -1;
+        for( const std::string& address : redisTestHooks.resolverAddresses )
+        {
+            if( packet.status != 0 || !appendNumericAddressForTesting( address, static_cast<std::uint16_t>( port ), packet ) )
+            {
+                packet.status = -1;
+                packet.addressCount = 0;
+                break;
+            }
+        }
+    }
+    else
+#endif
+    {
+        addrinfo hints{};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_protocol = IPPROTO_TCP;
+        addrinfo* addresses = nullptr;
+        packet.status = getaddrinfo( endpoint.host.c_str(), endpoint.port.c_str(), &hints, &addresses ) == 0 ? 0 : -1;
+        if( packet.status == 0 )
+        {
+            for( const addrinfo* candidate = addresses; candidate; candidate = candidate->ai_next )
+            {
+                if( packet.addressCount >= packet.addresses.size() || candidate->ai_addrlen > sizeof( sockaddr_storage ) )
+                {
+                    packet.status = -1;
+                    packet.addressCount = 0;
+                    break;
+                }
+                ResolvedAddress& output = packet.addresses[packet.addressCount++];
+                output.family = candidate->ai_family;
+                output.socketType = candidate->ai_socktype;
+                output.protocol = candidate->ai_protocol;
+                output.length = static_cast<socklen_t>( candidate->ai_addrlen );
+                std::memcpy( &output.address, candidate->ai_addr, candidate->ai_addrlen );
+            }
+        }
+        if( addresses )
+        {
+            freeaddrinfo( addresses );
+        }
+    }
+    const char* bytes = reinterpret_cast<const char*>( &packet );
+    std::size_t written = 0;
+    while( written < sizeof( packet ) )
+    {
+        const ssize_t result = write( outputDescriptor, bytes + written, sizeof( packet ) - written );
+        if( result > 0 )
+        {
+            written += static_cast<std::size_t>( result );
+        }
+        else if( result < 0 && errno != EINTR )
+        {
+            break;
+        }
+    }
+}
+
+RedisFailure resolveAddresses( const Endpoint& endpoint, const Deadline deadline, ResolverPacket& packet )
+{
+    int descriptors[2]{};
+    while( pipe( descriptors ) != 0 )
+    {
+        if( errno != EINTR )
+        {
+            return RedisFailure::Connect;
+        }
+        if( remainingMilliseconds( deadline ) == 0 )
+        {
+            return RedisFailure::Timeout;
+        }
+    }
+    SocketHandle input( descriptors[0] );
+    SocketHandle output( descriptors[1] );
+    if( !setDescriptorFlags( input.get(), deadline ) || retryFcntl( output.get(), F_SETFD, FD_CLOEXEC, deadline ) != 0 )
+    {
+        return remainingMilliseconds( deadline ) == 0 ? RedisFailure::Timeout : RedisFailure::Connect;
+    }
+    pid_t processId = -1;
+    while( processId < 0 )
+    {
+        processId = fork();
+        if( processId < 0 && errno != EINTR )
+        {
+            return RedisFailure::Connect;
+        }
+        if( processId < 0 && remainingMilliseconds( deadline ) == 0 )
+        {
+            return RedisFailure::Timeout;
+        }
+    }
+    if( processId == 0 )
+    {
+        close( input.get() );
+        resolveInChild( endpoint, output.get() );
+        _exit( 0 );
+    }
+    output.reset();
+    char* bytes = reinterpret_cast<char*>( &packet );
+    std::size_t received = 0;
+    while( received < sizeof( packet ) )
+    {
+        bool timedOut = false;
+        if( !waitForSocket( input.get(), POLLIN, deadline, timedOut ) )
+        {
+            reapResolver( processId, true, deadline );
+            return timedOut ? RedisFailure::Timeout : RedisFailure::Connect;
+        }
+        const ssize_t result = read( input.get(), bytes + received, sizeof( packet ) - received );
+        if( result > 0 )
+        {
+            received += static_cast<std::size_t>( result );
+        }
+        else if( result == 0 )
+        {
+            return reapResolver( processId, false, deadline ) ? RedisFailure::Connect : RedisFailure::Timeout;
+        }
+        else if( errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK )
+        {
+            reapResolver( processId, true, deadline );
+            return RedisFailure::Connect;
+        }
+    }
+    if( !reapResolver( processId, false, deadline ) )
+    {
+        return RedisFailure::Timeout;
+    }
+    if( packet.status != 0 || packet.addressCount == 0 || packet.addressCount > packet.addresses.size() )
+    {
+        return RedisFailure::Connect;
+    }
+    return RedisFailure::None;
+}
+
 RedisFailure finishConnect( const int descriptor, const sockaddr* address, const socklen_t addressLength, const Deadline deadline ) noexcept
 {
-    if( connect( descriptor, address, addressLength ) == 0 )
+    if( retryConnect( descriptor, address, addressLength, deadline ) == 0 )
     {
         return RedisFailure::None;
+    }
+    if( errno == ETIMEDOUT )
+    {
+        return RedisFailure::Timeout;
     }
     if( errno != EINPROGRESS && errno != EWOULDBLOCK )
     {
@@ -379,71 +718,101 @@ RedisFailure finishConnect( const int descriptor, const sockaddr* address, const
     }
     int socketError = 0;
     socklen_t socketErrorLength = sizeof( socketError );
-    if( getsockopt( descriptor, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength ) != 0 || socketError != 0 )
+    if( retryGetSockOpt( descriptor, SOL_SOCKET, SO_ERROR, &socketError, &socketErrorLength, deadline ) != 0 || socketError != 0 )
     {
         return socketError == ETIMEDOUT ? RedisFailure::Timeout : RedisFailure::Connect;
     }
     return RedisFailure::None;
 }
 
+bool validateResolvedAddresses( const ResolverPacket& addresses, const bool allowRemote ) noexcept
+{
+    for( std::size_t addressIndex = 0; addressIndex < addresses.addressCount; ++addressIndex )
+    {
+        const ResolvedAddress& candidate = addresses.addresses[addressIndex];
+        if( ( candidate.family != AF_INET && candidate.family != AF_INET6 ) || candidate.length == 0 || candidate.length > sizeof( sockaddr_storage )
+            || ( !allowRemote && !isLoopbackAddress( reinterpret_cast<const sockaddr*>( &candidate.address ) ) ) )
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+SocketHandle createTcpSocket( const ResolvedAddress& candidate, const Deadline deadline ) noexcept
+{
+    int rawDescriptor = -1;
+    while( rawDescriptor < 0 && remainingMilliseconds( deadline ) > 0 )
+    {
+        rawDescriptor = socket( candidate.family, candidate.socketType, candidate.protocol );
+        if( rawDescriptor < 0 && errno != EINTR )
+        {
+            break;
+        }
+    }
+    return SocketHandle( rawDescriptor );
+}
+
+bool validateTcpPeer( const int descriptor, const bool allowRemote, const Deadline deadline ) noexcept
+{
+    sockaddr_storage peer{};
+    socklen_t peerLength = sizeof( peer );
+    bool peerMismatch = false;
+#if defined( RIPWIRE_REDIS_TESTING )
+    peerMismatch = redisTestHooks.peerMismatch;
+    redisTestHooks.peerMismatch = false;
+#endif
+    return retryGetPeerName( descriptor, reinterpret_cast<sockaddr*>( &peer ), &peerLength, deadline ) == 0 && !peerMismatch
+           && ( allowRemote || isLoopbackAddress( reinterpret_cast<const sockaddr*>( &peer ) ) );
+}
+
+SocketHandle connectTcpCandidate( const ResolvedAddress& candidate, const bool allowRemote, const Deadline deadline, RedisFailure& failure )
+{
+    SocketHandle descriptor = createTcpSocket( candidate, deadline );
+    if( !descriptor || !setDescriptorFlags( descriptor.get(), deadline ) )
+    {
+        return {};
+    }
+#if defined( SO_NOSIGPIPE )
+    const int enabled = 1;
+    while( setsockopt( descriptor.get(), SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof( enabled ) ) != 0 && errno == EINTR
+           && remainingMilliseconds( deadline ) > 0 ) {}
+#endif
+    failure = finishConnect( descriptor.get(), reinterpret_cast<const sockaddr*>( &candidate.address ), candidate.length, deadline );
+    if( failure != RedisFailure::None || !validateTcpPeer( descriptor.get(), allowRemote, deadline ) )
+    {
+        if( failure == RedisFailure::None )
+        {
+            failure = RedisFailure::Connect;
+        }
+        return {};
+    }
+    return descriptor;
+}
+
 SocketHandle connectTcp( const Endpoint& endpoint, const bool allowRemote, const Deadline deadline, RedisFailure& failure )
 {
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-    addrinfo* rawAddresses = nullptr;
-    if( getaddrinfo( endpoint.host.c_str(), endpoint.port.c_str(), &hints, &rawAddresses ) != 0 )
+    ResolverPacket addresses;
+    failure = resolveAddresses( endpoint, deadline, addresses );
+    if( failure != RedisFailure::None )
+    {
+        return {};
+    }
+    if( !validateResolvedAddresses( addresses, allowRemote ) )
     {
         failure = RedisFailure::Connect;
         return {};
     }
-    const std::unique_ptr<addrinfo, decltype( &freeaddrinfo )> addresses( rawAddresses, freeaddrinfo );
-    if( remainingMilliseconds( deadline ) == 0 )
-    {
-        failure = RedisFailure::Timeout;
-        return {};
-    }
-    for( const addrinfo* candidate = addresses.get(); candidate; candidate = candidate->ai_next )
-    {
-        if( candidate->ai_family != AF_INET && candidate->ai_family != AF_INET6 )
-        {
-            failure = RedisFailure::Connect;
-            return {};
-        }
-        if( !allowRemote && !isLoopbackAddress( candidate->ai_addr ) )
-        {
-            failure = RedisFailure::Connect;
-            return {};
-        }
-    }
     RedisFailure lastFailure = RedisFailure::Connect;
-    for( const addrinfo* candidate = addresses.get(); candidate; candidate = candidate->ai_next )
+    for( std::size_t addressIndex = 0; addressIndex < addresses.addressCount; ++addressIndex )
     {
-        SocketHandle descriptor( socket( candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol ) );
-        if( !descriptor || !setDescriptorFlags( descriptor.get() ) )
-        {
-            continue;
-        }
-#if defined( SO_NOSIGPIPE )
-        const int enabled = 1;
-        setsockopt( descriptor.get(), SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof( enabled ) );
-#endif
-        lastFailure = finishConnect( descriptor.get(), candidate->ai_addr, static_cast<socklen_t>( candidate->ai_addrlen ), deadline );
-        if( lastFailure != RedisFailure::None )
+        SocketHandle descriptor = connectTcpCandidate( addresses.addresses[addressIndex], allowRemote, deadline, lastFailure );
+        if( !descriptor )
         {
             if( lastFailure == RedisFailure::Timeout )
             {
                 break;
             }
-            continue;
-        }
-        sockaddr_storage peer{};
-        socklen_t peerLength = sizeof( peer );
-        if( getpeername( descriptor.get(), reinterpret_cast<sockaddr*>( &peer ), &peerLength ) != 0
-            || ( !allowRemote && !isLoopbackAddress( reinterpret_cast<const sockaddr*>( &peer ) ) ) )
-        {
-            lastFailure = RedisFailure::Connect;
             continue;
         }
         failure = RedisFailure::None;
@@ -458,7 +827,22 @@ bool safeOwner( const uid_t owner ) noexcept
     return owner == 0 || owner == geteuid();
 }
 
-bool validateUnixPath( const std::string& path, struct stat& endpointStatus ) noexcept
+int retryPathStat( const char* path, struct stat* status, const bool noFollow, const Deadline deadline ) noexcept
+{
+    const InterruptibleCall call = noFollow ? InterruptibleCall::Lstat : InterruptibleCall::Stat;
+    while( remainingMilliseconds( deadline ) > 0 )
+    {
+        const int result = injectInterruption( call ) ? -1 : ( noFollow ? lstat( path, status ) : stat( path, status ) );
+        if( result == 0 || errno != EINTR )
+        {
+            return result;
+        }
+    }
+    errno = ETIMEDOUT;
+    return -1;
+}
+
+bool validateUnixPath( const std::string& path, struct stat& endpointStatus, const Deadline deadline ) noexcept
 {
     std::string parent = "/";
     std::size_t position = 1;
@@ -475,14 +859,20 @@ bool validateUnixPath( const std::string& path, struct stat& endpointStatus ) no
         }
         parent.append( path, position, slash - position );
         struct stat status{};
-        if( stat( parent.c_str(), &status ) != 0 || !S_ISDIR( status.st_mode ) || !safeOwner( status.st_uid )
+        if( retryPathStat( parent.c_str(), &status, false, deadline ) != 0 || !S_ISDIR( status.st_mode ) || !safeOwner( status.st_uid )
             || ( ( status.st_mode & 0022 ) != 0 && ( status.st_mode & S_ISVTX ) == 0 ) )
         {
             return false;
         }
         position = slash + 1;
     }
-    if( lstat( path.c_str(), &endpointStatus ) != 0 || !S_ISSOCK( endpointStatus.st_mode ) || !safeOwner( endpointStatus.st_uid )
+    bool unsafeOwner = false;
+#if defined( RIPWIRE_REDIS_TESTING )
+    unsafeOwner = redisTestHooks.unsafeUnixOwner;
+    redisTestHooks.unsafeUnixOwner = false;
+#endif
+    if( retryPathStat( path.c_str(), &endpointStatus, true, deadline ) != 0 || !S_ISSOCK( endpointStatus.st_mode ) || unsafeOwner
+        || !safeOwner( endpointStatus.st_uid )
         || ( endpointStatus.st_mode & 0022 ) != 0 )
     {
         return false;
@@ -490,12 +880,21 @@ bool validateUnixPath( const std::string& path, struct stat& endpointStatus ) no
     return true;
 }
 
-bool validateUnixPeer( const int descriptor ) noexcept
+bool validateUnixPeer( const int descriptor, const Deadline deadline ) noexcept
 {
 #if defined( __APPLE__ ) || defined( __FreeBSD__ )
     uid_t effectiveUser = 0;
     gid_t effectiveGroup = 0;
-    return getpeereid( descriptor, &effectiveUser, &effectiveGroup ) == 0 && safeOwner( effectiveUser );
+    int result = -1;
+    while( result != 0 && remainingMilliseconds( deadline ) > 0 )
+    {
+        result = getpeereid( descriptor, &effectiveUser, &effectiveGroup );
+        if( result != 0 && errno != EINTR )
+        {
+            return false;
+        }
+    }
+    return result == 0 && safeOwner( effectiveUser );
 #elif defined( __linux__ ) && defined( SO_PEERCRED )
     struct PeerCredentials
     {
@@ -504,9 +903,10 @@ bool validateUnixPeer( const int descriptor ) noexcept
         gid_t gid;
     } credentials{};
     socklen_t length = sizeof( credentials );
-    return getsockopt( descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length ) == 0 && safeOwner( credentials.uid );
+    return retryGetSockOpt( descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length, deadline ) == 0 && safeOwner( credentials.uid );
 #else
     (void)descriptor;
+    (void)deadline;
     return true;
 #endif
 }
@@ -514,20 +914,30 @@ bool validateUnixPeer( const int descriptor ) noexcept
 SocketHandle connectUnix( const Endpoint& endpoint, const Deadline deadline, RedisFailure& failure )
 {
     struct stat before{};
-    if( endpoint.path.size() >= sizeof( sockaddr_un::sun_path ) || !validateUnixPath( endpoint.path, before ) )
+    if( endpoint.path.size() >= sizeof( sockaddr_un::sun_path ) || !validateUnixPath( endpoint.path, before, deadline ) )
     {
         failure = RedisFailure::Connect;
         return {};
     }
-    SocketHandle descriptor( socket( AF_UNIX, SOCK_STREAM, 0 ) );
-    if( !descriptor || !setDescriptorFlags( descriptor.get() ) )
+    int rawDescriptor = -1;
+    while( rawDescriptor < 0 && remainingMilliseconds( deadline ) > 0 )
+    {
+        rawDescriptor = socket( AF_UNIX, SOCK_STREAM, 0 );
+        if( rawDescriptor < 0 && errno != EINTR )
+        {
+            break;
+        }
+    }
+    SocketHandle descriptor( rawDescriptor );
+    if( !descriptor || !setDescriptorFlags( descriptor.get(), deadline ) )
     {
         failure = RedisFailure::Connect;
         return {};
     }
 #if defined( SO_NOSIGPIPE )
     const int enabled = 1;
-    setsockopt( descriptor.get(), SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof( enabled ) );
+    while( setsockopt( descriptor.get(), SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof( enabled ) ) != 0 && errno == EINTR
+           && remainingMilliseconds( deadline ) > 0 ) {}
 #endif
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
@@ -538,7 +948,13 @@ SocketHandle connectUnix( const Endpoint& endpoint, const Deadline deadline, Red
         return {};
     }
     struct stat after{};
-    if( !validateUnixPath( endpoint.path, after ) || before.st_dev != after.st_dev || before.st_ino != after.st_ino || !validateUnixPeer( descriptor.get() ) )
+    bool pathSwap = false;
+#if defined( RIPWIRE_REDIS_TESTING )
+    pathSwap = redisTestHooks.unixPathSwap;
+    redisTestHooks.unixPathSwap = false;
+#endif
+    if( !validateUnixPath( endpoint.path, after, deadline ) || pathSwap || before.st_dev != after.st_dev || before.st_ino != after.st_ino
+        || !validateUnixPeer( descriptor.get(), deadline ) )
     {
         failure = RedisFailure::Connect;
         return {};
@@ -761,12 +1177,51 @@ bool appendDecimal( std::string& destination, const std::size_t value )
     return true;
 }
 
-bool appendCommand( std::string& destination, const std::vector<std::string_view>& arguments )
+std::size_t decimalDigitCount( std::size_t value ) noexcept
 {
-    if( arguments.empty() )
+    std::size_t count = 1;
+    while( value >= 10 )
+    {
+        value /= 10;
+        ++count;
+    }
+    return count;
+}
+
+bool addEncodedBytes( std::size_t& total, const std::size_t additional ) noexcept
+{
+    if( additional > kMaximumRequestBytes || total > kMaximumRequestBytes - additional )
     {
         return false;
     }
+    total += additional;
+    return true;
+}
+
+bool encodedBatchSize( const std::vector<std::vector<std::string_view>>& commands, std::size_t& encodedSize ) noexcept
+{
+    std::size_t total = 0;
+    for( const std::vector<std::string_view>& arguments : commands )
+    {
+        if( arguments.empty() || !addEncodedBytes( total, 3 + decimalDigitCount( arguments.size() ) ) )
+        {
+            return false;
+        }
+        for( const std::string_view argument : arguments )
+        {
+            const std::size_t framing = 5 + decimalDigitCount( argument.size() );
+            if( !addEncodedBytes( total, framing ) || !addEncodedBytes( total, argument.size() ) )
+            {
+                return false;
+            }
+        }
+    }
+    encodedSize = total;
+    return true;
+}
+
+bool appendCommand( std::string& destination, const std::vector<std::string_view>& arguments )
+{
     destination.push_back( '*' );
     if( !appendDecimal( destination, arguments.size() ) )
     {
@@ -783,12 +1238,8 @@ bool appendCommand( std::string& destination, const std::vector<std::string_view
         destination += "\r\n";
         destination.append( argument.data(), argument.size() );
         destination += "\r\n";
-        if( destination.size() > kMaximumRequestBytes )
-        {
-            return false;
-        }
     }
-    return destination.size() <= kMaximumRequestBytes;
+    return true;
 }
 
 RedisFailure sendAll( const int descriptor, const std::string_view bytes, const Deadline deadline ) noexcept
@@ -936,14 +1387,23 @@ RedisResult RedisClient::execute( const std::vector<std::vector<std::string_view
     }
     requests.insert( requests.end(), commands.begin(), commands.end() );
 
+    std::size_t encodedSize = 0;
+    if( !encodedBatchSize( requests, encodedSize ) )
+    {
+        return failureResult( RedisFailure::Config, endpointClass );
+    }
     std::string encoded;
-    encoded.reserve( std::min<std::size_t>( 4096, kMaximumRequestBytes ) );
+    encoded.reserve( encodedSize );
     for( const std::vector<std::string_view>& request : requests )
     {
         if( !appendCommand( encoded, request ) )
         {
             return failureResult( RedisFailure::Config, endpointClass );
         }
+    }
+    if( encoded.size() != encodedSize )
+    {
+        return failureResult( RedisFailure::Config, endpointClass );
     }
 
     const Deadline deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds( config_.timeoutMs );
@@ -1043,6 +1503,57 @@ RedisResult RedisClient::parseReplyChunksForTesting( const std::vector<std::stri
         }
     }
     return parseReplyForTesting( bytes );
+}
+
+bool RedisClient::encodedBatchSizeForTesting( const std::vector<std::vector<std::string_view>>& commands, std::size_t& size )
+{
+    return encodedBatchSize( commands, size );
+}
+
+void RedisClient::injectEintrForTesting()
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.eintr.fill( 1 );
+#endif
+}
+
+void RedisClient::setResolverDelayForTesting( const std::uint32_t milliseconds )
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.resolverDelayMs = milliseconds;
+#else
+    (void)milliseconds;
+#endif
+}
+
+void RedisClient::setResolverAddressesForTesting( std::vector<std::string> addresses )
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.resolverAddresses = std::move( addresses );
+#else
+    (void)addresses;
+#endif
+}
+
+void RedisClient::setPeerMismatchForTesting()
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.peerMismatch = true;
+#endif
+}
+
+void RedisClient::setUnixPathSwapForTesting()
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.unixPathSwap = true;
+#endif
+}
+
+void RedisClient::setUnsafeUnixOwnerForTesting()
+{
+#if defined( RIPWIRE_REDIS_TESTING )
+    redisTestHooks.unsafeUnixOwner = true;
+#endif
 }
 
 }

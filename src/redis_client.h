@@ -45,6 +45,13 @@ class RedisClient
 
     static RedisResult parseReplyForTesting( std::string_view bytes, std::size_t aggregateLimit = 128u * 1024u * 1024u );
     static RedisResult parseReplyChunksForTesting( const std::vector<std::string_view>& chunks );
+    static bool encodedBatchSizeForTesting( const std::vector<std::vector<std::string_view>>& commands, std::size_t& size );
+    static void injectEintrForTesting();
+    static void setResolverDelayForTesting( std::uint32_t milliseconds );
+    static void setResolverAddressesForTesting( std::vector<std::string> addresses );
+    static void setPeerMismatchForTesting();
+    static void setUnixPathSwapForTesting();
+    static void setUnsafeUnixOwnerForTesting();
     [[nodiscard]] RedisResult execute( const std::vector<std::vector<std::string_view>>& commands ) const;
 
     RedisCacheConfig config_;

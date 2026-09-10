@@ -26,47 +26,217 @@ def array(values):
 
 class State:
     def __init__(self, username, password, log_path):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.username = username.encode() if username else None
         self.password = password.encode() if password else None
         self.log_path = log_path
         self.clock = 0.0
         self.databases = {}
         self.commands = []
-        self.next_fault = None
-        self.hold = threading.Event()
-        self.hold.set()
+        self.next_index = 0
+        self.faults = {"before": {}, "after": {}}
+        self.barriers = {}
+        self.command_barriers = {}
 
     def record(self, command):
         encoded = struct.pack("!I", len(command))
         for argument in command:
             encoded += struct.pack("!I", len(argument)) + argument
         with self.lock:
-            self.commands.append(encoded)
+            command_index = self.next_index
+            self.next_index += 1
+            self.commands.append((command_index, encoded))
             if self.log_path:
                 with open(self.log_path, "ab") as stream:
                     stream.write(struct.pack("!I", len(encoded)))
                     stream.write(encoded)
+            return command_index
 
-    def take_fault(self, phase):
+    def schedule_fault(self, phase, command_index, fault):
         with self.lock:
-            fault = self.next_fault
-            if fault and fault.get("phase") == phase:
-                self.next_fault = None
+            self.faults[phase][command_index] = fault
+
+    def take_fault(self, phase, command_index, modes=None):
+        with self.lock:
+            fault = self.faults[phase].get(command_index)
+            if fault is not None and (modes is None or fault.get("mode") in modes):
+                del self.faults[phase][command_index]
                 return fault
-        return None
-
-    def database(self, index):
-        with self.lock:
-            return self.databases.setdefault(index, {})
-
-    def live(self, index, key):
-        database = self.database(index)
-        item = database.get(key)
-        if item is not None and item[1] is not None and item[1] <= self.clock:
-            del database[key]
             return None
-        return item
+
+    def schedule_barrier(self, name, command_index):
+        with self.lock:
+            barrier = self.barriers.setdefault(name, threading.Event())
+            barrier.clear()
+            self.command_barriers[command_index] = name
+
+    def barrier_for(self, command_index):
+        with self.lock:
+            name = self.command_barriers.pop(command_index, None)
+            return None if name is None else self.barriers[name]
+
+    def release_barrier(self, name):
+        with self.lock:
+            barrier = self.barriers.setdefault(name, threading.Event())
+            barrier.set()
+
+def state_database(state, index):
+    return state.databases.setdefault(index, {})
+
+
+def state_live(state, index, key):
+    database = state_database(state, index)
+    item = database.get(key)
+    if item is not None and item[1] is not None and item[1] <= state.clock:
+        del database[key]
+        return None
+    return item
+
+
+def execute_session_command(state, name, args, selected, authenticated):
+    if name == b"AUTH":
+        expected = [state.password] if state.username is None else [state.username, state.password]
+        if state.password is None or args != expected:
+            return b"-WRONGPASS invalid username-password pair\r\n", selected, False
+        return b"+OK\r\n", selected, True
+    if state.password is not None and not authenticated:
+        return b"-NOAUTH authentication required\r\n", selected, authenticated
+    if name == b"SELECT" and len(args) == 1 and args[0].isdigit():
+        return b"+OK\r\n", int(args[0]), authenticated
+    if name == b"PING" and len(args) <= 1:
+        return (b"+PONG\r\n" if not args else bulk(args[0])), selected, authenticated
+    return None
+
+
+def execute_read_command(state, name, args, selected):
+    if name == b"GET" and len(args) == 1:
+        item = state_live(state, selected, args[0])
+        return bulk(None if item is None else item[0])
+    values = []
+    for key in args:
+        item = state_live(state, selected, key)
+        values.append(bulk(None if item is None else item[0]))
+    return array(values)
+
+
+def execute_set_command(state, args, selected):
+    if len(args) < 2:
+        return None
+    key, value = args[:2]
+    nx = False
+    expiry = None
+    option_index = 2
+    while option_index < len(args):
+        option = args[option_index].upper()
+        if option == b"NX":
+            nx = True
+            option_index += 1
+        elif option == b"EX" and option_index + 1 < len(args) and args[option_index + 1].isdigit():
+            expiry = state.clock + int(args[option_index + 1])
+            option_index += 2
+        else:
+            return b"-ERR syntax error\r\n"
+    if nx and state_live(state, selected, key) is not None:
+        return bulk(None)
+    state_database(state, selected)[key] = (value, expiry)
+    return b"+OK\r\n"
+
+
+def execute_metadata_command(state, name, args, selected):
+    database = state_database(state, selected)
+    if name == b"EXPIRE":
+        item = state_live(state, selected, args[0])
+        if item is None:
+            return b":0\r\n"
+        database[args[0]] = (item[0], state.clock + int(args[1]))
+        return b":1\r\n"
+    item = state_live(state, selected, args[0])
+    if name == b"TYPE":
+        return b"+string\r\n" if item is not None else b"+none\r\n"
+    if item is None:
+        ttl = -2
+    elif item[1] is None:
+        ttl = -1
+    else:
+        ttl = max(0, int(item[1] - state.clock))
+    return b":" + str(ttl).encode() + b"\r\n"
+
+
+def execute_collection_command(state, name, args, selected):
+    database = state_database(state, selected)
+    if name == b"SCAN":
+        pattern = args[2] if len(args) >= 3 and args[1].upper() == b"MATCH" else b"*"
+        keys = [bulk(key) for key in sorted(database)
+                if state_live(state, selected, key) is not None
+                and fnmatch.fnmatchcase(key.decode("latin1"), pattern.decode("latin1"))]
+        return array([bulk(b"0"), array(keys)])
+    deleted = 0
+    for key in args:
+        if state_live(state, selected, key) is not None:
+            del database[key]
+            deleted += 1
+    return b":" + str(deleted).encode() + b"\r\n"
+
+
+def execute_redis_command(state, command, selected, authenticated):
+    name = command[0].upper()
+    args = command[1:]
+    session_response = execute_session_command(state, name, args, selected, authenticated)
+    if session_response is not None:
+        return session_response
+    response = None
+    if name == b"GET" and len(args) == 1 or name == b"MGET" and args:
+        response = execute_read_command(state, name, args, selected)
+    elif name == b"SET":
+        response = execute_set_command(state, args, selected)
+    elif name == b"EXPIRE" and len(args) == 2 and args[1].isdigit() or name in (b"TTL", b"TYPE") and len(args) == 1:
+        response = execute_metadata_command(state, name, args, selected)
+    elif name == b"SCAN" and args or name in (b"DEL", b"UNLINK") and args:
+        response = execute_collection_command(state, name, args, selected)
+    if response is None:
+        response = b"-ERR unsupported command\r\n"
+    return response, selected, authenticated
+
+
+def apply_before_fault(response, fault):
+    if not fault:
+        return response
+    mode = fault.get("mode")
+    if mode == "auth_error":
+        return b"-WRONGPASS " + fault.get("message", "forced").encode() + b"\r\n"
+    if mode == "missing_record":
+        return bulk(None)
+    if mode == "corrupt_payload":
+        return bulk(base64.b64decode(fault["value"]))
+    if mode == "server_error":
+        return b"-ERR " + fault.get("message", "forced").encode() + b"\r\n"
+    return response
+
+
+def serve_redis_connection(handler):
+    state = handler.server.state
+    with state.lock:
+        next_index = state.next_index
+    pre_read = state.take_fault("before", next_index, {"non_reader"})
+    if pre_read:
+        time.sleep(float(pre_read.get("seconds", 1.0)))
+        return
+    selected = 0
+    authenticated = state.password is None
+    while True:
+        command = handler.read_command()
+        command_index = state.record(command)
+        barrier = state.barrier_for(command_index)
+        if barrier is not None:
+            barrier.wait()
+        before = state.take_fault("before", command_index)
+        if before and before.get("mode") == "drop":
+            return
+        with state.lock:
+            response, selected, authenticated = execute_redis_command(state, command, selected, authenticated)
+        response = apply_before_fault(response, before)
+        if not handler.send_response(response, state.take_fault("after", command_index)):
+            return
 
 
 class RedisHandler(socketserver.BaseRequestHandler):
@@ -126,105 +296,78 @@ class RedisHandler(socketserver.BaseRequestHandler):
         self.request.sendall(response)
         return True
 
-    def execute(self, command, selected, authenticated):
-        name = command[0].upper()
-        args = command[1:]
-        state = self.server.state
-        if name == b"AUTH":
-            expected = [state.password] if state.username is None else [state.username, state.password]
-            if state.password is None or args != expected:
-                return b"-WRONGPASS invalid username-password pair\r\n", selected, False
-            return b"+OK\r\n", selected, True
-        if state.password is not None and not authenticated:
-            return b"-NOAUTH authentication required\r\n", selected, authenticated
-        if name == b"SELECT" and len(args) == 1 and args[0].isdigit():
-            return b"+OK\r\n", int(args[0]), authenticated
-        if name == b"PING" and len(args) <= 1:
-            return (b"+PONG\r\n" if not args else bulk(args[0])), selected, authenticated
-
-        database = state.database(selected)
-        if name == b"GET" and len(args) == 1:
-            item = state.live(selected, args[0])
-            return bulk(None if item is None else item[0]), selected, authenticated
-        if name == b"MGET" and args:
-            values = []
-            for key in args:
-                item = state.live(selected, key)
-                values.append(bulk(None if item is None else item[0]))
-            return array(values), selected, authenticated
-        if name == b"SET" and len(args) >= 2:
-            key, value = args[:2]
-            nx = False
-            expiry = None
-            option_index = 2
-            while option_index < len(args):
-                option = args[option_index].upper()
-                if option == b"NX":
-                    nx = True
-                    option_index += 1
-                elif option == b"EX" and option_index + 1 < len(args) and args[option_index + 1].isdigit():
-                    expiry = state.clock + int(args[option_index + 1])
-                    option_index += 2
-                else:
-                    return b"-ERR syntax error\r\n", selected, authenticated
-            if nx and state.live(selected, key) is not None:
-                return bulk(None), selected, authenticated
-            database[key] = (value, expiry)
-            return b"+OK\r\n", selected, authenticated
-        if name == b"EXPIRE" and len(args) == 2 and args[1].isdigit():
-            item = state.live(selected, args[0])
-            if item is None:
-                return b":0\r\n", selected, authenticated
-            database[args[0]] = (item[0], state.clock + int(args[1]))
-            return b":1\r\n", selected, authenticated
-        if name == b"TTL" and len(args) == 1:
-            item = state.live(selected, args[0])
-            if item is None:
-                ttl = -2
-            elif item[1] is None:
-                ttl = -1
-            else:
-                ttl = max(0, int(item[1] - state.clock))
-            return b":" + str(ttl).encode() + b"\r\n", selected, authenticated
-        if name == b"TYPE" and len(args) == 1:
-            return (b"+string\r\n" if state.live(selected, args[0]) is not None else b"+none\r\n"), selected, authenticated
-        if name == b"SCAN" and args:
-            pattern = b"*"
-            if len(args) >= 3 and args[1].upper() == b"MATCH":
-                pattern = args[2]
-            keys = []
-            for key in sorted(database):
-                if state.live(selected, key) is not None and fnmatch.fnmatchcase(key.decode("latin1"), pattern.decode("latin1")):
-                    keys.append(bulk(key))
-            return array([bulk(b"0"), array(keys)]), selected, authenticated
-        if name in (b"DEL", b"UNLINK") and args:
-            deleted = 0
-            for key in args:
-                if state.live(selected, key) is not None:
-                    del database[key]
-                    deleted += 1
-            return b":" + str(deleted).encode() + b"\r\n", selected, authenticated
-        return b"-ERR unsupported command\r\n", selected, authenticated
-
     def handle(self):
-        state = self.server.state
-        before = state.take_fault("before")
-        if before:
-            if before.get("mode") == "non_reader":
-                time.sleep(float(before.get("seconds", 1.0)))
-            return
-        selected = 0
-        authenticated = state.password is None
         try:
-            while True:
-                command = self.read_command()
-                state.record(command)
-                state.hold.wait()
-                response, selected, authenticated = self.execute(command, selected, authenticated)
-                if not self.send_response(response, state.take_fault("after")):
-                    return
+            serve_redis_connection(self)
         except (ConnectionError, EOFError, OSError, ValueError):
             return
+
+
+def admin_mutation(state, operation, request):
+    if operation == "advance_clock":
+        with state.lock:
+            state.clock += float(request.get("seconds", 0))
+        return {"ok": True}
+    if operation == "delete":
+        key = base64.b64decode(request["key"])
+        with state.lock:
+            for database in state.databases.values():
+                database.pop(key, None)
+        return {"ok": True}
+    if operation == "replace":
+        key = base64.b64decode(request["key"])
+        value = base64.b64decode(request["value"])
+        database = int(request.get("db", 0))
+        with state.lock:
+            state.databases.setdefault(database, {})[key] = (value, None)
+        return {"ok": True}
+    return None
+
+
+def admin_fault_control(state, operation, request):
+    if operation in ("fail_before", "fail_after"):
+        phase = "before" if operation == "fail_before" else "after"
+        fault = {"mode": request.get("mode", "drop"), "seconds": request.get("seconds", 1.0)}
+        state.schedule_fault(phase, int(request["command_index"]), fault)
+        return {"ok": True}
+    if operation == "deadline":
+        fault = {"mode": "delay", "seconds": request.get("seconds", 1.0)}
+        state.schedule_fault("after", int(request["command_index"]), fault)
+        return {"ok": True}
+    if operation in ("auth_error", "missing_record", "corrupt_payload", "server_error"):
+        fault = {"mode": operation}
+        if "message" in request:
+            fault["message"] = request["message"]
+        if "value" in request:
+            fault["value"] = request["value"]
+        state.schedule_fault("before", int(request["command_index"]), fault)
+        return {"ok": True}
+    return None
+
+
+def admin_coordination(state, operation, request):
+    if operation == "hold":
+        state.schedule_barrier(str(request["barrier"]), int(request["command_index"]))
+        return {"ok": True}
+    if operation == "release":
+        state.release_barrier(str(request["barrier"]))
+        return {"ok": True}
+    if operation == "command_log":
+        with state.lock:
+            commands = [{"index": command_index, "record": base64.b64encode(command).decode()}
+                        for command_index, command in state.commands]
+            return {"commands": commands, "next_index": state.next_index}
+    return None
+
+
+def dispatch_admin_request(state, request):
+    operation = request.get("op")
+    for response in (admin_mutation(state, operation, request),
+                     admin_fault_control(state, operation, request),
+                     admin_coordination(state, operation, request)):
+        if response is not None:
+            return response
+    return {"ok": False, "error": "unknown operation"}
 
 
 class AdminHandler(socketserver.StreamRequestHandler):
@@ -235,42 +378,7 @@ class AdminHandler(socketserver.StreamRequestHandler):
     def handle(self):
         try:
             request = json.loads(self.rfile.readline())
-            state = self.server.state
-            operation = request.get("op")
-            if operation == "advance_clock":
-                with state.lock:
-                    state.clock += float(request.get("seconds", 0))
-                self.response({"ok": True})
-            elif operation == "delete":
-                key = base64.b64decode(request["key"])
-                with state.lock:
-                    for database in state.databases.values():
-                        database.pop(key, None)
-                self.response({"ok": True})
-            elif operation == "replace":
-                key = base64.b64decode(request["key"])
-                value = base64.b64decode(request["value"])
-                database = int(request.get("db", 0))
-                with state.lock:
-                    state.databases.setdefault(database, {})[key] = (value, None)
-                self.response({"ok": True})
-            elif operation in ("fail_before", "fail_after"):
-                with state.lock:
-                    state.next_fault = {"phase": "before" if operation == "fail_before" else "after",
-                                        "mode": request.get("mode", "drop"), "seconds": request.get("seconds", 1.0)}
-                self.response({"ok": True})
-            elif operation == "hold":
-                state.hold.clear()
-                self.response({"ok": True})
-            elif operation == "release":
-                state.hold.set()
-                self.response({"ok": True})
-            elif operation == "command_log":
-                with state.lock:
-                    commands = [base64.b64encode(command).decode() for command in state.commands]
-                self.response({"commands": commands})
-            else:
-                self.response({"ok": False, "error": "unknown operation"})
+            self.response(dispatch_admin_request(self.server.state, request))
         except Exception:
             self.response({"ok": False, "error": "invalid request"})
 
