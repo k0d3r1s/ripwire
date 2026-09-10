@@ -655,6 +655,8 @@ if(RIPWIRE_TESTS)
 
   add_executable(ripwire_test_cache_record
     test/cache_record_unit.cpp
+    src/cache_backend.cpp
+    src/redis_client.cpp
     ${RIPWIRE_CACHE_RECORD_SOURCE_ROOT}/src/infra/diagnostics.cpp
     ${RIPWIRE_TS_OBJECTS})
   target_include_directories(ripwire_test_cache_record PRIVATE
@@ -665,6 +667,7 @@ if(RIPWIRE_TESTS)
     third_party
     src)
   target_link_libraries(ripwire_test_cache_record PRIVATE tree-sitter doctest::doctest Threads::Threads)
+  target_compile_definitions(ripwire_test_cache_record PRIVATE PROFILE_ENABLED=0)
   if(RIPWIRE_CACHE_RECORD_BASELINE)
     target_compile_definitions(ripwire_test_cache_record PRIVATE CACHE_RECORD_BASELINE_DRIVER=1)
   else()

@@ -1280,6 +1280,7 @@ struct CacheRecordExpectation
     std::uint64_t    contentHash = 0;
     std::uint32_t    sum         = 0;
     bool             captureValueUses = true;
+    bool             reportDegrade = true;   // Redis wraps failures in its process-wide backend diagnostic
 };
 
 struct CacheDecodeOutput
@@ -1326,7 +1327,7 @@ struct ByteW
 };
 struct ByteR
 {
-    const char* p; const char* end; bool ok = true;
+    const char* p; const char* end; bool ok = true; bool reportDegrade = true;
     std::size_t remaining() const noexcept { return p <= end ? std::size_t( end - p ) : 0; }
     const char* take( std::size_t n )
     {
@@ -1393,7 +1394,10 @@ inline bool cacheRecordCountFits( ByteR& r, std::uint32_t recordCount, std::size
     {
         return true;
     }
-    DEGRADED_PATH_ALERT( "ingest: cache record count exceeds remaining bytes — cache treated as corrupt" );
+    if( r.reportDegrade )
+    {
+        DEGRADED_PATH_ALERT( "ingest: cache record count exceeds remaining bytes — cache treated as corrupt" );
+    }
     r.ok = false;
     return false;
 }
@@ -1656,6 +1660,27 @@ inline std::string reAbsolutize( std::string_view rel, std::string_view root )
     return out;
 }
 
+inline bool readCacheFileDictionary( ByteR& r, std::vector<std::uint64_t>& fileDict )
+{
+    const std::uint32_t dictCount = r.u32();
+    if( !cacheRecordCountFits( r, dictCount, sizeof( std::uint64_t ) ) ) { return false; }
+    fileDict.resize( dictCount );
+    if( !r.rawInto( fileDict.data(), std::size_t( dictCount ) * sizeof( std::uint64_t ) ) ) { return false; }
+    for( std::size_t k = 1; k < fileDict.size(); ++k )
+    {
+        if( fileDict[k] <= fileDict[ k - 1 ] )
+        {
+            if( r.reportDegrade )
+            {
+                DEGRADED_PATH_ALERT( "ingest: cache file dictionary not strictly ascending — cache treated as corrupt" );
+            }
+            r.ok = false;
+            return false;
+        }
+    }
+    return true;
+}
+
 // Deserialise ONE file record out of a reader bounded to exactly that record's bytes. Lifted verbatim
 // out of loadCache's old per-file loop when v15 made records individually addressable — same field
 // order, same guards, same self-healing posture; the only change is that `r` now ends at the record's
@@ -1691,30 +1716,8 @@ inline bool readFileRecord( ByteR& r, bool captureValueUses, std::vector<std::ui
     {
         return false;
     }
-    if( captureValueUses )
-    {
-        // H3 (v10): the file's subtoken dictionary — def rows below index into it. Must be strictly
-        // ascending (readDef's sorted-row invariant hangs on it); anything else is corrupt.
-        const std::uint32_t dictCount = r.u32();
-        if( !cacheRecordCountFits( r, dictCount, sizeof( std::uint64_t ) ) )
-        {
-            return false;
-        }
-        fileDict.resize( dictCount );
-        if( !r.rawInto( fileDict.data(), std::size_t( dictCount ) * sizeof( std::uint64_t ) ) )
-        {
-            return false;
-        }
-        for( std::size_t k = 1; k < fileDict.size(); ++k )
-        {
-            if( fileDict[k] <= fileDict[ k - 1 ] )
-            {
-                DEGRADED_PATH_ALERT( "ingest: cache file dictionary not strictly ascending — cache treated as corrupt" );
-                r.ok = false;
-                return false;
-            }
-        }
-    }
+    // Rich def rows index into this strictly ascending dictionary.
+    if( captureValueUses && !readCacheFileDictionary( r, fileDict ) ) { return false; }
     const std::uint32_t nd = r.u32();
     if( !cacheRecordCountFits( r, nd, kMinDefRecordBytes ) )
     {
@@ -1816,11 +1819,14 @@ inline bool decodeCacheRecordWithScratch( std::string_view record, const CacheRe
 {
     if( recordSum32( record ) != expected.sum )
     {
-        DEGRADED_PATH_ALERT( "ingest: cache record checksum mismatch — that file is reparsed, the rest of the blob stands" );
+        if( expected.reportDegrade )
+        {
+            DEGRADED_PATH_ALERT( "ingest: cache record checksum mismatch — that file is reparsed, the rest of the blob stands" );
+        }
         return false;
     }
 
-    ByteR       r{ record.data(), record.data() + record.size() };
+    ByteR       r{ record.data(), record.data() + record.size(), true, expected.reportDegrade };
     std::string relativePath;
     FileFacts   facts;
     scratch.fileDict.clear();
@@ -1830,17 +1836,26 @@ inline bool decodeCacheRecordWithScratch( std::string_view record, const CacheRe
     }
     if( r.p != r.end )
     {
-        DEGRADED_PATH_ALERT( "ingest: cache record has trailing bytes — that file is reparsed" );
+        if( expected.reportDegrade )
+        {
+            DEGRADED_PATH_ALERT( "ingest: cache record has trailing bytes — that file is reparsed" );
+        }
         return false;
     }
     if( relativePath != expected.relativePath || contentHash64( relativePath ) != expected.pathHash )
     {
-        DEGRADED_PATH_ALERT( "ingest: cache path-hash collision — the colliding file is reparsed" );
+        if( expected.reportDegrade )
+        {
+            DEGRADED_PATH_ALERT( "ingest: cache path-hash collision — the colliding file is reparsed" );
+        }
         return false;
     }
     if( facts.hash != expected.contentHash )
     {
-        DEGRADED_PATH_ALERT( "ingest: cache record content hash disagrees with its offset-table entry — that file is reparsed" );
+        if( expected.reportDegrade )
+        {
+            DEGRADED_PATH_ALERT( "ingest: cache record content hash disagrees with its offset-table entry — that file is reparsed" );
+        }
         return false;
     }
 

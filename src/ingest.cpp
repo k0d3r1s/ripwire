@@ -8,6 +8,8 @@
 // Single-threaded (v1). Never throws: every recoverable problem degrades + DEGRADED_PATH_ALERT.
 
 #include "ingest.h"
+#include "cache_backend.h"
+#include "redis_client.h"
 #include "docparse.h"          // P1-B: non-code document ingest (notebooks/html/csv + markitdown bridge)
 #include "arch.h"              // T5: relForHash — root-relative path key, reused for cache portability
 #include "quality.h"           // A5: cacheDirLadder + sweepStaleCacheBlobsOnce — the cache-dir hygiene hook (saveCache)
@@ -173,6 +175,7 @@ extern "C"
 #define RIPWIRE_INGEST_TU 1
 #include "ingest_crawl.h"
 #include "ingest_cache.h"
+#include "ingest_cache_redis.h"
 #include "ingest_metrics.h"
 #include "ingest_relations.h"
 #include "ingest_jsimports.h"
@@ -210,6 +213,15 @@ const char* cacheArtifactVerdict( const std::string& path, bool captureValueUses
 }
 
 IngestResult ingest( const char* rootDir, const std::vector<std::string>& excludeSubstr, std::string_view cacheFile,
+                     std::size_t maxFileBytes, bool captureValueUses, std::string_view excludeLabel, bool respectGitignore )
+{
+    auto policy = std::make_shared<CachePolicy>();
+    policy->kind = cacheFile.empty() ? CacheBackendKind::Disabled : CacheBackendKind::File;
+    const CacheContext context{ std::move( policy ), std::string( cacheFile ), {}, captureValueUses };
+    return ingest( rootDir, excludeSubstr, context, maxFileBytes, captureValueUses, excludeLabel, respectGitignore );
+}
+
+IngestResult ingest( const char* rootDir, const std::vector<std::string>& excludeSubstr, const CacheContext& cacheContext,
                      std::size_t maxFileBytes, bool captureValueUses, std::string_view excludeLabel, bool respectGitignore )
 {
     PROFILE_SCOPE_DESCRIBE( "ingest: total (crawl + parse + model)" );
@@ -262,9 +274,16 @@ IngestResult ingest( const char* rootDir, const std::vector<std::string>& exclud
     // deserialise ONLY the records for the files THIS crawl asked for — a wider configuration's blob is
     // never walked past its table (docs/EVALS.md, the offset-table retry).
     CacheLoadStats cacheStats;
-    HashMap<std::string, FileFacts> cache =
-        cacheFile.empty() ? HashMap<std::string, FileFacts>{}
-                          : loadCache( std::string( cacheFile ), rootDir, captureValueUses, result.files, cacheStats );
+    const CacheBackendKind backend = cacheContext.policy ? cacheContext.policy->kind : CacheBackendKind::Disabled;
+    HashMap<std::string, FileFacts> cache;
+    if( backend == CacheBackendKind::File && !cacheContext.filePath.empty() )
+    {
+        cache = loadCache( cacheContext.filePath, rootDir, captureValueUses, result.files, cacheStats );
+    }
+    else if( backend == CacheBackendKind::Redis )
+    {
+        cache = loadRedisIngestCache( cacheContext, rootDir, captureValueUses, result.files, cacheStats );
+    }
     const long long cacheWriteNs = cacheStats.blobWriteNs;
     // per-fileId scan arrays (language classify + hash/stat-gate + health slots) — ingest_prewarm.h
     IngestFileScan scan = makeFileScan( result.files );
@@ -277,14 +296,14 @@ IngestResult ingest( const char* rootDir, const std::vector<std::string>& exclud
     // 2) the parallel parse pool — per-thread accumulators, cache-hit reuse, hostile-input guards,
     //    the pending-parsed-tree overlap with the async query compile, the install/gate-open moment,
     //    the deterministic merge, and the dirty-gated saveCache (ingest_parsepool.h).
-    RawFacts raw = runParsePool( result, rootDir, cacheFile, captureValueUses, cache, cacheStats, scan, prewarm );
+    RawFacts raw = runParsePool( result, rootDir, cacheContext, captureValueUses, cache, cacheStats, scan, prewarm );
 
     result.fileHealth = std::move( scan.health );   // §L1: after saveCache, before the (unmeasured) doc pass
 
     // ── doc post-pass (P1-B): every collected document file (notebook/html/csv/…) becomes a docText
     //    override + one whole-file Section node — parallel extract, deterministic ascending-fileId merge
     //    (ingest_docpass.h, with the markitdown-bridge byte cache).
-    runDocPostPass( result, raw.defs, !cacheFile.empty(), captureValueUses );
+    runDocPostPass( result, raw.defs, backend != CacheBackendKind::Disabled, captureValueUses );
 
     PROFILE_SCOPE_DESCRIBE( "ingest: build model (dedup + symbols/refs)" );
 

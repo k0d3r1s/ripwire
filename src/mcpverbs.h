@@ -3104,7 +3104,7 @@ inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
     IngestResult ing;
     {
         std::lock_guard<std::mutex> ingestLk( rw::quality::headSnapshotIngestMutex() );
-        ing = ingest( root.c_str(), {}, {} );
+        ing = ingest( root.c_str(), {}, std::string_view{} );
     }
     const Graph  g   = buildGraph( ing, nullptr );
 
@@ -3288,7 +3288,7 @@ inline std::string qualityBaselineJson( const std::string& root, std::string& er
     IngestResult ing;                                          // Phase-M: serialize the ingest vs the prefetch worker (§2b)
     {
         std::lock_guard<std::mutex> ingestLk( rw::quality::headSnapshotIngestMutex() );
-        ing = ingest( root.c_str(), {}, {} );
+        ing = ingest( root.c_str(), {}, std::string_view{} );
     }
     const Graph  g   = buildGraph( ing, nullptr );
 
@@ -3478,7 +3478,7 @@ inline EditCheckReply editCheckText( const std::string& root, const std::string&
     IngestResult ing;   // Phase-M: serialize the ingest vs the qsnap-prefetch worker (§2b), same as computeQualityDelta
     {
         std::lock_guard<std::mutex> ingestLk( rw::quality::headSnapshotIngestMutex() );
-        ing = ingest( root.c_str(), {}, {} );
+        ing = ingest( root.c_str(), {}, std::string_view{} );
     }
     const Graph g = buildGraph( ing, nullptr );
 

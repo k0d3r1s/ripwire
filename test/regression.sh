@@ -278,6 +278,11 @@ else
     no "Redis cache configuration gate (test/rediscacheconfigcheck.sh failed)"
     RIPWIRE_BIN="$BIN" bash "$ROOT/test/rediscacheconfigcheck.sh" 2>&1 | grep -E 'FAIL|error:|fatal error:' | head -12
 fi
+if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisingestcheck.sh"; then
+    ok "Redis ingest gate (test/redisingestcheck.sh)"
+else
+    no "Redis ingest gate (test/redisingestcheck.sh failed)"
+fi
 if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisclientcheck.sh" >/dev/null 2>&1; then
     ok "Redis transport gate (test/redisclientcheck.sh)"
 else

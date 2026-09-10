@@ -271,6 +271,10 @@ inline bool isSkippedCrawlDir( std::string_view dirName ) noexcept
 // ignored subtree all keep TODAY'S FULL WALK and say which (CrawlSkips::ignoreMode). Default true: the
 // HEAD-snapshot and edit-preview callers re-ingest a `git archive` extraction, which holds tracked files
 // only, so the two sides of a --quality-delta compare the same population either way.
+struct CacheContext;
+IngestResult ingest( const char* rootDir, const std::vector<std::string>& excludeSubstr, const CacheContext& cache,
+                     std::size_t maxFileBytes = kDefaultMaxFileBytes, bool captureValueUses = true,
+                     std::string_view excludeLabel = {}, bool respectGitignore = true );
 IngestResult ingest( const char* rootDir, const std::vector<std::string>& excludeSubstr = {},
                      std::string_view cacheFile = {}, std::size_t maxFileBytes = kDefaultMaxFileBytes,
                      bool captureValueUses = true, std::string_view excludeLabel = {},

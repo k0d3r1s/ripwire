@@ -274,7 +274,7 @@ inline IngestResult ingestOneFile( const std::string& tmpDir, const std::string&
     }
     // No excludes: the ONE file here is the one the caller already resolved through the main index, so a
     // --exclude that would drop it can only produce a false "the payload defines nothing".
-    return ingest( tmpDir.c_str(), {}, {}, maxFileBytes, captureValueUses );
+    return ingest( tmpDir.c_str(), {}, std::string_view{}, maxFileBytes, captureValueUses );
 }
 
 // E3: `<overwrite l= end= bytes=>CDATA</overwrite>` — src[a,b) as on disk, budgeted by WHOLE LINES: over

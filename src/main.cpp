@@ -3643,14 +3643,14 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
         for( std::size_t rootIndex = 0; rootIndex < ws.size(); ++rootIndex )
         {
             const WorkspaceRoot& r = ws[rootIndex];
-            parts.push_back( ingest( r.arg.c_str(), cfg.excludes, cacheContexts[rootIndex].filePath, cfg.maxFileBytes, needsValueUses,
+            parts.push_back( ingest( r.arg.c_str(), cfg.excludes, cacheContexts[rootIndex], cfg.maxFileBytes, needsValueUses,
                                      /*excludeLabel=*/r.label, /*respectGitignore=*/!cfg.noIgnore ) );
         }
         ing = mergeWorkspaceIngests( ws, parts );
     }
     else
     {
-        ing = ingest( root.c_str(), cfg.excludes, cacheContexts[0].filePath, cfg.maxFileBytes, needsValueUses,
+        ing = ingest( root.c_str(), cfg.excludes, cacheContexts[0], cfg.maxFileBytes, needsValueUses,
                       /*excludeLabel=*/{}, /*respectGitignore=*/!cfg.noIgnore );
     }
     if( cfg.ignoreTests )

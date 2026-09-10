@@ -237,6 +237,7 @@ struct ParsePoolShared
     std::size_t                      nfiles;
     bool                             needsCacheHash;
     bool                             captureValueUses;
+    std::vector<std::string>&        redisSourceDigests;
 };
 
 // one worker's whole life: grab files off the shared cursor, reuse cache hits, parse+capture misses,
@@ -420,6 +421,12 @@ inline void runParseWorker( ParsePoolShared& sh, unsigned t )
                 }
             }
 
+            if( !sh.redisSourceDigests.empty() )
+            {
+                sh.redisSourceDigests[fileId] = redisKeyHash( bytes );
+                sh.scan.hash[fileId] = contentHash64( bytes );
+            }
+
             // hostile/degenerate JSON guard — must run BEFORE the parse (that is the whole point);
             // the skip is a degrade with a one-line stderr note, matching the house skip style.
             if( le->lang == Lang::Json && jsonNestsTooDeep( bytes ) )
@@ -583,12 +590,14 @@ inline RawFacts mergeThreadFacts( std::vector<RawFacts>& tFacts )
 //    model-build tail, so collection order is irrelevant. Also owns the two flags that ride the
 //    pool (the Win-2 dirty flag and the A1 reparsed counter), the install/gate-open moment, and
 //    the dirty-gated saveCache — everything between the prewarm launch and the doc post-pass.
-inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::string_view cacheFile, bool captureValueUses,
+inline RawFacts runParsePool( IngestResult& result, const char* rootDir, const CacheContext& cacheContext, bool captureValueUses,
                               HashMap<std::string, FileFacts>& cache, const CacheLoadStats& cacheStats,
                               IngestFileScan& scan, QueryPrewarm& prewarm )
 {
     RawFacts raw;
-    const bool needsCacheHash = !cacheFile.empty();
+    const CacheBackendKind backend = cacheContext.policy ? cacheContext.policy->kind : CacheBackendKind::Disabled;
+    const bool needsCacheHash = backend != CacheBackendKind::Disabled;
+    std::vector<std::string> redisSourceDigests( backend == CacheBackendKind::Redis ? result.files.size() : 0 );
     QueryReadyGate queryReadyGate{ &prewarm.ready, &prewarm.mutex, &prewarm.cv };
 
     // Win 2 (PERF.md P2) — dirty flag: skip saveCache when nothing changed.
@@ -747,7 +756,7 @@ inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::st
         std::atomic<std::size_t>          nextFile{ 0 };   // lock-free work queue: threads fetch_add for the next parseOrder slot
 
         ParsePoolShared shared{ result.files, cache, scan, prewarm, queryReadyGate, cacheCandidateFacts, cacheHitFacts,
-                                tFacts, parseOrder, nextFile, dirty, reparsedCount, nfiles, needsCacheHash, captureValueUses };
+                                tFacts, parseOrder, nextFile, dirty, reparsedCount, nfiles, needsCacheHash, captureValueUses, redisSourceDigests };
 
         for( unsigned t = 0; t < nthreads; ++t )
         {
@@ -789,9 +798,11 @@ inline RawFacts runParsePool( IngestResult& result, const char* rootDir, std::st
 
         // Win 2: rewrite cache only when at least one file changed (dirty flag set by workers above).
         // Skips the ~11ms / 7 MB serialization+write on a no-change warm run.
-        if( !cacheFile.empty() && dirty.load() )
+        if( needsCacheHash && dirty.load() )
         {
-            saveCache( std::string( cacheFile ), rootDir, result.files, scan.hash, scan.statSize, scan.statMtime, scan.statCtime, scan.health, raw.defs, raw.refs, raw.incs, raw.binds, raw.ffis, raw.routeDefs, raw.routeUses, raw.constOpens, captureValueUses );
+            const CacheEncodeInput input{ scan.hash, scan.statSize, scan.statMtime, scan.statCtime, scan.health,
+                                          raw.defs, raw.refs, raw.incs, raw.binds, raw.ffis, raw.routeDefs, raw.routeUses, raw.constOpens, captureValueUses };
+            saveIngestCache( cacheContext, rootDir, result.files, redisSourceDigests, input );
         }
     }
     return raw;

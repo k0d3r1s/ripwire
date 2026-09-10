@@ -7,6 +7,7 @@
 #include <bit>
 #include <cstdint>
 #include <fstream>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -602,8 +603,55 @@ TEST_CASE( "cache record architecture discriminator matches the native wire cont
 
 }
 
+#if !defined( CACHE_RECORD_BASELINE_DRIVER )
+// A line-driven backend seam: the gate controls faults between calls in ONE process. MCP policy
+// routing is a separate slice; this uses exactly the backend overload MCP will call.
+static bool rejectTrailingRedisRecord( const rw::CacheContext& cache )
+{
+    Fixture fixture;
+    rw::EncodedCacheRecord record = encodeFixture( fixture, false );
+    record.bytes += "trailing bytes";
+    record.sum = rw::recordSum32( record.bytes );
+    const std::string prefix = rw::redisIngestPrefix( cache, false );
+    const std::string digest = rw::redisKeyHash( "source bytes" );
+    const std::string envelope = rw::redisIngestEnvelope( prefix, digest, record );
+    rw::FileFacts facts;
+    if( rw::decodeRedisIngestRecord( envelope, prefix, rw::relForHash( fixture.files[0], "/fixture" ),
+                                     digest, fixture.fileHash[0], false, facts ) ) { return false; }
+    rw::redisIngestDegraded();
+    return true;
+}
+
+static int runRedisIngestDriver( const char* root )
+{
+    std::shared_ptr<const rw::CachePolicy> policy;
+    std::string error;
+    if( !rw::resolveCachePolicy( { false, true, "redis", {} }, policy, error ) ) { return 2; }
+    rw::CacheContext cache;
+    if( !rw::cacheContextForRoot( policy, root, false, cache, error ) ) { return 3; }
+    std::string line;
+    while( std::getline( std::cin, line ) )
+    {
+        if( line == "corrupt-record" )
+        {
+            if( !rejectTrailingRedisRecord( cache ) ) { return 4; }
+            std::cout << "rejected\n" << std::flush;
+            continue;
+        }
+        const rw::IngestResult result = rw::ingest( root, {}, cache, rw::kDefaultMaxFileBytes, false );
+        std::cout << result.reparsedFiles << '\n' << std::flush;
+    }
+    return 0;
+}
+#endif
+
 int main( int argc, char** argv )
 {
+#if !defined( CACHE_RECORD_BASELINE_DRIVER )
+    const int resolverResult = rw::runRedisResolverHelperIfRequested( argc, argv );
+    if( resolverResult >= 0 ) { return resolverResult; }
+    if( argc == 3 && std::string_view( argv[1] ) == "--redis-ingest-driver" ) { return runRedisIngestDriver( argv[2] ); }
+#endif
     if( argc == 4 && std::string_view( argv[1] ) == "--write-records" )
     {
 #if defined( CACHE_RECORD_BASELINE_DRIVER )
