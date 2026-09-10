@@ -265,6 +265,13 @@ else
     RIPWIRE_BIN="$BIN" bash "$ROOT/test/codexdoctorcheck.sh" 2>&1 | sed 's/^/        | /'
 fi
 
+if RIPWIRE_BIN="$BIN" bash "$ROOT/test/cacherecordcheck.sh" >/dev/null 2>&1; then
+    ok "per-file cache record codec gate (test/cacherecordcheck.sh)"
+else
+    no "per-file cache record codec gate (test/cacherecordcheck.sh failed)"
+    RIPWIRE_BIN="$BIN" bash "$ROOT/test/cacherecordcheck.sh" 2>&1 | grep -E 'FAIL|error:|fatal error:' | head -16
+fi
+
 if RIPWIRE_BIN="$BIN" bash "$ROOT/test/rediscacheconfigcheck.sh" >/dev/null 2>&1; then
     ok "Redis cache configuration gate (test/rediscacheconfigcheck.sh)"
 else
