@@ -344,8 +344,10 @@ std::optional<std::string> originRemote( const std::filesystem::path& configPath
         while( !view.empty() && ( view.back() == ' ' || view.back() == '\t' || view.back() == '\r' ) ) { view.remove_suffix( 1 ); }
         if( view.starts_with( '[' ) )
         {
-            std::string section( view );
+            const std::size_t subsection = view.find( '"' );
+            std::string section( view.substr( 0, subsection ) );
             std::ranges::transform( section, section.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+            if( subsection != std::string_view::npos ) { section.append( view.substr( subsection ) ); }
             inOrigin = section == "[remote \"origin\"]";
             continue;
         }
@@ -400,6 +402,11 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
         std::string_view authority = rest.substr( 0, slash );
         path = std::string( rest.substr( slash + 1 ) );
         const std::size_t at = authority.find( '@' );
+        if( ssh && at == std::string_view::npos )
+        {
+            error = "Git remote userinfo is not supported for Redis project identity";
+            return std::nullopt;
+        }
         if( at != std::string_view::npos )
         {
             std::string user( authority.substr( 0, at ) );
@@ -423,6 +430,7 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
                 error = "Git remote port is invalid for Redis project identity";
                 return std::nullopt;
             }
+            port = std::to_string( portNumber );
             const std::string defaultPort = ssh ? "22" : "443";
             if( port == defaultPort ) { port.clear(); }
         }

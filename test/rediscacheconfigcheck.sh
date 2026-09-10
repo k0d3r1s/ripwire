@@ -51,7 +51,9 @@ int main( int argc, char** argv )
     if( argc == 2 && std::string_view( argv[1] ) == "hash-vectors" )
     {
         const std::string binary( "a\0b", 3 );
-        std::cout << rw::redisKeyHash( "" ) << '\n' << rw::redisKeyHash( "abc" ) << '\n' << rw::redisKeyHash( binary ) << '\n';
+        std::cout << rw::redisKeyHash( "" ) << '\n' << rw::redisKeyHash( "abc" ) << '\n' << rw::redisKeyHash( binary ) << '\n'
+                  << rw::redisKeyHash( std::string( 55, 'a' ) ) << '\n' << rw::redisKeyHash( std::string( 56, 'a' ) ) << '\n'
+                  << rw::redisKeyHash( std::string( 64, 'a' ) ) << '\n' << rw::redisKeyHash( std::string( 128, 'a' ) ) << '\n';
         return 0;
     }
     if( argc == 4 && std::string_view( argv[1] ) == "identity" )
@@ -129,8 +131,8 @@ export RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_NAMESPACE='uni
 [ "$( "$UNIT" policy 0 1 "$TMP/explicit.bin" redis )" = $'file\n'"$TMP/explicit.bin" ] && ok "explicit file wins over environment Redis" || no "explicit file precedence is wrong"
 
 HASHES="$( "$UNIT" hash-vectors )"
-EXPECTED=$'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138'
-[ "$HASHES" = "$EXPECTED" ] && ok "SHA-256 vectors include binary input and full lowercase output" || no "SHA-256 vectors differ"
+EXPECTED=$'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138\n9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318\nb35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a\nffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb\n6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e'
+[ "$HASHES" = "$EXPECTED" ] && ok "SHA-256 vectors cover padding and multi-block boundaries with full lowercase output" || no "SHA-256 vectors differ"
 
 mkdir -p "$TMP/repo-a/src"
 printf 'int x;\n' > "$TMP/repo-a/src/x.cpp"
@@ -152,16 +154,50 @@ git -C "$TMP/repo-b" remote set-url origin 'git@example.com:Owner/Repo.git'
 [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and SCP-style remotes normalize identically" || no "supported remote forms normalize differently"
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@EXAMPLE.com/Owner/Repo.git'
 [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and ssh:// remotes normalize identically" || no "HTTPS and ssh:// remotes normalize differently"
+
+cp -R "$TMP/repo-a" "$TMP/repo-case"
+git -C "$TMP/repo-case" config --rename-section remote.origin remote.saved
+git -C "$TMP/repo-case" config --add remote.Origin.url 'https://example.com/Wrong/Repo.git'
+git -C "$TMP/repo-case" config --add remote.origin.url 'https://Example.COM/Owner/Repo.git'
+CASE_UPPER_FIRST="$( "$UNIT" identity "$TMP/repo-case/src" '' )"
+git -C "$TMP/repo-case" config --remove-section remote.Origin
+git -C "$TMP/repo-case" config --remove-section remote.origin
+git -C "$TMP/repo-case" config --add remote.origin.url 'https://Example.COM/Owner/Repo.git'
+git -C "$TMP/repo-case" config --add remote.Origin.url 'https://example.com/Wrong/Repo.git'
+CASE_LOWER_FIRST="$( "$UNIT" identity "$TMP/repo-case/src" '' )"
+if [ "$CASE_UPPER_FIRST" = "$IDA" ] && [ "$CASE_LOWER_FIRST" = "$IDA" ]; then
+    ok "Git origin subsection selection is case-sensitive and order-independent"
+else
+    no "Git origin subsection selection depends on case or order"
+fi
+
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8443/Owner/Repo.git'
 PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
 printf '%s\n' "$PORT_ID" | grep -qF 'example.com:8443/Owner/Repo' && ok "non-default Git remote port is preserved" || no "non-default Git remote port was lost"
+git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:0443/Owner/Repo.git'
+[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "zero-padded HTTPS default port normalizes away" || no "zero-padded HTTPS default port changes identity"
+git -C "$TMP/repo-b" remote set-url origin 'ssh://git@Example.COM:0022/Owner/Repo.git'
+[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "zero-padded SSH default port normalizes away" || no "zero-padded SSH default port changes identity"
+git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:08443/Owner/Repo.git'
+PADDED_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
+if [ "$PADDED_PORT_ID" = "$PORT_ID" ] && printf '%s\n' "$PADDED_PORT_ID" | grep -qF 'example.com:8443/Owner/Repo' \
+    && ! printf '%s\n' "$PADDED_PORT_ID" | grep -qF ':08443'; then
+    ok "non-default Git remote port uses canonical decimal spelling"
+else
+    no "non-default Git remote port retained a non-canonical spelling"
+fi
+git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8444/Owner/Repo.git'
+DIFFERENT_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
+[ "$DIFFERENT_PORT_ID" != "$PORT_ID" ] && ok "meaningful Git remote ports remain distinct" || no "distinct Git remote ports collided"
 
 expect_bad_remote()
 {
-    label="$1"; remote="$2"
+    label="$1"; remote="$2"; credential_sentinel="${3:-}"
     git -C "$TMP/repo-b" config remote.origin.url "$remote"
     if "$UNIT" identity "$TMP/repo-b/src" '' >"$TMP/remote.out" 2>"$TMP/remote.err"; then
         no "$label Git remote was accepted"
+    elif [ -n "$credential_sentinel" ] && grep -Fq "$credential_sentinel" "$TMP/remote.out" "$TMP/remote.err"; then
+        no "$label Git remote leaked a credential substring"
     elif grep -Fq "$remote" "$TMP/remote.out" "$TMP/remote.err"; then
         no "$label Git remote was echoed in diagnostics"
     else
@@ -169,7 +205,8 @@ expect_bad_remote()
     fi
 }
 
-expect_bad_remote "credential userinfo" 'https://user:secret@example.com/Owner/Repo.git'
+expect_bad_remote "credential userinfo" 'https://user:CREDENTIAL_SENTINEL_9f31@example.com/Owner/Repo.git' 'CREDENTIAL_SENTINEL_9f31'
+expect_bad_remote "userless SSH" 'ssh://example.com/Owner/Repo.git'
 expect_bad_remote "uppercase SSH username" 'ssh://GIT@example.com/Owner/Repo.git'
 expect_bad_remote "uppercase SCP username" 'GIT@example.com:Owner/Repo.git'
 expect_bad_remote "query" 'https://example.com/Owner/Repo.git?branch=main'
