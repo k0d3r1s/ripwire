@@ -374,6 +374,56 @@ std::optional<std::string> originRemote( const std::filesystem::path& configPath
     return std::nullopt;
 }
 
+bool parseGitAuthority( const std::string_view authority, std::string& host, std::optional<std::string>& port, std::string& error )
+{
+    if( authority.starts_with( '[' ) )
+    {
+        const std::size_t closeBracket = authority.find( ']' );
+        if( closeBracket == std::string_view::npos || closeBracket == 1 || authority.find( '[', 1 ) != std::string_view::npos
+            || authority.find( ']', closeBracket + 1 ) != std::string_view::npos || authority.substr( 1, closeBracket - 1 ).find( ':' ) == std::string_view::npos )
+        {
+            error = "Git remote cannot be normalized for Redis project identity";
+            return false;
+        }
+        host = std::string( authority.substr( 0, closeBracket + 1 ) );
+        const std::string_view suffix = authority.substr( closeBracket + 1 );
+        if( suffix.empty() ) { return true; }
+        if( !suffix.starts_with( ':' ) )
+        {
+            error = "Git remote cannot be normalized for Redis project identity";
+            return false;
+        }
+        port = std::string( suffix.substr( 1 ) );
+        return true;
+    }
+
+    const std::size_t colon = authority.rfind( ':' );
+    if( colon != std::string_view::npos && authority.find( ':' ) == colon )
+    {
+        host = std::string( authority.substr( 0, colon ) );
+        port = std::string( authority.substr( colon + 1 ) );
+        return true;
+    }
+    host = std::string( authority );
+    return true;
+}
+
+bool canonicalizeGitPort( std::optional<std::string>& port, const bool ssh, std::string& error )
+{
+    if( !port ) { return true; }
+    std::uint32_t portNumber = 0;
+    const auto portResult = std::from_chars( port->data(), port->data() + port->size(), portNumber );
+    if( port->empty() || portResult.ec != std::errc() || portResult.ptr != port->data() + port->size() || portNumber == 0 || portNumber > 65535 )
+    {
+        error = "Git remote port is invalid for Redis project identity";
+        return false;
+    }
+    *port = std::to_string( portNumber );
+    const std::string defaultPort = ssh ? "22" : "443";
+    if( *port == defaultPort ) { port.reset(); }
+    return true;
+}
+
 std::optional<std::string> normalizeGitRemote( const std::string_view remote, std::string& error )
 {
     if( remote.empty() || remote.size() > 4096 || containsControl( remote ) || remote.find( '#' ) != std::string_view::npos
@@ -417,28 +467,10 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
             }
             authority.remove_prefix( at + 1 );
         }
-        const std::size_t colon = authority.rfind( ':' );
-        if( colon != std::string_view::npos && authority.find( ':' ) == colon )
-        {
-            host = std::string( authority.substr( 0, colon ) );
-            std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
-            port = std::string( authority.substr( colon + 1 ) );
-            std::uint32_t portNumber = 0;
-            const auto portResult = std::from_chars( port.data(), port.data() + port.size(), portNumber );
-            if( port.empty() || portResult.ec != std::errc() || portResult.ptr != port.data() + port.size() || portNumber == 0 || portNumber > 65535 )
-            {
-                error = "Git remote port is invalid for Redis project identity";
-                return std::nullopt;
-            }
-            port = std::to_string( portNumber );
-            const std::string defaultPort = ssh ? "22" : "443";
-            if( port == defaultPort ) { port.clear(); }
-        }
-        else
-        {
-            host = std::string( authority );
-            std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
-        }
+        std::optional<std::string> parsedPort;
+        if( !parseGitAuthority( authority, host, parsedPort, error ) || !canonicalizeGitPort( parsedPort, ssh, error ) ) { return std::nullopt; }
+        std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+        if( parsedPort ) { port = std::move( *parsedPort ); }
     }
     else
     {

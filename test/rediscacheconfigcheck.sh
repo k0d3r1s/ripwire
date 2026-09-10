@@ -189,6 +189,18 @@ fi
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8444/Owner/Repo.git'
 DIFFERENT_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
 [ "$DIFFERENT_PORT_ID" != "$PORT_ID" ] && ok "meaningful Git remote ports remain distinct" || no "distinct Git remote ports collided"
+git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]/Owner/Repo.git'
+IPV6_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
+printf '%s\n' "$IPV6_ID" | grep -qF '[2001:db8::1]/Owner/Repo' && ok "bracketed IPv6 Git host identity is preserved" || no "bracketed IPv6 Git host identity was lost"
+git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]:0022/Owner/Repo.git'
+[ "$( "$UNIT" identity "$TMP/repo-b/src" '' )" = "$IPV6_ID" ] && ok "padded IPv6 SSH default port normalizes away" || no "padded IPv6 SSH default port changes identity"
+git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]:0222/Owner/Repo.git'
+IPV6_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
+if printf '%s\n' "$IPV6_PORT_ID" | grep -qF '[2001:db8::1]:222/Owner/Repo' && ! printf '%s\n' "$IPV6_PORT_ID" | grep -qF ':0222'; then
+    ok "non-default IPv6 Git port uses canonical decimal spelling"
+else
+    no "non-default IPv6 Git port retained a non-canonical spelling"
+fi
 
 expect_bad_remote()
 {
@@ -219,6 +231,12 @@ expect_bad_remote "empty port" 'https://example.com:/Owner/Repo.git'
 expect_bad_remote "zero port" 'https://example.com:0/Owner/Repo.git'
 expect_bad_remote "oversized port" 'https://example.com:65536/Owner/Repo.git'
 expect_bad_remote "non-decimal port" 'https://example.com:nope/Owner/Repo.git'
+expect_bad_remote "unclosed IPv6 authority" 'ssh://git@[2001:db8::1/Owner/Repo.git'
+expect_bad_remote "malformed IPv6 authority suffix" 'ssh://git@[2001:db8::1]oops/Owner/Repo.git'
+expect_bad_remote "empty IPv6 port" 'ssh://git@[2001:db8::1]:/Owner/Repo.git'
+expect_bad_remote "non-decimal IPv6 port" 'ssh://git@[2001:db8::1]:notaport/Owner/Repo.git'
+expect_bad_remote "zero IPv6 port" 'ssh://git@[2001:db8::1]:0/Owner/Repo.git'
+expect_bad_remote "oversized IPv6 port" 'ssh://git@[2001:db8::1]:65536/Owner/Repo.git'
 
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM/Owner/Repo.git'
 
