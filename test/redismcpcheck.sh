@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$( cd "$( dirname "$0" )/.." && pwd )"
 BIN="${RIPWIRE_BIN:-$ROOT/build/ripwire}"
-BUILD_DIR="${RIPWIRE_TEST_BUILD_DIR:-$ROOT/build-tests}"
+BUILD_DIR="${RIPWIRE_MCP_TEST_BUILD_DIR:-$ROOT/build-tests-redismcp}"
 cmake -Wno-deprecated -S "$ROOT" -B "$BUILD_DIR" -DRIPWIRE_TESTS=ON >/dev/null
 cmake --build "$BUILD_DIR" --target ripwire_test_mcp_api -j2 >/dev/null
 RIPWIRE_CACHE_BACKEND='' RIPWIRE_MCP_API_BIN="$BUILD_DIR/ripwire_test_mcp_api" bash "$ROOT/test/qsnapprefetchcheck.sh" "$BIN"

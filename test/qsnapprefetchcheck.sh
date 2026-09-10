@@ -115,7 +115,7 @@ if stat --version >/dev/null 2>&1; then inode_mtime(){ stat -c '%i %Y' "$1" 2>/d
 else                                    inode_mtime(){ stat -f '%i %m' "$1" 2>/dev/null || echo "MISSING"; }   # BSD / macOS
 fi
 assert_no_tsan() {
-    if grep -q "ThreadSanitizer" "$1" 2>/dev/null; then no "TSan WARNING in server stderr ($2)"
+    if grep -q "ThreadSanitizer" "$1" 2>/dev/null; then no "TSan WARNING in server stderr ($2)"; return 1
     else ok "no ThreadSanitizer warning in server stderr ($2)"; fi
 }
 
@@ -208,7 +208,7 @@ echo
 echo "=== (c) DETERMINISM: quality_delta byte-identical prefetch-FIRED vs prefetch-SUPPRESSED ==="
 # ═══════════════════════════════════════════════════════════════════════════════════════════════
 run_qd_scenario() {   # $1 = min-files threshold (1 => fires, huge => suppressed); echoes the quality_delta result text
-    local w c thr="$1"
+    local w c thr="$1" scenario_status=0
     read -r w c <<<"$( new_repo )"
     local fifo="$w/in.fifo"; mkfifo "$fifo"
     TMPDIR="$c/" RIPWIRE_QSNAP_PREFETCH_MIN_FILES="$thr" RIPWIRE_MCP_TIMINGS=1 \
@@ -216,21 +216,22 @@ run_qd_scenario() {   # $1 = min-files threshold (1 => fires, huge => suppressed
     local srv=$!; exec 8>"$fifo"
     printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize"}' >&8
     printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$w\",\"symbol\":\"perimeter\"}}}" >&8
-    wait_for_id "$w/out.txt" 2
+    wait_for_id "$w/out.txt" 2 || scenario_status=1
     printf '\n// c-scenario edit\n' >> "$w/geometry.cpp"
     git -C "$w" commit -q -am "commit"
     printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"find_symbol\",\"arguments\":{\"path\":\"$w\",\"symbol\":\"perimeter\"}}}" >&8
-    wait_for_id "$w/out.txt" 3
+    wait_for_id "$w/out.txt" 3 || scenario_status=1
     # give a prefetch (if enabled) time to land so the fired-case genuinely reads the warm blob.
     sleep 0.6
     printf '%s\n' "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"quality_delta\",\"arguments\":{\"path\":\"$w\"}}}" >&8
-    wait_for_id "$w/out.txt" 4
+    wait_for_id "$w/out.txt" 4 || scenario_status=1
     exec 8>&-; kill $srv 2>/dev/null; wait $srv 2>/dev/null
-    assert_no_tsan "$w/err.txt" "c/thr=$thr" >&2
-    inner_for_id "$w/out.txt" 4
+    assert_no_tsan "$w/err.txt" "c/thr=$thr" >&2 || scenario_status=1
+    inner_for_id "$w/out.txt" 4 || scenario_status=1
+    return "$scenario_status"
 }
-QD_FIRED="$( run_qd_scenario 1 )"
-QD_SUPPR="$( run_qd_scenario 999999 )"
+if ! QD_FIRED="$( run_qd_scenario 1 )"; then no "(c) prefetch-fired scenario failed"; fi
+if ! QD_SUPPR="$( run_qd_scenario 999999 )"; then no "(c) prefetch-suppressed scenario failed"; fi
 # §B6 M5 (2026-07-29): quality_delta now carries the honest `at` (baseline sha) key on the MCP arm, the
 # same key the CLI has. The two scenarios build SEPARATE sandboxes, so their HEAD shas differ by
 # construction — the determinism this arm proves is "same findings across prefetch on/off", and the sha
