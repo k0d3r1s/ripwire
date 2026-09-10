@@ -2765,6 +2765,21 @@ static bool prepareCacheContexts( const std::shared_ptr<const rw::CachePolicy>& 
     return addRoot( root );
 }
 
+static bool validateKnownMcpCacheContexts( const std::shared_ptr<const rw::CachePolicy>& policy, const rw::Config& cfg )
+{
+    for( const std::string_view root : cfg.roots )
+    {
+        rw::CacheContext context;
+        std::string error;
+        if( !rw::cacheContextForRoot( policy, root, rw::needsValueUses( cfg ), context, error ) )
+        {
+            std::fprintf( stderr, "ripwire: %s\n", error.c_str() );
+            return false;
+        }
+    }
+    return true;
+}
+
 static int dispatchMain( const rw::Config& cfg, char** argv );
 
 // the key for a SHARED root (`r` = the map family, `ctx` = the bundle family), from the flags that shaped it
@@ -2999,6 +3014,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
 
     if( cfg.mcp )
     {
+        if( !validateKnownMcpCacheContexts( cachePolicy, cfg ) ) { return 1; }
         // --listen picks the remote Streamable-HTTP transport; otherwise stdio. Both
         // route every request through the SAME shared handler (mcp.h dispatchMcpLine) — byte-identical payloads.
         if( !cfg.listen.empty() )

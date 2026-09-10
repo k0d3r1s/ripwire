@@ -150,6 +150,38 @@ else
 fi
 git -C "$TMP/repo-b" remote set-url origin 'git@example.com:Owner/Repo.git'
 [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and SCP-style remotes normalize identically" || no "supported remote forms normalize differently"
+git -C "$TMP/repo-b" remote set-url origin 'ssh://git@EXAMPLE.com/Owner/Repo.git'
+[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and ssh:// remotes normalize identically" || no "HTTPS and ssh:// remotes normalize differently"
+git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8443/Owner/Repo.git'
+PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
+printf '%s\n' "$PORT_ID" | grep -qF 'example.com:8443/Owner/Repo' && ok "non-default Git remote port is preserved" || no "non-default Git remote port was lost"
+
+expect_bad_remote()
+{
+    label="$1"; remote="$2"
+    git -C "$TMP/repo-b" config remote.origin.url "$remote"
+    if "$UNIT" identity "$TMP/repo-b/src" '' >"$TMP/remote.out" 2>"$TMP/remote.err"; then
+        no "$label Git remote was accepted"
+    elif grep -Fq "$remote" "$TMP/remote.out" "$TMP/remote.err"; then
+        no "$label Git remote was echoed in diagnostics"
+    else
+        ok "$label Git remote is rejected without echoing it"
+    fi
+}
+
+expect_bad_remote "credential userinfo" 'https://user:secret@example.com/Owner/Repo.git'
+expect_bad_remote "query" 'https://example.com/Owner/Repo.git?branch=main'
+expect_bad_remote "fragment" 'https://example.com/Owner/Repo.git#main'
+expect_bad_remote "percent escape" 'https://example.com/Owner%2FRepo.git'
+expect_bad_remote "ambiguous percent escape" 'https://example.com/Owner%zzRepo.git'
+expect_bad_remote "control character" $'https://example.com/Owner/Repo\t.git'
+expect_bad_remote "unsupported transport" 'git://example.com/Owner/Repo.git'
+expect_bad_remote "empty port" 'https://example.com:/Owner/Repo.git'
+expect_bad_remote "zero port" 'https://example.com:0/Owner/Repo.git'
+expect_bad_remote "oversized port" 'https://example.com:65536/Owner/Repo.git'
+expect_bad_remote "non-decimal port" 'https://example.com:nope/Owner/Repo.git'
+
+git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM/Owner/Repo.git'
 
 unset RIPWIRE_REDIS_PROJECT
 CONTEXT_A="$( "$UNIT" context "$TMP/repo-a/src" )"
@@ -193,13 +225,20 @@ expect_bad "unknown backend" "$UNIT" policy 0 0 '' mystery
 [ "$( RIPWIRE_REDIS_URL='redis+unix:///tmp/redis.sock?db=2' "$UNIT" policy 0 1 redis '' )" = 'redis' ] \
     && ok "redis+unix configuration is accepted" || no "redis+unix configuration was rejected"
 if "$UNIT" invalid-nul >"$TMP/nul.out" 2>"$TMP/nul.err" && ! grep -q 'PASSWORD_SENTINEL_9f31' "$TMP/nul.out" "$TMP/nul.err"; then ok "embedded NUL is rejected without secret disclosure"; else no "embedded NUL validation failed"; fi
-if "$BIN" "$TMP/fixture" --redis-password=PASSWORD_SENTINEL_9f31 >"$TMP/cli-secret.out" 2>"$TMP/cli-secret.err"; then
-    no "a Redis password CLI flag was accepted"
-elif "$BIN" --help=all 2>&1 | grep -q -- '--redis-password'; then
-    no "a Redis password CLI flag is advertised"
-else
-    ok "Redis credentials remain environment-only"
-fi
+for credential_arg in '--redis-password' '--redis-password=PASSWORD_SENTINEL_9f31' '--redis-username' '--redis-username=PASSWORD_SENTINEL_9f31'
+do
+    set +e
+    "$BIN" "$TMP/fixture" "$credential_arg" >"$TMP/cli-secret.out" 2>"$TMP/cli-secret.err"
+    credential_rc=$?
+    set -e
+    if [ "$credential_rc" -eq 1 ] && [ ! -s "$TMP/cli-secret.out" ] \
+       && ! grep -q 'PASSWORD_SENTINEL_9f31' "$TMP/cli-secret.err"; then
+        ok "credential-shaped CLI option rejects without echoing its value"
+    else
+        no "credential-shaped CLI option leaked or was accepted: ${credential_arg%%=*}"
+    fi
+done
+if "$BIN" --help=all 2>&1 | grep -Eq -- '--redis-(password|username)'; then no "Redis credential CLI flags are advertised"; else ok "Redis credentials remain environment-only"; fi
 
 unset_redis
 TMPDIR="$TMP/default-cache" "$BIN" "$TMP/fixture" --no-stable >/dev/null 2>"$TMP/default.err"
@@ -213,6 +252,24 @@ export RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_NAMESPACE='uni
 ( cd "$TMP/run" && "$BIN" "$TMP/fixture" --cache=redis --no-stable >redis.out 2>redis.err )
 [ ! -e "$TMP/run/redis" ] && ok "--cache=redis selects Redis without creating a same-named file" || no "--cache=redis created a file"
 RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --no-stable >/dev/null 2>"$TMP/envredis.err" && ok "RIPWIRE_CACHE_BACKEND=redis activates Redis" || no "environment Redis activation failed"
+
+unset RIPWIRE_REDIS_PROJECT
+set +e
+RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/non-git" --mcp </dev/null >"$TMP/mcp-known.out" 2>"$TMP/mcp-known.err"
+mcp_known_rc=$?
+RIPWIRE_CACHE_BACKEND=redis "$BIN" --mcp </dev/null >"$TMP/mcp-rootless.out" 2>"$TMP/mcp-rootless.err"
+mcp_rootless_rc=$?
+set -e
+if [ "$mcp_known_rc" -eq 1 ] && grep -q 'RIPWIRE_REDIS_PROJECT' "$TMP/mcp-known.err" && [ ! -s "$TMP/mcp-known.out" ]; then
+    ok "known MCP root derives and validates its Redis cache context"
+else
+    no "known MCP root skipped Redis cache context validation"
+fi
+if [ "$mcp_rootless_rc" -eq 0 ] && ! grep -q 'RIPWIRE_REDIS_PROJECT' "$TMP/mcp-rootless.err"; then
+    ok "rootless MCP startup defers project identity until a root is known"
+else
+    no "rootless MCP startup did not defer project identity"
+fi
 
 unset_redis
 set +e

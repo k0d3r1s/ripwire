@@ -4566,6 +4566,28 @@ inline void validateConfig( Config& c ) noexcept
     }
 }
 
+inline void refuseUnknownFlag( const std::string_view argument ) noexcept
+{
+    constexpr std::string_view redisPrefix = "-" "-redis-";   // split so the CLI-surface source scraper does not mistake a refusal for a parsed flag
+    std::string_view credentialFlag;
+    if( argument.starts_with( redisPrefix ) )
+    {
+        const std::size_t equals = argument.find( '=' );
+        const std::string_view name = argument.substr( redisPrefix.size(), equals == std::string_view::npos ? equals : equals - redisPrefix.size() );
+        if( name == "password" || name == "username" )
+        {
+            credentialFlag = argument.substr( 0, redisPrefix.size() + name.size() );
+        }
+    }
+    if( !credentialFlag.empty() )
+    {
+        std::fprintf( stderr, "ripwire: unsupported credential option '%.*s' — Redis credentials are environment-only\n",
+                      int( credentialFlag.size() ), credentialFlag.data() );
+        return;
+    }
+    std::fprintf( stderr, "ripwire: unknown flag '%.*s'\n", int( argument.size() ), argument.data() );
+}
+
 inline Config parseArgs( int argc, char** argv ) noexcept
 {
     Config c;
@@ -4893,7 +4915,7 @@ inline Config parseArgs( int argc, char** argv ) noexcept
                 if( fmt == "cc.json" || fmt == "ccjson" ) { c.exportCcJson = true; c.exportFile = file; }
                 else { std::fprintf( stderr, "ripwire: --export: unknown format '%.*s' (supported: cc.json)\n", int( fmt.size() ), fmt.data() ); c.ok = false; return c; }
             }
-            else { std::fprintf( stderr, "ripwire: unknown flag '%.*s'\n", int( a.size() ), a.data() ); c.ok = false; return c; }
+            else { refuseUnknownFlag( a ); c.ok = false; return c; }
         }
         else
         {

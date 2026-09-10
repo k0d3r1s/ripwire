@@ -416,13 +416,15 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
             host = std::string( authority.substr( 0, colon ) );
             std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
             port = std::string( authority.substr( colon + 1 ) );
-            const std::string defaultPort = ssh ? "22" : "443";
-            if( port == defaultPort ) { port.clear(); }
-            if( !port.empty() && !parseDatabase( port ) )
+            std::uint32_t portNumber = 0;
+            const auto portResult = std::from_chars( port.data(), port.data() + port.size(), portNumber );
+            if( port.empty() || portResult.ec != std::errc() || portResult.ptr != port.data() + port.size() || portNumber == 0 || portNumber > 65535 )
             {
                 error = "Git remote port is invalid for Redis project identity";
                 return std::nullopt;
             }
+            const std::string defaultPort = ssh ? "22" : "443";
+            if( port == defaultPort ) { port.clear(); }
         }
         else
         {
