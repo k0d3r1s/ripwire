@@ -19,6 +19,7 @@ These are deliberate scope decisions for the first Redis backend, not placeholde
 - Connection policy uses `RIPWIRE_REDIS_USERNAME`, `RIPWIRE_REDIS_PASSWORD`, optional `RIPWIRE_REDIS_PROJECT`, `RIPWIRE_REDIS_TTL_DAYS` (default 30), `RIPWIRE_REDIS_TIMEOUT_MS` (default 1000), and the explicit `RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1` escape hatch.
 - Precedence is `--no-cache` > explicit `--cache=PATH|redis` > `RIPWIRE_CACHE_BACKEND=redis` > default local filesystem cache. A literal file named `redis` remains addressable as `--cache=./redis`.
 - Redis contains disposable derived data: relative file paths, content/stat metadata, parse-health counters, symbols/signatures/docs, references, includes, bindings, routes, constant-open facts, lexical postings, and serialized quality/oracle/merge/doc-extraction results. It does not receive edit locks, sidecar locks, materialized Git trees, cached remote clones, `.ripwire_notes`, `.ripwire_quality_baseline`, or `.ripwire_quality_acks`.
+- Hook telemetry and session markers are a separate local subsystem and are explicitly outside this migration. `$RIPWIRE_HOME/substitution.jsonl` (default `~/.ripwire/substitution.jsonl`), `$RIPWIRE_HOME/routing.jsonl`, `$RIPWIRE_HOME/routing-pending/`, `$TMPDIR/ripwire-meter.<session>.seq`, `$TMPDIR/ripwire-toolroute.<session>.count`, and `$TMPDIR/ripwire-nudge.<session>.*` remain local. Redis cache selection must not read, write, redirect, expire, purge, or account for these files.
 - Redis saves disk on each client computer, not necessarily on the Redis host. Redis persistence, eviction, backups, and encryption at rest remain operator responsibilities.
 - The default TTL is 30 days. Successful reads refresh active descriptors and referenced values. Immutable orphan records and stale per-path descriptors expire independently.
 - A Redis outage, authentication failure, malformed reply, missing value, or corrupt value emits one redacted `DEGRADED_PATH_ALERT` warning per process and runs uncached. It never silently falls back to a persistent local cache because that would violate the user's disk-space choice.
@@ -389,7 +390,7 @@ git commit -m "feat(cache): reuse Redis from MCP indexing"
 
 **Done when:** immutable quality, Git-oracle, span-tier, and document-extraction blobs warm across distinct checkout paths through Redis; archived HEAD and merge-scout tree ingests reuse Task 4's record store; MCP quality prefetch is re-enabled with operation-local clients; local temp trees and lock files remain local.
 
-**Out of scope:** Repo-authored notes/baselines/acks, edit/sidecar locks, temporary Git trees, remote clone directories, or changing any existing blob format.
+**Out of scope:** Repo-authored notes/baselines/acks, edit/sidecar locks, temporary Git trees, remote clone directories, hook telemetry/session markers (`substitution.jsonl`, `routing.jsonl`, `routing-pending/`, `ripwire-meter.*`, `ripwire-toolroute.*`, and `ripwire-nudge.*`), or changing any existing blob format.
 
 - [ ] Add `test/redisqualitycachecheck.sh` first. For each family, assert checkout A's transcript contains miss then `SET`; checkout B contains a successful `GET`/TTL refresh, no replacement `SET`, and the existing cache-hit/prefetch observable; output equals `--no-cache`. Corrupt one value to force self-healing recomputation. Use private `TMPDIR`/`XDG_CACHE_HOME` and a complete before/after regular-file inventory, not a filename glob.
 - [ ] Include explicit negative assertions that edit locks, sidecar locks, `materializeCommitTree` output, and cached remote clones still use local filesystem paths and are never sent as Redis values.
@@ -493,6 +494,7 @@ git commit -m "test(cache): verify real Redis compatibility"
 - Modify `README.md`
 - Modify `SECURITY.md`
 - Modify `CHANGELOG.md`
+- Modify `docs/SUBSTITUTION_METER.md`
 - Regenerate `docs/COMMANDS.md`
 
 **Done when:** a user can configure two computers safely, knows exactly what Redis stores, and can return to filesystem/no-cache operation without migration or data loss.
@@ -513,9 +515,10 @@ ripwire . --for="trace cache invalidation"
 - [ ] Document a complete loopback recipe: Redis 6.2+ bound to server loopback with protected mode; a dedicated `ripwire` ACL user limited to `~rw:v1:*` and `+ping +get +mget +set +expire +del +select`; and `ssh -N -L 6379:127.0.0.1:6379 user@redis-host` on each client. State exactly which namespace/project/mode variables must match.
 - [ ] Document a separate encrypted-overlay recipe: bind Redis only to its Tailscale/private-overlay address, restrict the host firewall and Redis ACL, connect to that address, and set `RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1`. Explain that this opt-in relies on the overlay for encryption and must not be used on an ordinary LAN/Internet path.
 - [ ] Explain how `RIPWIRE_REDIS_PROJECT` aligns repositories with different remotes and how `--no-cache` and `--cache=PATH` override the environment. Add a compatibility matrix: reuse requires matching namespace, derived project/crawl-root identity, cache/parser ABI, artifact architecture, and lean/rich mode. Different values remain correct but cold. Tell users to compare `--doctor` scope fingerprints on both computers.
-- [ ] Add a per-family stored-data table covering logical key identity, exact value content, whether it includes plaintext or only hashes/coordinates, maximum value bound, sliding retention, and artifacts that remain local. Be explicit that ingest records contain relative paths, symbol/scope/include/binding/route names and coordinates, metrics, parse health, and lexical hashes but not complete source files; document extraction can contain full extracted document text; Git-derived families can contain commit/author/path metadata; all values should be treated as source-sensitive.
+- [ ] Add a per-family stored-data table covering logical key identity, exact value content, whether it includes plaintext or only hashes/coordinates, maximum value bound, sliding retention, and artifacts that remain local. Be explicit that ingest records contain relative paths, symbol/scope/include/binding/route names and coordinates, metrics, parse health, and lexical hashes but not complete source files; document extraction can contain full extracted document text; Git-derived families can contain commit/author/path metadata; all values should be treated as source-sensitive. Add a separate local-only row for hook telemetry/session markers and state that they are never Redis cache values.
 - [ ] Document Redis 6.2+ standalone support, RESP2, the production ACL command list, rough key scaling (one descriptor and one retained record per active path/content version plus derived blobs), 30-day sliding TTL, `maxmemory`/LRU-or-LFU eviction guidance, and that RDB/AOF may be disabled when operators accept cold rebuilds because every value is reconstructible. Clarify that enabling Redis persistence moves cache disk use to the Redis host.
-- [ ] Document lifecycle honestly: the first Redis run is cold; enabling Redis does not migrate or remove old local caches; disabling it leaves Redis keys to expire; switching back may reuse still-valid local files. List local artifacts that remain (locks, temp Git trees during a run, remote clones, notes, baselines, acks). Provide a scoped, dry-run-first cleanup recipe based on the exact cache directory reported by `--doctor` and an allowlist of known persistent cache families; stop active ripwire processes before deletion and never remove the whole cache directory blindly.
+- [ ] Document lifecycle honestly: the first Redis run is cold; enabling Redis does not migrate or remove old local caches; disabling it leaves Redis keys to expire; switching back may reuse still-valid local files. List local artifacts that remain: locks, temp Git trees during a run, remote clones, notes, baselines, acks, `$RIPWIRE_HOME/substitution.jsonl`, `$RIPWIRE_HOME/routing.jsonl`, `$RIPWIRE_HOME/routing-pending/`, `$TMPDIR/ripwire-meter.<session>.seq`, `$TMPDIR/ripwire-toolroute.<session>.count`, and `$TMPDIR/ripwire-nudge.<session>.*`. Provide a scoped, dry-run-first cleanup recipe based on the exact cache directory reported by `--doctor` and an allowlist of known persistent cache families; explicitly exclude hook telemetry/markers from that cleanup, stop active ripwire processes before deletion, and never remove the whole cache directory blindly.
+- [ ] Update `docs/SUBSTITUTION_METER.md` to state that Redis backend selection affects only reconstructible code-analysis caches. Its telemetry logs, routing-pending state, sequence counters, and nudge/tool-route markers preserve their existing local paths, privacy controls, opt-outs, retention behavior, and schemas.
 - [ ] Document safe Redis cleanup: stop writers, copy the opaque hashed prefix shown by `--doctor`, run bounded `SCAN MATCH '<prefix>:*'`, review the count/sample, then `UNLINK`/`DEL` only those exact keys. Never use `KEYS` or `FLUSHDB`; concurrent clients may recreate keys. The application ACL does not need `SCAN`/`UNLINK`; use a separate administrative identity for cleanup.
 - [ ] In `SECURITY.md`, state that parsed code metadata and derived text may be sensitive; fixed-width key hashes do not encrypt values; operators must provide access control, network encryption/tunneling, at-rest controls, and eviction appropriate to their threat model.
 - [ ] Regenerate `docs/COMMANDS.md` from the built binary using the repository's existing command-doc generator; do not hand-edit generated flag text.
@@ -523,7 +526,7 @@ ripwire . --for="trace cache invalidation"
 - [ ] Commit documentation:
 
 ```bash
-git add README.md SECURITY.md CHANGELOG.md docs/COMMANDS.md
+git add README.md SECURITY.md CHANGELOG.md docs/SUBSTITUTION_METER.md docs/COMMANDS.md
 git commit -m "docs(cache): document shared Redis storage"
 ```
 
@@ -597,6 +600,6 @@ ripwire . --test-gate
 - [ ] Secrets and endpoint details are absent from diagnostics and doctor output.
 - [ ] Plaintext remote connections require explicit opt-in; TLS/Cluster rejection is clear.
 - [ ] MCP foreground/background operations do not share sockets or parser state.
-- [ ] Locks, temp trees, remote clones, notes, baselines, and acknowledgements remain local.
+- [ ] Locks, temp trees, remote clones, notes, baselines, acknowledgements, hook telemetry logs, routing-pending state, and per-session hook marker/counter files remain local and are never migrated to or purged through Redis.
 - [ ] TTLs refresh on use and bound abandoned records.
 - [ ] Fixture, real Redis, existing regression, sanitizer, determinism, and XML gates pass.
