@@ -197,6 +197,221 @@ void checkRejectedTransactionally( const std::string_view record, const rw::Cach
     CHECK( destination.unchanged() );
 }
 
+bool sameFacts( const Fixture& fixture, const std::vector<rw::RawDef>& defs, const std::vector<rw::RawRef>& refs,
+                const std::vector<rw::Include>& incs, const std::vector<rw::RawBind>& binds,
+                const std::vector<rw::BindingAlias>& ffis, const std::vector<rw::RouteDef>& routeDefs,
+                const std::vector<rw::RawRouteUse>& routeUses, const std::vector<rw::ConstOpen>& constOpens,
+                const rw::FileHealth& health, long long size, long long mtime, long long ctime, bool rich )
+{
+    if( defs.size() != 1 || refs.size() != 1 || incs.size() != 1 || binds.size() != 1 || ffis.size() != 1
+        || routeDefs.size() != 1 || routeUses.size() != 1 || constOpens.size() != 1 )
+    {
+        return false;
+    }
+    const rw::RawDef& expectedDef = fixture.defs[0];
+    const rw::RawDef& def = defs[0];
+    const bool defMatches = def.fileId == expectedDef.fileId && def.line == expectedDef.line && def.startByte == expectedDef.startByte
+        && def.endByte == expectedDef.endByte && def.nameByte == expectedDef.nameByte && def.bodyByte == expectedDef.bodyByte
+        && def.cx == expectedDef.cx && def.ccx == expectedDef.ccx && def.loc == expectedDef.loc && def.locals == expectedDef.locals
+        && def.ppAlt == expectedDef.ppAlt && def.humps == expectedDef.humps && def.deepLoc == expectedDef.deepLoc && def.ev == expectedDef.ev
+        && def.evWhy == expectedDef.evWhy && def.params == expectedDef.params && def.maxNest == expectedDef.maxNest
+        && def.arityExact == expectedDef.arityExact && def.testScope == expectedDef.testScope && def.kind == expectedDef.kind
+        && def.lang == expectedDef.lang && def.name == expectedDef.name && def.scope == expectedDef.scope
+        && ( rich ? def.lex.dlWeighted == expectedDef.lex.dlWeighted && def.lex.tokenHashes == expectedDef.lex.tokenHashes
+                          && def.lex.tokenTfs == expectedDef.lex.tokenTfs
+                  : def.lex.dlWeighted == 0 && def.lex.tokenHashes.empty() && def.lex.tokenTfs.empty() );
+
+    const rw::RawRef& expectedRef = fixture.refs[0];
+    const rw::RawRef& ref = refs[0];
+    const bool refMatches = ref.fileId == expectedRef.fileId && ref.startByte == expectedRef.startByte && ref.line == expectedRef.line
+        && ref.lang == expectedRef.lang && ref.isInherit == expectedRef.isInherit && ref.isDocLink == expectedRef.isDocLink
+        && ref.isCompose == expectedRef.isCompose && ref.role == expectedRef.role && ref.recv == expectedRef.recv
+        && ref.argCount == expectedRef.argCount && ref.argCountKnown == expectedRef.argCountKnown && ref.name == expectedRef.name
+        && ref.qualifier == expectedRef.qualifier && ref.recvVar == expectedRef.recvVar && ref.fieldName == expectedRef.fieldName
+        && ref.composeRel == expectedRef.composeRel;
+
+    const rw::Include& expectedInc = fixture.incs[0];
+    const rw::RawBind& expectedBind = fixture.binds[0];
+    const rw::BindingAlias& expectedFfi = fixture.ffis[0];
+    const rw::RouteDef& expectedRouteDef = fixture.routeDefs[0];
+    const rw::RawRouteUse& expectedRouteUse = fixture.routeUses[0];
+    const rw::ConstOpen& expectedConstOpen = fixture.constOpens[0];
+    return defMatches && refMatches
+        && incs[0].fileId == expectedInc.fileId && incs[0].isAngle == expectedInc.isAngle && incs[0].isLazy == expectedInc.isLazy
+        && incs[0].isSymbolic == expectedInc.isSymbolic && incs[0].byte == expectedInc.byte && incs[0].target == expectedInc.target
+        && binds[0].fileId == expectedBind.fileId && binds[0].startByte == expectedBind.startByte && binds[0].lang == expectedBind.lang
+        && binds[0].kind == expectedBind.kind && binds[0].spanStart == expectedBind.spanStart && binds[0].spanEnd == expectedBind.spanEnd
+        && binds[0].var == expectedBind.var && binds[0].typeName == expectedBind.typeName
+        && binds[0].importedName == expectedBind.importedName
+        && ffis[0].fileId == expectedFfi.fileId && ffis[0].kind == expectedFfi.kind && ffis[0].lowConf == expectedFfi.lowConf
+        && ffis[0].aliasName == expectedFfi.aliasName && ffis[0].targetName == expectedFfi.targetName
+        && ffis[0].targetScope == expectedFfi.targetScope
+        && routeDefs[0].fileId == expectedRouteDef.fileId && routeDefs[0].line == expectedRouteDef.line
+        && routeDefs[0].method == expectedRouteDef.method && routeDefs[0].path == expectedRouteDef.path
+        && routeDefs[0].handlerName == expectedRouteDef.handlerName
+        && routeUses[0].fileId == expectedRouteUse.fileId && routeUses[0].startByte == expectedRouteUse.startByte
+        && routeUses[0].line == expectedRouteUse.line && routeUses[0].method == expectedRouteUse.method
+        && routeUses[0].path == expectedRouteUse.path
+        && constOpens[0].fileId == expectedConstOpen.fileId && constOpens[0].startByte == expectedConstOpen.startByte
+        && constOpens[0].endByte == expectedConstOpen.endByte && constOpens[0].namespaceOnly == expectedConstOpen.namespaceOnly
+        && constOpens[0].written == expectedConstOpen.written
+        && health.errNodes == fixture.fileHealth[0].errNodes && health.errBytes == fixture.fileHealth[0].errBytes
+        && health.fileBytes == fixture.fileHealth[0].fileBytes && health.wsBytes == fixture.fileHealth[0].wsBytes
+        && size == fixture.fileSize[0] && mtime == fixture.fileMtime[0] && ctime == fixture.fileCtime[0];
+}
+
+void checkComprehensiveRoundTrip( const bool rich )
+{
+    Fixture fixture;
+    const rw::CachePathKeys keys = rw::buildCachePathKeys( fixture.files, "/fixture" );
+    const rw::EncodedCacheRecord encoded = encodeFixture( fixture, rich );
+    std::vector<rw::RawDef> defs; std::vector<rw::RawRef> refs; std::vector<rw::Include> incs;
+    std::vector<rw::RawBind> binds; std::vector<rw::BindingAlias> ffis; std::vector<rw::RouteDef> routeDefs;
+    std::vector<rw::RawRouteUse> routeUses; std::vector<rw::ConstOpen> constOpens; rw::FileHealth health;
+    long long size = -1, mtime = -1, ctime = -1;
+    rw::CacheDecodeOutput output{ defs, refs, incs, binds, ffis, routeDefs, routeUses, constOpens, health, size, mtime, ctime };
+    const rw::CacheRecordExpectation expected{ keys.rels[0], keys.pathHashes[0], fixture.fileHash[0], encoded.sum, rich };
+    REQUIRE( rw::decodeCacheRecord( encoded.bytes, expected, output ) );
+    CHECK( sameFacts( fixture, defs, refs, incs, binds, ffis, routeDefs, routeUses, constOpens, health, size, mtime, ctime, rich ) );
+
+    fixture.defs = defs; fixture.refs = refs; fixture.incs = incs; fixture.binds = binds; fixture.ffis = ffis;
+    fixture.routeDefs = routeDefs; fixture.routeUses = routeUses; fixture.constOpens = constOpens; fixture.fileHealth[0] = health;
+    fixture.fileSize[0] = size; fixture.fileMtime[0] = mtime; fixture.fileCtime[0] = ctime;
+    CHECK( encodeFixture( fixture, rich ).bytes == encoded.bytes );
+}
+
+void replaceU32( std::string& bytes, const std::size_t offset, const std::uint32_t value )
+{
+    REQUIRE( offset + sizeof( value ) <= bytes.size() );
+    std::memcpy( bytes.data() + offset, &value, sizeof( value ) );
+}
+
+void checkSerializedCountMutations()
+{
+    Fixture fixture;
+    const rw::CachePathKeys keys = rw::buildCachePathKeys( fixture.files, "/fixture" );
+    const rw::EncodedCacheRecord encoded = encodeFixture( fixture, true );
+    const rw::CacheRecordExpectation valid{ keys.rels[0], keys.pathHashes[0], fixture.fileHash[0], encoded.sum, true };
+    rw::ByteR reader{ encoded.bytes.data(), encoded.bytes.data() + encoded.bytes.size() };
+    (void)reader.view();
+    for( std::size_t i = 0; i < 4; ++i ) { (void)reader.u64(); }
+    for( std::size_t i = 0; i < 4; ++i ) { (void)reader.u32(); }
+
+    std::vector<std::size_t> countOffsets;
+    const std::size_t dictCountOffset = std::size_t( reader.p - encoded.bytes.data() );
+    const std::uint32_t dictCount = reader.u32();
+    std::vector<std::uint64_t> fileDict( dictCount );
+    REQUIRE( reader.rawInto( fileDict.data(), fileDict.size() * sizeof( std::uint64_t ) ) );
+
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 );
+    rw::ByteR defProbe = reader;
+    for( std::size_t i = 0; i < 14; ++i ) { (void)defProbe.u32(); }
+    for( std::size_t i = 0; i < 5; ++i ) { (void)defProbe.u8(); }
+    (void)defProbe.view(); (void)defProbe.view();
+    for( std::size_t i = 0; i < fixture.defs[0].evWhy.size(); ++i ) { (void)defProbe.u8(); }
+    (void)defProbe.u32();
+    const std::size_t postingsCountOffset = std::size_t( defProbe.p - encoded.bytes.data() );
+    REQUIRE( defProbe.u32() == fixture.defs[0].lex.tokenHashes.size() );
+    (void)rw::readDef( reader, true, fileDict );
+
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 ); (void)rw::readRef( reader );
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 );
+    for( std::size_t i = 0; i < 3; ++i ) { (void)reader.u8(); }
+    (void)reader.u32(); (void)reader.view();
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 ); (void)rw::readBind( reader );
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 ); (void)rw::readFfi( reader );
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 ); (void)rw::readRouteDef( reader );
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 ); (void)rw::readRouteUse( reader );
+    countOffsets.push_back( std::size_t( reader.p - encoded.bytes.data() ) );
+    REQUIRE( reader.u32() == 1 );
+    (void)reader.u32(); (void)reader.u32(); (void)reader.u8(); (void)reader.view();
+    REQUIRE( reader.ok );
+    REQUIRE( reader.p == reader.end );
+
+    rw::CacheDecodeScratch scratch;
+    std::vector<std::size_t> mutationOffsets{ dictCountOffset, postingsCountOffset };
+    mutationOffsets.insert( mutationOffsets.end(), countOffsets.begin(), countOffsets.end() );
+    for( const std::size_t offset : mutationOffsets )
+    {
+        CAPTURE( offset );
+        std::string mutated = encoded.bytes;
+        replaceU32( mutated, offset, std::numeric_limits<std::uint32_t>::max() );
+        rw::CacheRecordExpectation expected = valid;
+        expected.sum = rw::recordSum32( mutated );
+        checkRejectedTransactionally( mutated, expected, scratch );
+    }
+}
+
+void checkCompleteBoundaryRecord()
+{
+    Fixture fixture;
+    fixture.defs.clear(); fixture.refs.clear(); fixture.incs.clear(); fixture.binds.clear(); fixture.ffis.clear();
+    fixture.routeDefs.clear(); fixture.routeUses.clear(); fixture.constOpens.clear();
+    rw::ConstOpen open;
+    open.startByte = 1; open.endByte = 2; open.namespaceOnly = true;
+    fixture.constOpens.push_back( open );
+    const rw::EncodedCacheRecord encoded = encodeFixture( fixture, false );
+    REQUIRE( encoded.bytes.size() >= 17 );
+    std::uint32_t count = 0;
+    std::memcpy( &count, encoded.bytes.data() + encoded.bytes.size() - 17, sizeof( count ) );
+    CHECK( count == 1 );
+    CHECK( encoded.bytes.size() - ( encoded.bytes.size() - 17 + sizeof( count ) ) == 13 );
+
+    const rw::CachePathKeys keys = rw::buildCachePathKeys( fixture.files, "/fixture" );
+    std::vector<rw::RawDef> defs; std::vector<rw::RawRef> refs; std::vector<rw::Include> incs;
+    std::vector<rw::RawBind> binds; std::vector<rw::BindingAlias> ffis; std::vector<rw::RouteDef> routeDefs;
+    std::vector<rw::RawRouteUse> routeUses; std::vector<rw::ConstOpen> constOpens; rw::FileHealth health;
+    long long size = -1, mtime = -1, ctime = -1;
+    rw::CacheDecodeOutput output{ defs, refs, incs, binds, ffis, routeDefs, routeUses, constOpens, health, size, mtime, ctime };
+    const rw::CacheRecordExpectation expected{ keys.rels[0], keys.pathHashes[0], fixture.fileHash[0], encoded.sum, false };
+    REQUIRE( rw::decodeCacheRecord( encoded.bytes, expected, output ) );
+    REQUIRE( constOpens.size() == 1 );
+    CHECK( constOpens[0].startByte == 1 ); CHECK( constOpens[0].endByte == 2 );
+    CHECK( constOpens[0].namespaceOnly ); CHECK( constOpens[0].written.empty() );
+}
+
+std::vector<rw::RawDef> decodeDefs( const Fixture& fixture, const rw::EncodedCacheRecord& encoded, const bool rich )
+{
+    const rw::CachePathKeys keys = rw::buildCachePathKeys( fixture.files, "/fixture" );
+    std::vector<rw::RawDef> defs; std::vector<rw::RawRef> refs; std::vector<rw::Include> incs;
+    std::vector<rw::RawBind> binds; std::vector<rw::BindingAlias> ffis; std::vector<rw::RouteDef> routeDefs;
+    std::vector<rw::RawRouteUse> routeUses; std::vector<rw::ConstOpen> constOpens; rw::FileHealth health;
+    long long size = -1, mtime = -1, ctime = -1;
+    rw::CacheDecodeOutput output{ defs, refs, incs, binds, ffis, routeDefs, routeUses, constOpens, health, size, mtime, ctime };
+    const rw::CacheRecordExpectation expected{ keys.rels[0], keys.pathHashes[0], fixture.fileHash[0], encoded.sum, rich };
+    REQUIRE( rw::decodeCacheRecord( encoded.bytes, expected, output ) );
+    return defs;
+}
+
+void checkDictionaryIndexWidth( const std::size_t dictCount, const unsigned expectedWidth )
+{
+    Fixture fixture;
+    fixture.defs.resize( 1 );
+    rw::RawDef& def = fixture.defs[0];
+    def.lex.tokenHashes.clear(); def.lex.tokenTfs.clear();
+    def.lex.tokenHashes.reserve( dictCount ); def.lex.tokenTfs.reserve( dictCount );
+    for( std::size_t i = 0; i < dictCount; ++i )
+    {
+        def.lex.tokenHashes.push_back( 0x100000000ull + i );
+        def.lex.tokenTfs.push_back( std::uint32_t( i % 251 + 1 ) );
+    }
+    CHECK( rw::lexDictIndexWidth( dictCount ) == expectedWidth );
+    const rw::EncodedCacheRecord encoded = encodeFixture( fixture, true );
+    std::vector<rw::RawDef> defs = decodeDefs( fixture, encoded, true );
+    REQUIRE( defs.size() == 1 );
+    CHECK( defs[0].lex.tokenHashes == def.lex.tokenHashes );
+    CHECK( defs[0].lex.tokenTfs == def.lex.tokenTfs );
+    fixture.defs = defs;
+    CHECK( encodeFixture( fixture, true ).bytes == encoded.bytes );
+}
+
 TEST_CASE( "cache byte reader rejects every short or huge read without additive pointer arithmetic" )
 {
     std::array<char, 8> bytes{};
@@ -293,14 +508,7 @@ TEST_CASE( "cache records preserve separate one two and four byte term-frequency
     }
 
     const rw::EncodedCacheRecord encoded = encodeFixture( fixture, true );
-    const rw::CachePathKeys keys = rw::buildCachePathKeys( fixture.files, "/fixture" );
-    std::vector<rw::RawDef> defs; std::vector<rw::RawRef> refs; std::vector<rw::Include> incs;
-    std::vector<rw::RawBind> binds; std::vector<rw::BindingAlias> ffis; std::vector<rw::RouteDef> routeDefs;
-    std::vector<rw::RawRouteUse> routeUses; std::vector<rw::ConstOpen> constOpens; rw::FileHealth health;
-    long long size = -1, mtime = -1, ctime = -1;
-    rw::CacheDecodeOutput output{ defs, refs, incs, binds, ffis, routeDefs, routeUses, constOpens, health, size, mtime, ctime };
-    const rw::CacheRecordExpectation expected{ keys.rels[0], keys.pathHashes[0], fixture.fileHash[0], encoded.sum, true };
-    REQUIRE( rw::decodeCacheRecord( encoded.bytes, expected, output ) );
+    const std::vector<rw::RawDef> defs = decodeDefs( fixture, encoded, true );
     REQUIRE( defs.size() == frequencies.size() );
     for( std::size_t row = 0; row < frequencies.size(); ++row )
     {
@@ -362,6 +570,24 @@ TEST_CASE( "cache codec reuses caller scratch and appends records directly" )
     rw::CacheDecodeOutput secondOutput = secondDecode.output();
     REQUIRE( rw::decodeCacheRecordWithScratch( owned.bytes, expected, secondOutput, decodeScratch ) );
     CHECK( decodeScratch.fileDict.capacity() == decodeCapacity );
+}
+
+TEST_CASE( "lean and rich cache records round trip every serialized field byte identically" )
+{
+    checkComprehensiveRoundTrip( false );
+    checkComprehensiveRoundTrip( true );
+}
+
+TEST_CASE( "serialized cache counts reject corrupt values and accept a complete boundary record" )
+{
+    checkSerializedCountMutations();
+    checkCompleteBoundaryRecord();
+}
+
+TEST_CASE( "rich cache records round trip two and four byte dictionary indices" )
+{
+    checkDictionaryIndexWidth( 0x101u, 2 );
+    checkDictionaryIndexWidth( 0x10001u, 4 );
 }
 
 TEST_CASE( "cache record architecture discriminator matches the native wire contract" )

@@ -19,6 +19,9 @@ if [ "$BASELINE_MODE" = 1 ]; then
     if [ "$SOURCE_HEAD" != "$BASELINE_COMMIT" ]; then
         echo "FAIL: CACHE_RECORD_SOURCE_ROOT must be exactly $BASELINE_COMMIT (got $SOURCE_HEAD)"; exit 2
     fi
+    if [ -n "$( git -C "$SOURCE_ROOT" status --porcelain --untracked-files=all )" ]; then
+        echo "FAIL: CACHE_RECORD_SOURCE_ROOT must be clean before baseline generation"; exit 2
+    fi
 fi
 
 BUILD_DIR="${RIPWIRE_TEST_BUILD_DIR:-$SCRIPT_ROOT/build-tests}"
