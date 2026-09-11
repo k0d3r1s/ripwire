@@ -3152,7 +3152,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
     // ── --doctor: self-diagnosis, before the heavy ingest pipeline (like --scan-skill above) ─────
     if( cfg.doctor )
     {
-        return runDoctor( cfg, argv[0] );
+        return runDoctor( cfg, argv[0], cachePolicy );
     }
 
     // ── P1-C security scan — purely additive, exits before the heavy ingest pipeline ─────────────

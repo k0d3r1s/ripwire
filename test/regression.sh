@@ -306,6 +306,11 @@ if RIPWIRE_BIN="$BIN" bash "$ROOT/test/mcpcachegatecheck.sh"; then
 else
     no "MCP cache gate self-check (test/mcpcachegatecheck.sh failed)"
 fi
+if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisdoctorcheck.sh"; then
+    ok "Redis doctor health gate (test/redisdoctorcheck.sh)"
+else
+    no "Redis doctor health gate (test/redisdoctorcheck.sh failed)"
+fi
 if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisclientcheck.sh" >/dev/null 2>&1; then
     ok "Redis transport gate (test/redisclientcheck.sh)"
 else

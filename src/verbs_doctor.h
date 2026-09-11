@@ -9,6 +9,10 @@
 // linkage it had inside main.cpp, so the split adds zero API surface) and leans on main.cpp's own
 // top-of-file #includes and preamble helpers. The RIPWIRE_MAIN_TU guard turns a second includer into
 #include "gitstamp.h"          // isShallow — the git row's shallow="1" (2026-09-06 stranger audit)
+#include "redis_client.h"
+#include <arpa/inet.h>
+#include <sys/random.h>
+#include <unistd.h>
 // a compile error instead of a silent per-TU-copy ODR trap.
 
 namespace
@@ -346,7 +350,7 @@ inline std::string doctorRichVerbRoster()
     return roster;
 }
 
-inline DoctorIndexCache doctorIndexCacheRow( const rw::Config& cfg, std::vector<char>& esc )
+inline DoctorIndexCache doctorIndexCacheRow( const rw::Config& cfg, std::vector<char>& esc, rw::CacheBackendKind backend )
 {
     const rw::CacheIdentity id = rw::cacheIdentity();
     DoctorIndexCache    out;
@@ -363,6 +367,12 @@ inline DoctorIndexCache doctorIndexCacheRow( const rw::Config& cfg, std::vector<
     std::string namedPath;
     const char* leanVerdict = "disabled";
     const char* richVerdict = "disabled";
+    if( backend == rw::CacheBackendKind::Redis )
+    {
+        // Remote entries are verified by cache_backend. No filesystem artifact or raw project path applies.
+        out.attrs += " source=\"redis\" lean=\"remote\" rich=\"remote\"";
+        return out;
+    }
     if( cfg.noCache )
     {
         // Neither ok nor absent: no artifact was consulted at all. Saying so is the third state the
@@ -640,7 +650,166 @@ inline std::string doctorGitConfigTrustAttrs( const rw::Config& cfg )
     return attrs;
 }
 
-int runDoctor( const rw::Config& cfg, const char* argv0 )
+// Bounded categories only: never reflect RedisResult::reply, diagnostic, or configuration strings.
+inline const char* doctorRedisFailureName( rw::RedisFailure failure )
+{
+    constexpr const char* kNames[] = { "none", "config", "connect", "timeout", "protocol", "auth", "cluster_redirect", "server" };
+    static_assert( std::size( kNames ) == static_cast<unsigned>( rw::RedisFailure::Server ) + 1 );
+    const unsigned failureId = static_cast<unsigned>( failure );
+    return failureId < std::size( kNames ) ? kNames[failureId] : "unknown";
+}
+
+inline std::string doctorRedisFailureClasses( unsigned classes )
+{
+    std::string names;
+    for( unsigned failureId = static_cast<unsigned>( rw::RedisFailure::Config ); failureId <= static_cast<unsigned>( rw::RedisFailure::Server ); ++failureId )
+    {
+        if( ( classes & ( 1u << failureId ) ) == 0 ) { continue; }
+        if( !names.empty() ) { names += ","; }
+        names += doctorRedisFailureName( static_cast<rw::RedisFailure>( failureId ) );
+    }
+    return names;
+}
+
+inline DoctorIndexCache doctorRedisFinalizeHealth( DoctorIndexCache out, const char* hint, unsigned failures )
+{
+    // A successful live probe cannot erase a failure observed by an earlier backend operation in this process.
+    if( hint == nullptr && failures != 0 ) { hint = "previous_backend_failure"; }
+    if( hint != nullptr ) { out.ok = false; out.attrs += " hint=\"" + std::string( hint ) + "\""; }
+    const std::string failureNames = doctorRedisFailureClasses( failures );
+    if( !failureNames.empty() ) { out.attrs += " failures=\"" + failureNames + "\""; }
+    out.attrs += " volatile=\"ok,hint,failures\"";
+    return out;
+}
+
+inline const char* doctorRedisTransport( const std::string& endpoint )
+{
+    if( endpoint.starts_with( "redis+unix://" ) ) { return "unix"; }
+    // The policy has already validated the URL. Classify its host without ever emitting it.
+    const std::string_view rest = std::string_view( endpoint ).substr( 8 );
+    if( rest.starts_with( "[::1]" ) ) { return "loopback_tcp"; }
+    std::string host( rest.substr( 0, rest.find_first_of( ":/" ) ) );
+    std::ranges::transform( host, host.begin(), []( unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+    in_addr address{};
+    const bool loopback = host == "localhost" || ( ::inet_pton( AF_INET, host.c_str(), &address ) == 1 && ( ntohl( address.s_addr ) >> 24 ) == 127 );
+    return loopback ? "loopback_tcp" : "remote_tcp";
+}
+
+inline std::uint32_t doctorRedisDatabase( const std::string& endpoint )
+{
+    const bool unixSocket = endpoint.starts_with( "redis+unix://" );
+    const std::size_t separator = unixSocket ? endpoint.find( "?db=" ) : endpoint.find( '/', 8 );
+    if( separator == std::string::npos ) { return 0; }
+    const std::string_view digits = std::string_view( endpoint ).substr( separator + ( unixSocket ? 4 : 1 ) );
+    std::uint32_t database = 0;
+    // Normalise numeric spelling (e.g. /02) for comparable scope metadata; URL validation preceded us.
+    (void)std::from_chars( digits.data(), digits.data() + digits.size(), database );
+    return database;
+}
+
+inline const char* doctorRedisProbe( const rw::CacheContext& cache, const std::string& prefix, unsigned& failures )
+{
+    using namespace rw;
+    const RedisClient client( cache.policy->redis );
+    const char* hint = nullptr;
+    const auto check = [ & ]( const RedisResult& result, bool valid )
+    {
+        const RedisFailure failure = result ? ( valid ? RedisFailure::None : RedisFailure::Protocol ) : result.failure;
+        if( failure != RedisFailure::None )
+        {
+            failures |= 1u << static_cast<unsigned>( failure );
+            if( hint == nullptr ) { hint = doctorRedisFailureName( failure ); }
+        }
+        return failure == RedisFailure::None;
+    };
+
+    // Establish transport/authentication before generating a cryptographic nonce. Entropy failure never falls back to PID/time/PRNG.
+    const RedisResult ping = client.command( { "PING" } );
+    if( !check( ping, ping.reply.type == RedisReplyType::Simple && ping.reply.bytes == "PONG" ) ) { return hint; }
+    unsigned char randomBytes[16];
+    if( ::getentropy( randomBytes, sizeof( randomBytes ) ) != 0 ) { return "random_unavailable"; }
+    constexpr char kHex[] = "0123456789abcdef";
+    std::string nonce;
+    nonce.reserve( sizeof( randomBytes ) * 2 );
+    for( const unsigned char byte : randomBytes )
+    {
+        nonce += kHex[byte >> 4];
+        nonce += kHex[byte & 15];
+    }
+    const std::string key = prefix + "doctor:" + nonce;
+    const RedisResult set = client.command( { "SET", key, nonce, "NX", "EX", "5" } );
+    if( set && set.reply.type == RedisReplyType::Nil ) { return "canary_collision"; }
+    if( !check( set, set.reply.type == RedisReplyType::Simple && set.reply.bytes == "OK" ) ) { return hint; }
+
+    // Once ownership is confirmed, attempt every cache capability and cleanup even if an earlier read failed.
+    // No cache TTL is reused here: failed/denied cleanup leaves only this canary with a five-second lifetime.
+    const RedisResult get = client.command( { "GET", key } );
+    check( get, get.reply.type == RedisReplyType::Bulk && get.reply.bytes == nonce );
+    const RedisResult mget = client.command( { "MGET", key } );
+    check( mget, mget.reply.type == RedisReplyType::Array && mget.reply.elements.size() == 1
+                  && mget.reply.elements[0].type == RedisReplyType::Bulk && mget.reply.elements[0].bytes == nonce );
+    const RedisResult expire = client.command( { "EXPIRE", key, "5" } );
+    check( expire, expire.reply.type == RedisReplyType::Integer && expire.reply.integer == 1 );
+    const RedisResult del = client.command( { "DEL", key } );
+    check( del, del.reply.type == RedisReplyType::Integer && del.reply.integer == 1 );
+    return hint;
+}
+
+inline DoctorIndexCache doctorCacheBackendRow( const rw::Config& cfg, const std::shared_ptr<const rw::CachePolicy>& policy )
+{
+    using namespace rw;
+    if( policy->kind != CacheBackendKind::Redis )
+    {
+        return { policy->kind == CacheBackendKind::File ? "kind=\"file\"" : "kind=\"disabled\"", true };
+    }
+    CacheContext cache;
+    std::string error;
+    if( !cacheContextForRoot( policy, cfg.rootPath, needsValueUses( cfg ), cache, error ) )
+    {
+        return { "kind=\"redis\" hint=\"config\"", false };
+    }
+    const std::string prefix = "ripwire:" + redisKeyHash( policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project ) + ":";
+    const std::uint32_t database = doctorRedisDatabase( policy->redis.endpoint );
+    // Scope compares the actual namespace/project key prefix; db is separate and endpoints never enter the fingerprint.
+    DoctorIndexCache out{ "kind=\"redis\" transport=\"" + std::string( doctorRedisTransport( policy->redis.endpoint ) )
+                         + "\" db=\"" + std::to_string( database ) + "\" scope=\"" + redisKeyHash( prefix ).substr( 0, 16 ) + "\"", true };
+    unsigned failures = redisCacheFailureClasses.load( std::memory_order_relaxed );
+    const char* hint = doctorRedisProbe( cache, prefix, failures );
+    return doctorRedisFinalizeHealth( std::move( out ), hint, failures );
+}
+
+inline DoctorIndexCache doctorCacheDirRow( rw::CacheBackendKind backend, std::vector<char>& esc )
+{
+    using namespace rw;
+    if( backend == CacheBackendKind::Redis ) { return { "source=\"redis\" state=\"not_used\"", true }; }
+    const std::string dir = cacheDirLadder();
+    const std::string probe = dir + "/.ripwire-doctor-probe-" + std::to_string( ::getpid() );
+    bool writable = false;
+    if( std::FILE* f = std::fopen( probe.c_str(), "wb" ) )
+    {
+        std::fputs( "doctor", f );
+        std::fclose( f );
+        writable = ( ::unlink( probe.c_str() ) == 0 );
+    }
+    const DoctorCacheStats stats = doctorCacheStats( dir );
+    std::string attrs = "dir=\"" + std::string( escapeXml( dir, esc ) ) + "\"";
+    attrs += " blobs=\"" + std::to_string( stats.blobCount ) + "\"";
+    if( stats.capHit )
+    {
+        attrs += " blobs_floor=\"1\"";   // §L10: blobs= landed on the scan cap — could be exactly that many, could be more
+    }
+    attrs += " bytes=\"" + std::to_string( stats.totalBytes ) + "\"";
+    attrs += " many=\"" + std::string( stats.blobCount > 50 ? "1" : "0" ) + "\"";
+    attrs += " truncated=\"" + std::string( stats.truncated ? "1" : "0" ) + "\"";
+    attrs += " locks=\"" + std::to_string( doctorEditLockCount( dir ) ) + "\"";
+    // F6: declare the fields reading LIVE state here; test/lib/doctorvolatile.sh consumes this one list.
+    // A per-user directory changes under concurrent cache writers, so a comparison strips these fields, never the row.
+    attrs += " volatile=\"blobs,blobs_floor,bytes,many,truncated,locks\"";
+    attrs += doctorCacheDirHint( writable, dir, esc );
+    return { std::move( attrs ), writable };
+}
+
+int runDoctor( const rw::Config& cfg, const char* argv0, const std::shared_ptr<const rw::CachePolicy>& cachePolicy )
 {
     using namespace rw;
 
@@ -732,39 +901,8 @@ int runDoctor( const rw::Config& cfg, const char* argv0 )
     // ---- check 3: cache-dir health — resolves, writable (create+delete a probe file), report
     // existing ripwire-* blob count + total bytes (eviction sanity: flag >50 blobs, informational) ----
     {
-        const std::string dir   = cacheDirLadder();
-        const std::string probe = dir + "/.ripwire-doctor-probe-" + std::to_string( ::getpid() );
-        bool writable = false;
-        if( std::FILE* f = std::fopen( probe.c_str(), "wb" ) )
-        {
-            std::fputs( "doctor", f );
-            std::fclose( f );
-            writable = ( ::unlink( probe.c_str() ) == 0 );
-        }
-
-        const DoctorCacheStats stats = doctorCacheStats( dir );
-        std::string attrs = "dir=\"" + std::string( escapeXml( dir, esc ) ) + "\"";
-        attrs += " blobs=\"" + std::to_string( stats.blobCount ) + "\"";
-        if( stats.capHit )
-        {
-            attrs += " blobs_floor=\"1\"";   // §L10: blobs= landed on the scan cap — could be exactly that many, could be more
-        }
-        attrs += " bytes=\"" + std::to_string( stats.totalBytes ) + "\"";
-        attrs += " many=\"" + std::string( stats.blobCount > 50 ? "1" : "0" ) + "\"";   // eviction sanity flag, informational (never fails the check)
-        attrs += " truncated=\"" + std::string( stats.truncated ? "1" : "0" ) + "\"";
-        attrs += " locks=\"" + std::to_string( doctorEditLockCount( dir ) ) + "\"";   // advisory edit-lock files under locks/ (doctorEditLockCount)
-        // F6 (2026-09-05): THE ROW NAMES ITS OWN LIVE-STATE FIELDS. cacheDirLadder() is a per-USER directory
-        // every ripwire process writes into, so this scan measures a moving object — two back-to-back runs of
-        // a deterministic binary legitimately disagree on blobs=/bytes= and on the flags derived from the same
-        // scan. Three rounds read that as a determinism failure of the BINARY (lane-L7's shapingflagcheck (F)
-        // and gitstampcheck --doctor, both green alone; merge-wave2 §4; the 2026-09-04 close), each time
-        // answered by another private scrub in whichever gate noticed — and gitstampcheck's was order-
-        // dependent, so it silently stopped scrubbing once the scan cap spliced blobs_floor= mid-row.
-        // Declaring the list HERE makes it a fact of the output that test/lib/doctorvolatile.sh reads; no gate
-        // keeps a copy. Removing the fields instead is worse: cache size is this check's whole content.
-        attrs += " volatile=\"blobs,blobs_floor,bytes,many,truncated,locks\"";
-        attrs += doctorCacheDirHint( writable, dir, esc );
-        row( "cache-dir", writable, attrs );
+        const DoctorIndexCache cacheDir = doctorCacheDirRow( cachePolicy->kind, esc );
+        row( "cache-dir", cacheDir.ok, cacheDir.attrs );
     }
 
     // ---- check 4: git reachability — `git` on PATH + the target dir's repo status; degrades
@@ -846,9 +984,12 @@ int runDoctor( const rw::Config& cfg, const char* argv0 )
     // above (same reason the grammar probe and the cache-dir stats are free functions: runDoctor already
     // dispatches six checks, and a seventh three-branch body lands its nesting-weighted complexity there).
     {
-        const DoctorIndexCache ic = doctorIndexCacheRow( cfg, esc );
+        const DoctorIndexCache ic = doctorIndexCacheRow( cfg, esc, cachePolicy->kind );
         row( "index-cache", ic.ok, ic.attrs );
     }
+
+    const DoctorIndexCache backend = doctorCacheBackendRow( cfg, cachePolicy );
+    row( "cache_backend", backend.ok, backend.attrs );
 
     // ---- check 8: the git-config trust boundary — body in doctorGitConfigTrustAttrs above, for the same reason
     // check 7's lives in doctorIndexCacheRow: runDoctor is a dispatcher, and every check body it absorbs lands there.
