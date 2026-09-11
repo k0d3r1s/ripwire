@@ -5182,6 +5182,11 @@ C++ corpus — *historical, private, not publicly reproducible*. Every figure be
      `test/grepbytescheck.sh` re-derives a **−40.2% median** payload cut on this repository's five
      frozen *capped* queries — and, on twelve frozen *uncapped* small-hit queries, a
      **+61.5% median** payload *increase*, larger than plain grep on **12 of 12**.
+     Fixture maintenance (2026-09-11): `diskPath` grew to 106 hits after Redis integration and failed
+     the uncapped regime's 100-row guard. The current twelve-query set replaces it with
+     `cacheDirLadder` (28 hits); the guard and capped set are unchanged. On the local macOS run the
+     revised set measured a +90.5% median increase, larger on 12 of 12; the +61.5% above records the
+     earlier fixture, not a measurement of the revised set.
      **What "the view" means since 2026-08-19**: span tiers made `--grep`'s DEFAULT a filtered view of the
      same exhaustive scan, and this gate's instrument was deliberately pinned to `--grep-in=any` — the
      un-tiered emitter — in the same wave (`test/grepbytescheck.sh:114`, with the reason in its own header:

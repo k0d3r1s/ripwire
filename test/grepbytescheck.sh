@@ -120,8 +120,10 @@ QUERIES_CAPPED=(stale cache buffer resize DEGRADED_PATH_ALERT)
 # 100-row default, so shown == hits and the answer is COMPLETE. Chosen as durable internal identifiers
 # spanning ~8 to ~64 hits, which is where the fixed legend cost is a large fraction of the payload. If a
 # rename ever takes one of these to zero hits its own guard fails loudly rather than quietly shrinking n.
+# 2026-09-11: Redis integration grew diskPath to 106 hits, beyond the 100-row uncapped regime.
+# Replace that stale query with cacheDirLadder (28 hits); retain all twelve queries and the cap guard.
 QUERIES_UNCAPPED=(appendCdataSafe truncateUtf8WithEllipsis kParserVer pageWindow PageWindow McpPageArgs
-                  GrepHit GrepRawHit lineStarts diskPath crawlSkips xmllint)
+                  GrepHit GrepRawHit lineStarts cacheDirLadder crawlSkips xmllint)
 
 # ── presence guards (CONTRIBUTING.md §2: a gate that cannot observe what it asserts is green for the
 #    wrong reason) — before trusting a byte count, prove the feature that is supposed to produce it fired ──
