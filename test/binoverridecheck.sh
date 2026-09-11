@@ -71,6 +71,8 @@ gates = [ g for g in gates if g not in ( "regression.sh", SELF ) ]
 #    RIPWIRE_BIN cannot make them fail. Each reason was verified by reading the gate, not guessed from its
 #    name. Committed and counted (this file's own header + (2b) below assert the count out loud).
 EXEMPT = {
+    "cacherecordcheck.sh":       "builds and runs the standalone ripwire_test_cache_record CMake harness; no ripwire binary invocation (failing sentinel observed green 2026-09-11)",
+    "redisclientcheck.sh":       "compiles and runs its own Redis client harness against a fake RESP server; no ripwire binary invocation (failing sentinel observed green 2026-09-11)",
     "codexinstallhonestycheck.sh": "exercises skills/install.sh's jq/mv merge honesty inside hermetic temp HOMEs; the subject is the shell installer, so BIN is bound for interface uniformity and never executed (verified by reading the gate)",
     "meterdisclosurecheck.sh":   "runs skills/install.sh's --hook banner and asserts what it discloses about the substitution meter; the subject is banner TEXT, so BIN is bound for interface uniformity and never executed (verified by reading the gate)",
     "adaptivecutshapecheck.sh":  "compiles an isolated $CXX probe .cpp; never invokes build/ripwire",

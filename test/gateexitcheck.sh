@@ -292,6 +292,13 @@ if seen == len( FIXTURES ):
 # is "a number that is printed but not checked". If you add a row, force the gate to fail and read the
 # status; do not infer it from the `exit` literal you can see, because the one that fires may be another.
 FAILFAST = {
+    "cacherecordcheck.sh":      ( "set -e plus explicit baseline failure; forced LEAN_SIZE drift 447 -> 448 in a disposable copy exited 1, observed 2026-09-11", 1 ),
+    "mcpcachegatecheck.sh":     ( "trailing Python assertions; forced real no-build-tree-mutation assertion in disposable copy exited 1, observed 2026-09-11", 1 ),
+    "redisdoctorcheck.sh":      ( "trailing Python assertions; forced healthy transport assertion in disposable copy exited 1, observed 2026-09-11", 1 ),
+    "redisingestcheck.sh":      ( "set -e and Python assertions; forced cold/warm stdout parity assertion in disposable copy exited 1, observed 2026-09-11", 1 ),
+    "redismcpcheck.sh":         ( "set -e and Python assertions; forced foreground Redis publication assertion in disposable copy exited 1, observed 2026-09-11", 1 ),
+    "redisqualitycachecheck.sh":( "set -e and Python assertions; forced cold span-tier parsed-bytes assertion in disposable copy exited 1, observed 2026-09-11", 1 ),
+    "redisrealcheck.sh":        ( "set -e plus Python assertions; --fixture-only with RIPWIRE_BIN=/usr/bin/false reached redis_real_admin.py's command-success assertion and exited 1; missing CI URL also exited 1, observed 2026-09-11", 1 ),
     "elixircheck.sh":          ( "set -e and Python assertions; pre-Elixir HEAD binary probed to exit 1", 1 ),
     "agentloopcodexcheck.sh":  ( "trailing Python assertions make the interpreter rc the gate rc",     1 ),
     "clonebandcheck.sh":        ( "every check is `echo FAIL; exit 2` at the site",                      2 ),
