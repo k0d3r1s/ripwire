@@ -15,6 +15,26 @@ not published here — see `docs/EVALS.md` for the instruments behind the headli
 
 ## [Unreleased]
 
+### Added — optional shared Redis analysis cache
+
+`--cache=redis` or `RIPWIRE_CACHE_BACKEND=redis` selects a disposable Redis 6.2+ standalone RESP2
+backend for ingest facts, quality snapshots/body hashes/churn, Git history-oracle results, span
+tiers and document extraction. Versioned `rw:v1:` keys isolate hashed namespace/project identities,
+source content, artifact schemes and compatible extraction families. Entries use a configurable
+30-day sliding TTL. Missing, incompatible or unavailable cache data is recomputed from source
+without local analysis-cache persistence in Redis mode.
+
+`--doctor` checks the production ACL command set with a short-lived canary and reports transport,
+database, an opaque scope fingerprint and the exact opaque prefix for scoped cleanup. Remote
+plaintext requires explicit opt-in to an encrypted private transport; credentials use environment
+variables only. `--no-cache` takes precedence, and explicit `--cache=PATH` retains File behavior.
+Switching back needs no migration and leaves existing local caches and user sidecars intact.
+Hook telemetry and session markers remain local with their existing privacy and retention policy.
+
+The [shared-cache guide](README.md#share-analysis-caches-between-computers) covers two-computer setup,
+stored data, compatibility and bounded cleanup. Real-Redis CI is configured and awaits execution;
+this entry does not claim that those CI runs passed.
+
 ### Fixed — the super-linear warm floor under every graph-building verb (`--grep`, `--callers`, the map)
 
 On llvm-project (182,555 files, warm cache) a `--grep` for an absent literal took ~157 s, `--callers=main`

@@ -42,6 +42,16 @@ This is a weaker claim than "ripwire makes agents better" and it is measurable, 
 
 ## Where the log lives
 
+Redis selection (`--cache=redis` or `RIPWIRE_CACHE_BACKEND=redis`) covers only derived analysis
+caches. It never uploads hook telemetry or session markers. This meter's paths, recorded fields,
+JSONL schema, privacy disclosure, opt-outs and retention policy are unchanged by cache selection.
+`substitution.jsonl`, `routing.jsonl`, `routing-pending/` and `meter.conf` stay under their existing
+local paths; `${TMPDIR:-/tmp}/ripwire-meter.*.seq`, `ripwire-toolroute.*.count` and
+`ripwire-nudge.*` stay local session state. `--no-cache` does not turn off telemetry; use
+`RIPWIRE_METER=0` to opt out of counting. Cache TTLs and Redis cleanup do not rotate or delete these
+logs. See the [analysis-cache lifecycle](../README.md#switch-back-and-clean-up-deliberately) for
+the separate cache cleanup procedure.
+
 One **global** file, all repos:
 
 | | |

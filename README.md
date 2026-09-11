@@ -1650,12 +1650,11 @@ hot scopes diverge by the documented read-bracket overhead instead: the counter 
 the tick bracket.) The `page-faults` column is a **G2 witness**: PageRank's power iteration retires
 with **zero** page faults and the CSR build with **7**, against ~3,100 in the allocation-heavy
 model-build scopes — the no-allocation rule inside the ranked loop, watchable on a box with no PMU.
-And the doc post-pass row caught something real: 2.17 s of wall on **0.5 ms** of CPU is work
-happening *outside the process* — with `markitdown` installed, the showcase PDF and PPTX are
-re-extracted by subprocess on **every** run, cache or no cache, which on this box is ~97% of a warm
-run's wall (2.05 s of 2.11 s); child CPU is invisible to every per-thread counter, and the
-wall-vs-task-clock gap is precisely the signature that flags it. (The extraction is already
-documented in-tree as a pure function of the file bytes — a cache candidate, now measured.) Only a
+The doc post-pass row's 2.17 s of wall on **0.5 ms** of CPU identifies work
+happening *outside the process*: optional `markitdown` extraction runs in a subprocess, whose CPU
+is invisible to per-thread counters. Bridge results now use content-addressed File or Redis caches;
+`--no-cache` still extracts them on every run. The table measures the extraction cost, not the
+current warm-hit cost. Only a
 kernel that offers nothing at all — `perf_event_paranoid>=3`, seccomp — still degrades to
 timing-only, and `pmccheck`'s inactive arm now proves that was truly the case.
 
@@ -1835,6 +1834,250 @@ estimate and a call graph all look plausible whether or not they are correct.
 </details>
 
 ---
+
+## Share analysis caches between computers
+
+Redis is an optional, disposable store for derived analysis caches. Each computer still needs its
+own source checkout and ripwire binary. A cache miss, eviction or connection failure recomputes from
+that checkout; Redis mode does not fall back to writing local analysis caches. The default backend
+is File. Redis is not a repository, backup, or durable user-memory store.
+
+### Loopback Redis through SSH
+
+Use a dedicated **Redis 6.2+ standalone** server with RESP2. Cluster, Sentinel discovery and native
+TLS (`rediss://`) are unsupported. On the Redis host, bind only `127.0.0.1`, keep `protected-mode yes`,
+and configure a dedicated ACL user. These are Redis configuration and ACL-file entries, respectively;
+replace the password placeholder through your secret manager before starting the server:
+
+```conf
+bind 127.0.0.1
+protected-mode yes
+port 6379
+databases 16
+aclfile /etc/redis/users.acl
+```
+
+```conf
+user default off
+user ripwire on >read-from-a-secret-manager ~rw:v1:* -@all +ping +get +mget +set +expire +del +select
+```
+
+Protect the ACL file and its parent with permissions for the Redis service account. Use the same
+secret for the client below; the literal placeholder is not a production password. The application
+ACL permits only its cache operations, including `DEL` for doctor's temporary canary. Database 4
+separates cache operations, but Redis ACL key patterns apply across databases: DB selection is not
+an access-control boundary. Reserve this instance or narrow the key pattern for each trust domain.
+
+On **each computer**, replace the SSH destination with your Redis host and keep this tunnel running
+in its own terminal. Local port 6379 must be free on each client; the server-side destination is
+resolved on the SSH host:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:6379:127.0.0.1:6379 redis-host
+```
+
+In the shell that launches ripwire (and in your agent/MCP environment), supply the same configuration
+on both computers. Inject the password from your secret manager; do not put a real secret in a
+repository, URL, command-line argument or shell-history entry.
+
+```bash
+export RIPWIRE_CACHE_BACKEND=redis
+export RIPWIRE_REDIS_URL=redis://127.0.0.1:6379/4
+export RIPWIRE_REDIS_NAMESPACE=k0d3r1s
+export RIPWIRE_REDIS_USERNAME=ripwire
+export RIPWIRE_REDIS_PASSWORD='read-from-a-secret-manager'
+ripwire . --for="trace cache invalidation"
+```
+
+`redis+unix:///absolute/path/to/redis.sock?db=4` is also supported for a local socket. Credentials
+belong only in `RIPWIRE_REDIS_USERNAME` / `RIPWIRE_REDIS_PASSWORD`; URL userinfo is rejected.
+
+### Encrypted private overlay alternative
+
+An existing encrypted overlay can carry the connection instead of SSH. Bind Redis **only to its
+private overlay address**, retain protected mode and the ACL above, and firewall port 6379 to the
+two approved client overlay addresses. For example, after configuring the server to bind
+`10.23.0.10` and verifying the overlay and firewall, change these client variables:
+
+```bash
+export RIPWIRE_REDIS_URL=redis://10.23.0.10:6379/4
+export RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1
+```
+
+The opt-in allows plaintext RESP on that socket; encryption comes from the overlay, not ripwire or
+Redis. Never use this opt-in over an ordinary LAN or the Internet, and never bind Redis to
+`0.0.0.0` or `::`. Overlay provisioning and tunnel automation are operator responsibilities.
+
+### Match the two checkouts
+
+By default, project identity is the normalized Git `origin` plus the crawl root's path relative to
+the repository root. Absolute checkout paths can differ. If origins differ (for example, a fork
+or SSH alias), set the same explicit project on both clients:
+
+```bash
+export RIPWIRE_REDIS_PROJECT=my-project-root
+ripwire . --doctor
+```
+
+Use a distinct project value for each logical crawl root; an override replaces the entire default
+identity, including the subdirectory. A non-Git root or a Git root without a usable origin requires
+this override. Do not give unrelated trees the same project.
+
+| Sharing dimension | Requirement for a warm hit |
+| --- | --- |
+| Redis destination | Same server and database, even when tunnel endpoints differ |
+| Namespace and project | Same namespace and logical project/crawl root; compare doctor's `scope` and `prefix` |
+| Source | Matching relative file paths and content hashes; changed bytes get new ingest records |
+| Cache format and parser ABI | Matching versions; compare `index-cache`'s `cache_version`, `parser_ver_lean`, `parser_ver_rich` |
+| Artifact architecture | Matching `artifact_arch` (byte order and pointer width); architecture-incompatible blobs stay cold |
+| Lean/rich facts | Matching family; lean navigation and rich metrics/value-use analysis have separate records |
+| Derived artifacts | Matching family scheme and identity, including applicable extraction/exclude settings and Git revision |
+
+Run `ripwire . --doctor` on both computers with the same environment. The `cache_backend` row checks
+authentication and the production command set using a random canary with a five-second TTL. Compare
+`db`, `scope` (a 16-hex comparison fingerprint) and `prefix` (the complete opaque key prefix, without
+a trailing colon). Matching fingerprints do not prove that different endpoints reach the same
+server. The `index-cache` row exposes binary compatibility even in Redis mode; `cache-dir` reports
+`source="redis" state="not_used"`. Correctly scoped incompatible versions stay correct but cold;
+run the same binary version and logical root to share work. Doctor exposes no raw credentials,
+endpoint, namespace or project in its Redis row.
+
+Selection precedence is `--no-cache` → Disabled, an explicit `--cache=PATH` → File, then
+`--cache=redis` or `RIPWIRE_CACHE_BACKEND=redis` → Redis; otherwise File. Thus a named file wins over
+the Redis environment. `redis` is a reserved cache value; use `--cache=./redis` for a file of that name.
+The [generated cache reference](docs/COMMANDS.md#--cachepath) documents the flags.
+
+### What Redis stores
+
+All keys begin `rw:v1:<SHA256(namespace)>:<SHA256(project)>:`. Ingest adds
+`ingest:<cache-version>:<parser-version>:<artifact-arch>:<lean|rich>:`; other families add
+`<family>:<scheme-version>:<artifact-arch>:<SHA256(identity)>`. The table describes the values,
+not just the hashed key names. Hashes and binary serialization are **not encryption**. Treat this
+store as source-sensitive: paths, names and extracted document text can disclose proprietary data.
+
+| Family | Logical identity within the project | Exact value content and sensitivity |
+| --- | --- | --- |
+| Ingest `descriptor:<SHA256(relative-path)>` | Extraction versions, architecture, lean/rich family and relative path | Current source SHA-256 as 64 hex characters; a disposable pointer, not source text |
+| Ingest `record:<SHA256(relative-path)>:<SHA256(source)>` | The descriptor scope plus exact source bytes | `RWI1` envelope, SHA-256 integrity/source hashes, checksum and per-file facts: relative paths, symbol/reference/import/binding/route names, locations and byte coordinates, metrics, parse health and lexical hashes. No complete source file; identifiers and other extracted strings remain plaintext in the binary record |
+| `qsnap` | HEAD SHA and quality extraction/exclude configuration | Snapshot header/checksum; hashed symbol identities with complexity, LOC, nesting, parameter, definition and masking counts; body hashes and clone/dead/public-API identity sets. No source bodies |
+| `qbody` | Window-reference SHA and body extraction/exclude configuration | Snapshot encoding with the body-hash map populated; path-qualified symbol hashes and raw-body hashes, not body text |
+| `qchurn` | HEAD SHA, history window and boundary SHA | Serialized raw commit stream: commit epochs and plaintext changed paths, counts and checksum. Commit hashes identify the cache; author names/emails and patch text are not stored in this family |
+| `qhist` | HEAD SHA and history-oracle configuration | Removed-name map: plaintext identifiers, fate, commit SHA, date and path; walked-commit count, truncation flag and checksum. No author identity or complete patches |
+| `stier` | Extraction identity, extension and source SHA-256 | Span-tier memo: size, portable extension/hash identity, zeroed local timestamps, span counts, start/end byte coordinates and tier bytes. No source text or absolute local path |
+| `docmd` | File extension and document-byte SHA-256 | **Full extracted document text** from the optional `markitdown` bridge; an empty/failed extraction is not cached. Notebook/HTML/CSV extraction does not use this family |
+| `doctor:<random-hex>` | One diagnostic invocation | A random canary value; removed after probing, with a five-second TTL if cleanup fails |
+
+Derived blobs use an `RWB1` envelope with a SHA-256 integrity hash. The client caps each Redis bulk
+value at **64 MiB including its envelope**; ingest records have a tighter **4 MiB** limit and are
+fetched in batches of at most 16. Oversized or invalid artifacts are not trusted or persisted and
+the answer is recomputed. These limits are per value, not a limit on server memory. The canonical
+codecs are [ingest](src/ingest_cache_redis.h), [quality](src/quality.h),
+[history](src/gitoracle.h), [span tiers](src/ingest_astquery.h) and
+[document extraction](src/ingest_docpass.h); transport framing is in [redis_client.cpp](src/redis_client.cpp).
+
+Normal writes and cache hits refresh a **30-day sliding TTL**. `RIPWIRE_REDIS_TTL_DAYS` changes it
+to a positive number of days; a continuously used entry can therefore live indefinitely.
+`RIPWIRE_REDIS_TIMEOUT_MS` defaults to 1000 per operation. Size Redis for the number and size of
+files, retained content versions, projects and lean/rich families, plus Git-derived blobs and
+extracted documents; a second identical checkout can reuse keys, while changed versions add keys.
+There is no fixed bytes-per-repository estimate. Observe actual Redis memory usage, set a
+`maxmemory` budget with headroom for the host, and use an eviction policy such as `allkeys-lru` or
+`allkeys-lfu`. Eviction is an ordinary cold miss.
+
+For a dedicated disposable cache, persistence can be disabled with `save ""` and `appendonly no`;
+after restart, clients rebuild it. If persistence is enabled, snapshots/AOF move cache data onto
+the Redis host's disk. Access controls, disk encryption, retention and eviction remain the
+operator's duties; see [SECURITY.md](SECURITY.md#shared-redis-cache).
+
+### Switch back and clean up deliberately
+
+The first Redis run is cold unless compatible entries already exist. Switching does not migrate,
+remove or upload local cache files. To return to the automatic File backend, remove an explicit
+`--cache=redis` from the command/agent configuration and run:
+
+```bash
+unset RIPWIRE_CACHE_BACKEND
+ripwire . --for="trace cache invalidation"
+```
+
+To disable analysis persistence for one run, use `ripwire . --no-cache --for="trace cache invalidation"`.
+Neither choice deletes Redis data: unused keys expire, and active clients can keep refreshing them.
+Switching back to File can reuse compatible local caches that remain. Source, notes, baselines and
+acknowledgements do not need a migration.
+
+Redis mode still uses local working artifacts where a command needs them: sidecar locks
+(`ripwire-sidecar-*.lock`), edit locks (`locks/*/ripwire-edit-*.lock`), temporary archived commit trees, URL-root Git clones and their locks,
+and temporary extraction/work files. `.ripwire_notes`, `.ripwire_quality_baseline` and
+`.ripwire_quality_acks` remain local repository files. Explicit exports such as `--index-out=PATH`
+also remain local. Hook telemetry/session state is separate and **never enters Redis**:
+`substitution.jsonl`, `routing.jsonl`, `routing-pending/`, `meter.conf` under the hook home
+(default `~/.ripwire`), and `ripwire-meter.*.seq`, `ripwire-toolroute.*.count`, `ripwire-nudge.*`
+under `${TMPDIR:-/tmp}`. Their [privacy, opt-outs and retention](docs/SUBSTITUTION_METER.md#where-the-log-lives)
+are independent of cache selection.
+
+For optional **local cache cleanup**, stop ripwire/MCP processes first. Run
+`env -u RIPWIRE_CACHE_BACKEND ripwire . --doctor` without a `--cache` argument and copy the exact
+`cache-dir` row's `dir`. Do not assume the cache lives in the hook home. This dry run lists only
+known persistent blob families, directly in that directory; it excludes symlinks, locks, temporary
+trees, clones, hooks and repository sidecars:
+
+```bash
+cache_dir='/exact/cache-dir/from-doctor'
+test -d "$cache_dir" && find "$cache_dir" -maxdepth 1 -type f \( \
+  -name 'ripwire-*-lean.bin' -o -name 'ripwire-*-rich.bin' -o \
+  -name 'ripwire-qheadsnap-*.bin' -o -name 'ripwire-qsnap-*.bin' -o \
+  -name 'ripwire-qbody-*.bin' -o -name 'ripwire-qchurn-*.bin' -o \
+  -name 'ripwire-qhist-*.bin' -o -name 'ripwire-stier-*.bin' -o \
+  -name 'ripwire-docmd-*.bin' \) -print
+```
+
+Review the list, then remove individually selected files with `rm -i -- '/exact/reviewed/blob.bin'`
+or move them to your trash. A manually named `--cache=PATH` is a separate target to review.
+Never recursively delete the whole directory: cache-directory fallbacks can share space with
+unrelated files. Leave locks and temporary trees alone until their ownership and inactivity are
+established. Removing derived blobs costs a cold rebuild; deleting sidecars or telemetry loses
+user data and is outside this cleanup.
+
+For **Redis cleanup**, first stop writers on both computers. Obtain `prefix` and `db` from the
+Redis `cache_backend` doctor row, then use a separate administrator ACL with `SCAN` and scoped
+`UNLINK` (or `DEL`) permission. The application ACL above intentionally lacks `SCAN` and `UNLINK`.
+The following Bash recipe requires `redis-cli` and `jq`, uses the loopback tunnel from the first
+recipe, and only collects candidates. Inject the administrator password into `REDISCLI_AUTH`
+from your secret manager before running it; do not reuse application credentials.
+
+```bash
+prefix='paste-the-complete-prefix-from-doctor'
+redis_db=4                     # copy doctor's db
+redis_admin='cache-admin'       # separately provisioned administrator ACL user
+if [[ "$prefix" =~ ^rw:v1:[0-9a-f]{64}:[0-9a-f]{64}$ ]]; then
+  candidate_dir=$(mktemp -d) || exit 1
+  : >"$candidate_dir/keys"
+  cursor=0
+  scan_failed=0
+  for ((page=0; page<100; page++)); do
+    reply=$(redis-cli -h 127.0.0.1 -p 6379 -n "$redis_db" --user "$redis_admin" \
+      --json SCAN "$cursor" MATCH "$prefix:*" COUNT 100) || { scan_failed=1; break; }
+    cursor=$(jq -er '.[0] | tostring | select(test("^[0-9]+$"))' <<<"$reply") || { scan_failed=1; break; }
+    jq -r '.[1][]' <<<"$reply" >>"$candidate_dir/keys" || { scan_failed=1; break; }
+    [[ "$cursor" == 0 ]] && break
+  done
+  LC_ALL=C sort -u "$candidate_dir/keys" >"$candidate_dir/reviewed-keys"
+  wc -l "$candidate_dir/reviewed-keys"
+  sed -n '1,20p' "$candidate_dir/reviewed-keys"
+  printf 'Review %s; remaining cursor: %s; scan_failed: %s\n' "$candidate_dir/reviewed-keys" "$cursor" "$scan_failed"
+else
+  printf 'Refusing an invalid or incomplete prefix\n' >&2
+fi
+```
+
+`COUNT` is a Redis work hint, not an exact page size. The loop caps the number of scan calls at
+100; a nonzero cursor or `scan_failed=1` means the scan is incomplete. Resolve any scan error before
+deletion. Review the count, sample and complete candidate
+list before any deletion. For each approved exact key, verify it begins with `"$prefix:"`, then
+call `redis-cli` with the same endpoint/database/admin options and `UNLINK 'exact-reviewed-key'`
+(or `DEL 'exact-reviewed-key'`). Never pass a pattern to deletion, use `KEYS`, or use `FLUSHDB`.
+SCAN can return duplicates, and running clients can recreate deleted keys; quiescing writers is
+part of this procedure. Resume clients only when the intended cleanup is complete.
 
 ## Set it up in your coding agent
 
