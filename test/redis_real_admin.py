@@ -124,7 +124,7 @@ class NamespaceLedger:
 
     def __init__(self, admin, namespace, manifest):
         self.admin = admin
-        self.prefix = b"ripwire:" + hashlib.sha256(namespace.encode()).hexdigest().encode() + b":"
+        self.prefix = b"rw:v1:" + hashlib.sha256(namespace.encode()).hexdigest().encode() + b":"
         self.manifest = manifest
         self.recorded = set()
 
@@ -253,6 +253,7 @@ def cleanup_controls(scratch):
 
     fake = FakeAdmin()
     ledger = NamespaceLedger(fake, "cleanup-control", scratch / "control.keys")
+    assert ledger.prefix == b"rw:v1:" + hashlib.sha256(b"cleanup-control").hexdigest().encode() + b":"
     first, late = ledger.prefix + b"first", ledger.prefix + b"unrecorded"
     fake.keys.add(first); ledger.capture(); fake.keys.add(late); ledger.cleanup()
     assert fake.deleted == [first] and fake.keys == {late}
@@ -286,14 +287,16 @@ def provision_ci_users(admin, ledger, url, env, users):
         secret = secrets.token_hex(32)
         users.append(user)
         rules = ["ACL", "SETUSER", user, "reset", "on", ">" + secret,
-                 "~" + ledger.prefix.decode() + "*", "+ping", "+select", "+get", "+mget", "+set", "+expire", "+del"]
+                 "~rw:v1:*", "+ping", "+select", "+get", "+mget", "+set", "+expire", "+del"]
         if label == "partial":
             rules.append("-expire")
         assert admin.command(*rules) == b"OK"
         credentials = dict(RIPWIRE_REDIS_USERNAME=user, RIPWIRE_REDIS_PASSWORD=secret)
         identity = RedisAdmin(url, user, secret)
-        # Verify the namespace boundary and absent admin privilege on the actual server.
+        # Verify the production keyspace boundary and absent admin privilege on the actual server.
         require_acl_denial(identity, ("GET", b"outside:" + ledger.prefix))
+        require_acl_denial(identity, ("GET", b"ripwire:" + ledger.prefix))
+        require_acl_denial(identity, ("GET", b"rw:v2:" + ledger.prefix))
         require_acl_denial(identity, ("SCAN", 0))
         if label == "full":
             env.update(credentials)

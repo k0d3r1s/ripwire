@@ -1732,7 +1732,7 @@ std::string cacheBlobKey( const CacheContext& cache, const CacheBlobAddress& add
         case CacheBlobFamily::DocumentExtraction: family = "docmd"; break;
     }
     if( family == nullptr || address.artifactArch != kArtifactArch || cache.project.empty() ) { return {}; }
-    const std::string key = "ripwire:" + redisKeyHash( cache.policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project ) + ":" + family
+    const std::string key = redisScopePrefix( cache ) + "blob:" + family
          + ":" + std::to_string( address.schemeVersion ) + ":" + std::to_string( address.artifactArch ) + ":" + redisKeyHash( address.identity );
     return key.size() <= 512 ? key : std::string{};
 }

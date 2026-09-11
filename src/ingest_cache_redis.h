@@ -17,8 +17,7 @@ constexpr std::size_t kRedisIngestBatchItems = 16;
 inline std::string redisIngestPrefix( const CacheContext& cache, bool rich )
 {
     const CacheIdentity identity = cacheIdentity();
-    return "ripwire:" + redisKeyHash( cache.policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project )
-         + ":ingest:" + std::to_string( identity.cacheVersion ) + ":" + std::to_string( parserVerFor( rich ) )
+    return redisScopePrefix( cache ) + "ingest:" + std::to_string( identity.cacheVersion ) + ":" + std::to_string( parserVerFor( rich ) )
          + ":" + std::to_string( kArtifactArch ) + ( rich ? ":rich:" : ":lean:" );
 }
 

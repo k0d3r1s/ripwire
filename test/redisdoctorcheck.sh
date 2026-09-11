@@ -85,7 +85,7 @@ int main()
     rw::CacheContext cache;
     cache.policy = std::make_shared<rw::CachePolicy>();
     unsigned failures = 0;
-    assert( std::string_view( doctorRedisProbe( cache, "ripwire:test:", failures ) ) == "random_unavailable" );
+    assert( std::string_view( doctorRedisProbe( cache, "rw:v1:test:", failures ) ) == "random_unavailable" );
     assert( commandsSent == 1 );
 }
 '''
@@ -154,9 +154,10 @@ int main()
         assert [c[0] for c in commands] == [b"PING", b"SET", b"GET", b"MGET", b"EXPIRE", b"DEL"], commands
         key = commands[1][1]
         import hashlib
-        prefix = b"ripwire:" + hashlib.sha256(sentinels[2].encode()).hexdigest().encode() + b":"
+        prefix = b"rw:v1:" + hashlib.sha256(sentinels[2].encode()).hexdigest().encode() + b":"
         prefix += hashlib.sha256(sentinels[3].encode()).hexdigest().encode() + b":"
         assert key.startswith(prefix) and re.fullmatch(rb"doctor:[0-9a-f]{32}", key[len(prefix):]), key
+        assert healthy["scope"] == hashlib.sha256(prefix).hexdigest()[:16], healthy
         assert commands[1][3:] == [b"NX", b"EX", b"5"], commands
         assert all(c[1] == key for c in commands[2:]), commands
         assert commands[4] == [b"EXPIRE", key, b"5"] and commands[5] == [b"DEL", key]

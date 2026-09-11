@@ -76,11 +76,11 @@ jobs:
           bash test/redisclientcheck.sh
           RIPWIRE_TEST_BUILD_DIR="$PWD/build" bash test/redisingestcheck.sh
           RIPWIRE_REDIS_PROTOCOL_BUILD_DIR="$PWD/build" bash test/redisrealcheck.sh --fixture-only
-      - name: Real Redis with dedicated namespace ACL and partial ACL failure
+      - name: Real Redis with production keyspace ACL and partial ACL failure
         env:
           RIPWIRE_REDIS_TEST_URL: redis://127.0.0.1:6379/0
         # --ci-acl alone creates ephemeral ACL identities on this disposable service. The helper
-        # grants only production commands and the random namespace, records exact keys, and cleans
+        # grants only production commands and ~rw:v1:*, records exact keys in a random namespace, and cleans
         # only those keys plus its own users. Normal regression never selects an external server.
         run: bash test/redisrealcheck.sh --ci-acl
 

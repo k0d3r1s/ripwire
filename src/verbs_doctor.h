@@ -763,7 +763,7 @@ inline DoctorIndexCache doctorCacheBackendRow( const rw::Config& cfg, const std:
     {
         return { "kind=\"redis\" hint=\"config\"", false };
     }
-    const std::string prefix = "ripwire:" + redisKeyHash( policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project ) + ":";
+    const std::string prefix = redisScopePrefix( cache );
     const std::uint32_t database = doctorRedisDatabase( policy->redis.endpoint );
     // Scope compares the actual namespace/project key prefix; db is separate and endpoints never enter the fingerprint.
     DoctorIndexCache out{ "kind=\"redis\" transport=\"" + std::string( doctorRedisTransport( policy->redis.endpoint ) )

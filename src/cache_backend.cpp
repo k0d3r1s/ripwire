@@ -625,6 +625,12 @@ std::string redisKeyHash( const std::string_view value )
     return output;
 }
 
+// One versioned scope for ingest records, derived blobs, and diagnostic canaries.
+std::string redisScopePrefix( const CacheContext& cache )
+{
+    return "rw:v1:" + redisKeyHash( cache.policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project ) + ":";
+}
+
 bool resolveCachePolicy( const CacheSelectionInput& input, std::shared_ptr<const CachePolicy>& out, std::string& error )
 {
     error.clear();

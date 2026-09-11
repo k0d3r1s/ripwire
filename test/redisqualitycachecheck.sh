@@ -118,6 +118,11 @@ with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
             start = len(log()); (cold, cold_work) = phase(a, name, flags); coldlog = log()[start:]
             keys = family(name)
             assert keys, name + " was not stored in Redis"
+            scope = b"rw:v1:" + hashlib.sha256(b"derived-gate").hexdigest().encode() + b":"
+            scope += hashlib.sha256(b"derived-project").hexdigest().encode() + b":blob:" + name.encode() + b":"
+            arch = str((0 if sys.byteorder == "little" else 1) | (struct.calcsize("P") << 1)).encode()
+            assert all(key.startswith(scope) and re.fullmatch(rb"[0-9]+:" + arch + rb":[0-9a-f]{64}", key[len(scope):])
+                       for key in keys), ("exact rw:v1 blob family key contract", name, keys)
             assert_cold_sequence(coldlog, keys, name)
             # Negative control: neither a missing GET nor one reordered after publication can pass.
             no_get = [c for c in coldlog if not (c[0] == b"GET" and c[1] in keys)]
@@ -345,6 +350,14 @@ with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
             assert str(scratch).encode() not in value and b"ripwire-qhead-" not in value, key
         print("  PASS  complete private TMP/XDG inventory empty; key bounds and local tree paths excluded")
         subprocess.run([sys.argv[3], env["RIPWIRE_REDIS_URL"]], env=env, check=True)
+        api_scope = b"rw:v1:" + hashlib.sha256(b"api:{namespace}\r\n\0").hexdigest().encode() + b":"
+        api_scope += hashlib.sha256(b"project:\0}\r\n").hexdigest().encode() + b":blob:"
+        arch = str((0 if sys.byteorder == "little" else 1) | (struct.calcsize("P") << 1)).encode()
+        identity_hash = hashlib.sha256(b"identity:{x}\r\n\0" + b"z" * 8192).hexdigest().encode()
+        expected_api_keys = {api_scope + name.encode() + b":4242:" + arch + b":" + identity_hash
+                             for name in ("qsnap", "qbody", "qchurn", "qhist", "stier", "docmd")}
+        actual_api_keys = {key for key in command(b"SCAN", b"0")[1] if b":4242:" in key}
+        assert actual_api_keys == expected_api_keys, ("exact binary-identity blob keys", actual_api_keys, expected_api_keys)
         for key in command(b"SCAN", b"0")[1]:
             assert len(key) <= 512 and all(32 <= c < 127 for c in key) and b"{" not in key and b"}" not in key
             assert command(b"TTL", key) > 0

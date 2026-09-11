@@ -100,6 +100,21 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
         print("  PASS  parse and immediate/deferred extraction failures never publish; healthy hosts reparse then share")
         cold = run(a, 3)
         assert len(records()) == 3 and len(descriptors()) == 3, "Redis ingest records/descriptors were not stored"
+        namespace_hash = hashlib.sha256(b"ingest-gate").hexdigest().encode()
+        project_hash = hashlib.sha256(b"example.com/team/project\n.").hexdigest().encode()
+        scope = b"rw:v1:" + namespace_hash + b":" + project_hash + b":ingest:"
+        cache_header = (root / "src/ingest_cache.h").read_text()
+        cache_version = re.search(r"kCacheVersion\s*=\s*(\d+)", cache_header)[1].encode()
+        parser_version = int(re.search(r"kParserVer\s*=\s*(\d+)", cache_header)[1])
+        arch = str((0 if sys.byteorder == "little" else 1) | (struct.calcsize("P") << 1)).encode()
+        lean_prefix = scope + cache_version + b":" + str(parser_version).encode() + b":" + arch + b":lean:"
+        expected_keys = set()
+        for source in sorted(a.glob("*.cpp")):
+            path_hash = hashlib.sha256(source.name.encode()).hexdigest().encode()
+            digest = hashlib.sha256(source.read_bytes()).hexdigest().encode()
+            expected_keys.update((lean_prefix + b"descriptor:" + path_hash, lean_prefix + b"record:" + path_hash + b":" + digest))
+        assert set(keys()) == expected_keys, ("exact rw:v1 ingest descriptor/record key contract", keys(), expected_keys)
+        print("  PASS  exact versioned ingest keys preserve namespace/project/path/source hashes and native architecture")
         assert all(command(b"TTL", key) == 86400 for key in keys()), "configured TTL is not one day"
         defaults = {"RIPWIRE_REDIS_PROJECT": "default-ttl", "RIPWIRE_REDIS_TTL_DAYS": ""}
         before_defaults = set(keys()); run(a, 3, extra=defaults)
@@ -158,17 +173,23 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
             command(b"SET", key, source_by_suffix[key.split(b":record:")[1]], b"EX", b"86400")
         assert run(b, 3, extra=other).stdout == changed.stdout
         for key in new_records: command(b"DEL", key)
-        for field in (4, 5, 6):
+        for field in (5, 6, 7):
             identity_project = {"RIPWIRE_REDIS_PROJECT": f"identity-{field}"}
             before = set(records()); run(b, 3, extra=identity_project)
             current = [k for k in records() if k not in before]
             assert len(current) == 3
             for key in current:
-                parts = key.split(b":"); parts[field] = b"999"
+                parts = key.split(b":")
+                assert len(parts) == 12 and parts[:2] == [b"rw", b"v1"] and parts[4] == b"ingest" and parts[field].isdigit(), parts
+                parts[field] = b"999"
                 command(b"SET", b":".join(parts), command(b"GET", key), b"EX", b"86400")
                 command(b"DEL", key)
             run(b, 3, extra=identity_project)
         rich = run(b, 3, "--for=function")
+        rich_prefix = scope + cache_version + b":" + str(parser_version + 1).encode() + b":" + arch + b":rich:"
+        rich_keys = [key for key in keys() if key.startswith(rich_prefix)]
+        assert len(rich_keys) == 6 and all(re.fullmatch(rb"(?:descriptor:[0-9a-f]{64}|record:[0-9a-f]{64}:[0-9a-f]{64})",
+                                                     key[len(rich_prefix):]) for key in rich_keys), rich_keys
         assert run(b, 0, "--for=function").stdout == rich.stdout
         assert run(b, 3, "--for=function", "--no-cache").stdout == rich.stdout
         for sub in ("sub-one", "sub-two"):
