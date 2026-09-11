@@ -30,6 +30,7 @@ case "$TMP" in *[[:space:]]*) echo "argvdiffcheck: refusing — TMPDIR contains 
 # the one file the mutation CONTROL creates in the tree on purpose. The trap owns BOTH, so a killed run
 # cannot leave behind the very stray the last arm exists to catch.
 ARGVOUT="$TMP/argvout"
+CACHEOUT="$TMP/cacheout"
 CTRL="$ROOT/argvdiffcheck_mutation_control"
 trap 'rm -rf "$TMP"; rm -f "$CTRL"' EXIT
 cd "$ROOT"
@@ -348,7 +349,37 @@ TOTAL="$( grep -c . "$VEC" )"
                      || no "argv matrix only $TOTAL vectors (want >=250) — the harvest broke"
 
 # ── run both binaries over every vector, diff stdout + stderr + exit code ──────────────────────────────
-diffs=0; ran=0
+# --version identifies the source commit by design. Normalize ONLY that final build stamp,
+# and ONLY on an actual --version vector; the version, compiler and emitter remain compared.
+normal_stdout(){
+    case " $2 " in
+        *' --version '*) sed -E 's/^(ripwire .*, built_from=)[0-9a-f]{7,40}(\+dirty)?(\))$/\1BUILD\3/' "$1" ;;
+        *) cat "$1" ;;
+    esac
+}
+# The Redis backend extends one existing refusal's guidance. This is an exact reviewed
+# old -> new transition, not a general stderr exclusion: both sides must still refuse,
+# have empty stdout, and contain precisely their respective one-line diagnostics.
+cache_empty_transition(){
+    [ "$1" = "$CORPUS --cache=" ] && [ "$2" = 1 ] && [ "$3" = 1 ] || return 1
+    [ ! -s "$TMP/o.base" ] && [ ! -s "$TMP/o.new" ] || return 1
+    printf '%s\n' 'ripwire: --cache= is empty — it needs a cache file path, e.g. --cache=.ripwirecache' | cmp -s - "$TMP/e.base.n" || return 1
+    printf '%s\n' 'ripwire: --cache= is empty — it needs a cache file path or redis, e.g. --cache=redis' | cmp -s - "$TMP/e.new.n"
+}
+
+# Controls execute the actual normalizer, including its scope and semantic-change guard.
+printf '%s\n' 'ripwire 0.5.0 (dev, compiler, built_from=abcdef123)' > "$TMP/version.a"
+printf '%s\n' 'ripwire 0.5.0 (dev, compiler, built_from=123abcdef+dirty)' > "$TMP/version.b"
+normal_stdout "$TMP/version.a" '--version' > "$TMP/version.an"
+normal_stdout "$TMP/version.b" '--version' > "$TMP/version.bn"
+cmp -s "$TMP/version.an" "$TMP/version.bn" || no "control: source-only version stamps did not normalize"
+normal_stdout "$TMP/version.b" '--for=version' > "$TMP/version.bn"
+cmp -s "$TMP/version.an" "$TMP/version.bn" && no "control: version normalization escaped its argv scope"
+sed 's/0.5.0/0.6.0/' "$TMP/version.b" > "$TMP/version.changed"
+normal_stdout "$TMP/version.changed" '--version' > "$TMP/version.bn"
+cmp -s "$TMP/version.an" "$TMP/version.bn" && no "control: version normalization hid a semantic version change"
+
+diffs=0; ran=0; guidanceChanges=0
 while IFS= read -r v; do
     [ -n "$v" ] || continue
     ran=$(( ran + 1 ))
@@ -356,12 +387,14 @@ while IFS= read -r v; do
     # A PATH-valued vector WRITES into $ARGVOUT, so both binaries have to start from the same empty dir:
     # a writer that found its own output already there from the BASE run could refuse, and diff for that
     # alone. Reset between the two runs, not once per vector.
-    rm -rf "$ARGVOUT"; mkdir -p "$ARGVOUT"
+    # Reset the SAME private cache path per side. Shared ambient caches can make just BASE
+    # report an incompatible frame and silently rewrite it before BIN runs.
+    rm -rf "$ARGVOUT" "$CACHEOUT"; mkdir -p "$ARGVOUT" "$CACHEOUT/xdg"
     # shellcheck disable=SC2086
-    "$BASE" $v >"$TMP/o.base" 2>"$TMP/e.base" </dev/null; rcb=$?
-    rm -rf "$ARGVOUT"; mkdir -p "$ARGVOUT"
+    TMPDIR="$CACHEOUT" XDG_CACHE_HOME="$CACHEOUT/xdg" "$BASE" $v >"$TMP/o.base" 2>"$TMP/e.base" </dev/null; rcb=$?
+    rm -rf "$ARGVOUT" "$CACHEOUT"; mkdir -p "$ARGVOUT" "$CACHEOUT/xdg"
     # shellcheck disable=SC2086
-    "$BIN"  $v >"$TMP/o.new"  2>"$TMP/e.new"  </dev/null; rcn=$?
+    TMPDIR="$CACHEOUT" XDG_CACHE_HOME="$CACHEOUT/xdg" "$BIN" $v >"$TMP/o.new" 2>"$TMP/e.new" </dev/null; rcn=$?
     # DEGRADED_PATH_ALERT prints __LINE__, so ANY refactor that moves code shifts every alert below it
     # (an adversarial pass found 7 of 11 sites in main.cpp shifted when it grew 118 lines). That is a
     # position artifact, not a behaviour change — the alert's MESSAGE and the function it names are the
@@ -375,7 +408,20 @@ while IFS= read -r v; do
     # still diffs.
     sed -E 's/\((main\.cpp|verbs_[a-z]+\.h):[0-9]+,/(MAINTU:LINE,/g; s/\.(cpp|h):[0-9]+,/.\1:LINE,/g' "$TMP/e.base" > "$TMP/e.base.n"
     sed -E 's/\((main\.cpp|verbs_[a-z]+\.h):[0-9]+,/(MAINTU:LINE,/g; s/\.(cpp|h):[0-9]+,/.\1:LINE,/g' "$TMP/e.new"  > "$TMP/e.new.n"
-    if [ "$rcb" != "$rcn" ] || ! cmp -s "$TMP/o.base" "$TMP/o.new" || ! cmp -s "$TMP/e.base.n" "$TMP/e.new.n"; then
+    normal_stdout "$TMP/o.base" "$v" > "$TMP/o.base.n"
+    normal_stdout "$TMP/o.new" "$v" > "$TMP/o.new.n"
+    stderrSame=0
+    if cmp -s "$TMP/e.base.n" "$TMP/e.new.n"; then
+        stderrSame=1
+    elif cache_empty_transition "$v" "$rcb" "$rcn"; then
+        stderrSame=1
+        guidanceChanges=$(( guidanceChanges + 1 ))
+        printf '%s\n' 'unexpected extra diagnostic' >> "$TMP/e.new.n"
+        cache_empty_transition "$v" "$rcb" "$rcn" && no "control: cache guidance transition hid an unexpected diagnostic"
+        sed '$d' "$TMP/e.new.n" > "$TMP/e.restore"; mv "$TMP/e.restore" "$TMP/e.new.n"
+        cache_empty_transition "$v" 0 "$rcn" && no "control: cache guidance transition hid a changed exit status"
+    fi
+    if [ "$rcb" != "$rcn" ] || ! cmp -s "$TMP/o.base.n" "$TMP/o.new.n" || [ "$stderrSame" != 1 ]; then
         diffs=$(( diffs + 1 ))
         # The default 5 keeps a normal run terse. A FIX ROUND must classify EVERY diff, and capping the list
         # at 5 previously forced an agent to make a throwaway copy of this gate in test/ just to read its own
@@ -389,7 +435,7 @@ while IFS= read -r v; do
     fi
 done < "$VEC"
 
-[ "$diffs" = 0 ] && ok "all $ran vectors byte-identical across both binaries (stdout+stderr+exit)" \
+[ "$diffs" = 0 ] && ok "all $ran vectors agree (stdout+stderr+exit; --version source stamp normalized; $guidanceChanges exact reviewed Redis cache-guidance transition(s))" \
                  || no "$diffs of $ran vectors DIFFER — the refactor is not behaviour-preserving"
 
 # a self-test: the harness must be able to SEE a difference, or it proves nothing.
