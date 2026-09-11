@@ -180,6 +180,21 @@ sleep 3
     && ok "functional(timeout): timed-out gate descendants never reach the same delayed write" \
     || no "functional(timeout): a timed-out gate left its child running"
 
+# The sentinel workload is constant when its nested worker count drops. Exercise the real budget
+# selection using a short synthetic gate with that exact name; no nested workers are started here.
+cp "$CORPUSROOT/test/probequickgate.sh" "$CORPUSROOT/test/binoverridecheck.sh"
+sed 's/"binoverridecheck.sh":        900,/"binoverridecheck.sh":        1,/' "$PARGATES" > "$TMP/pargates_nested.py"
+RIPWIRE_BIN_OVERRIDE_JOBS=1 python3 "$TMP/pargates_nested.py" "$CORPUSROOT" "$FAKEBIN" -j 1 --only binoverridecheck >"$TMP/nested-one.log" 2>&1
+rcNestedOne=$?
+[ "$rcNestedOne" -eq 0 ] \
+    && ok "functional(budget): one nested worker receives six times the six-worker budget" \
+    || no "functional(budget): one nested worker still uses the six-worker timeout"
+RIPWIRE_BIN_OVERRIDE_JOBS=6 python3 "$TMP/pargates_nested.py" "$CORPUSROOT" "$FAKEBIN" -j 1 --only binoverridecheck >"$TMP/nested-six.log" 2>&1
+rcNestedSix=$?
+[ "$rcNestedSix" -ne 0 ] && grep -q 'TIMEOUT after 1s' "$TMP/nested-six.log" \
+    && ok "functional(budget): six-worker control retains the original bounded timeout" \
+    || no "functional(budget): six-worker control lost the original timeout"
+
 # ── F2 (terminality round A, 2026-09-05): a failing gate's report must NAME the arm that failed ─────────
 # The summary used to print a failing gate's last 12 non-blank lines. This repo's gates announce a failure
 # where it happens (`  FAIL  arm (X) …`) and then keep running their remaining arms, so those last 12 lines

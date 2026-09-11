@@ -228,7 +228,8 @@ GATE_BUDGET_SEC = {
                                          # while a healthy local run takes ~17 s wall.
     "binoverridecheck.sh":        900,   # meta-gate: re-runs a suite slice against a sentinel binary,
                                          # so it pays the suite's cost while competing for the same -j.
-                                         # ~54 s idle local; rc=124 at the flat cap on 5 of 6 CI legs.
+                                         # Measured with six nested workers; gate_budget scales down-worker
+                                         # runs by at most six, while retaining this floor for larger pools.
     "estchargecheck.sh":          900,   # ~26 s idle local; rc=124 at the flat cap on all ubuntu legs.
     "pagingsweepcheck.sh":        900,   # ~34 s idle local; rc=124 at the flat cap on all ubuntu legs.
     "slicediffcheck.sh":          900,   # replays 57 labelled commits (checkout + --slice --since each); ~80 s local
@@ -376,13 +377,29 @@ def failure_report(out, logpath):
     return "\n".join(block)
 
 
-def run(g):
-    env = dict(os.environ, RIPWIRE_BIN=binp)
+def gate_budget(g):
+    """Keep explicit budgets bounded while accounting for the sentinel gate's fixed workload."""
     if g in GATE_BUDGET_SEC:
         limit, scaled = GATE_BUDGET_SEC[g], ""
     else:
         limit = int(round(DEFAULT_TIMEOUT_SEC * budget_scale))
         scaled = "" if budget_scale == 1.0 else f", default {DEFAULT_TIMEOUT_SEC}s x --budget-scale {budget_scale:g}"
+    if g == "binoverridecheck.sh":
+        try:
+            workers = int(os.environ.get("RIPWIRE_BIN_OVERRIDE_JOBS", "2"))
+            if workers < 1:
+                raise ValueError
+        except ValueError:
+            sys.exit("RIPWIRE_BIN_OVERRIDE_JOBS must be a positive integer")
+        baseline = limit
+        limit = max(limit, (limit * 6 + workers - 1) // workers)
+        scaled = f", six-worker baseline={baseline}s, nested workers={workers}"
+    return limit, scaled
+
+
+def run(g):
+    env = dict(os.environ, RIPWIRE_BIN=binp)
+    limit, scaled = gate_budget(g)
     t0 = time.time()
     with running_lock:
         running.add(g)          # the tree tripwire names whoever is in flight when it sees new dirt
