@@ -463,8 +463,8 @@ if [ -x "$ASAN_BIN" ]; then
     run_one_asan(){
         local name="$1" cachefile="$2"
         local out="$TMP/asan_${name}.xml" err="$TMP/asan_${name}.err"
-        ASAN_OPTIONS="halt_on_error=1:abort_on_error=0" \
-        UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1" \
+        ASAN_OPTIONS="${ASAN_OPTIONS-halt_on_error=1:abort_on_error=0}" \
+        UBSAN_OPTIONS="${UBSAN_OPTIONS-halt_on_error=1:print_stacktrace=1}" \
             "$ASAN_BIN" "$FIXTURE" --cache="$cachefile" --no-stable >"$out" 2>"$err"
         local rc=$?
         if grep -qiE 'AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:|heap-buffer-overflow|stack-buffer-overflow|SEGV|ERROR: ' "$err"; then
@@ -520,6 +520,14 @@ qrun(){ env -u TMPDIR XDG_CACHE_HOME="$QXDG" "$BIN" "$QREPO" --quality-delta "$@
 qsnapfiles(){ find "$QCACHEDIR" -maxdepth 2 -type f -name 'ripwire-qsnap-*.bin' 2>/dev/null; }
 
 qrun --no-cache >"$TMP/q_truth" 2>/dev/null
+# Disabled is the independent oracle and must not seed a cache. Populate the File
+# backend explicitly, then prove the cached baseline still agrees with that oracle.
+qrun >"$TMP/q_seed" 2>/dev/null
+if diff -q "$TMP/q_truth" "$TMP/q_seed" >/dev/null 2>&1; then
+    ok "Part 2: cache-enabled seed matches the Disabled oracle"
+else
+    no "Part 2: cache-enabled seed differs from the Disabled oracle"
+fi
 QBLOB="$( qsnapfiles | head -1 )"
 if [ -z "$QBLOB" ]; then
     no "Part 2: no qsnap blob produced — cannot proceed with qsnap mutation table"
@@ -646,7 +654,9 @@ PYEOF
         for name in "${QMUT_NAMES[@]}"; do
             cp "$MUTDIR/$name.bin" "$QBLOB" 2>/dev/null || { mkdir -p "$( dirname "$QBLOB" )"; cp "$MUTDIR/$name.bin" "$QBLOB"; }
             err="$TMP/qasan_${name}.err"
-            ASAN_OPTIONS="halt_on_error=1:abort_on_error=0" env -u TMPDIR XDG_CACHE_HOME="$QXDG" "$ASAN_BIN" "$QREPO" --quality-delta >/dev/null 2>"$err"
+            ASAN_OPTIONS="${ASAN_OPTIONS-halt_on_error=1:abort_on_error=0}" \
+                UBSAN_OPTIONS="${UBSAN_OPTIONS-halt_on_error=1:print_stacktrace=1}" \
+                env -u TMPDIR XDG_CACHE_HOME="$QXDG" "$ASAN_BIN" "$QREPO" --quality-delta >/dev/null 2>"$err"
             rc=$?
             if grep -qiE 'AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:|heap-buffer-overflow|stack-buffer-overflow|SEGV|ERROR: ' "$err" || [ "$rc" -ge 128 ]; then
                 no "[asan:$name] SANITIZER REPORT / crash (exit $rc)"; sed -n '1,10p' "$err"
