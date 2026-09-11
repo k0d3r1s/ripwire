@@ -35,6 +35,47 @@ command -v python3 >/dev/null || { echo "python3 required"; exit 2; }
 
 echo "pargatescheck: PARGATES=$PARGATES"
 
+# Exercise the real nested executor with controlled jobs, without launching the whole gate suite.
+python3 - "$ROOT/test/binoverridecheck.sh" <<'PYJOBS' || fail=1
+import concurrent.futures as cf
+import os, pathlib, threading, time, sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+start = source.index("results = {}")
+end = source.index("\noffenders =", start)
+executor = compile(source[start:end], sys.argv[1], "exec")
+for configured, expected in ((None, 2), ("1", 1), ("2", 2)):
+    if configured is None:
+        os.environ.pop("RIPWIRE_BIN_OVERRIDE_JOBS", None)
+    else:
+        os.environ["RIPWIRE_BIN_OVERRIDE_JOBS"] = configured
+    lock = threading.Lock()
+    active = peak = 0
+    def run_one(g):
+        global active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+        return g, 1, "sentinel rejected"
+    scope = dict(cf=cf, os=os, sys=sys, run_one=run_one, toRun=range(12))
+    exec(executor, scope)
+    assert len(scope["results"]) == 12, "nested executor dropped gates"
+    assert peak == expected, f"nested workers setting={configured!r}: peak={peak}, expected={expected}"
+    print(f"  PASS  nested workers setting={configured!r}: peak={peak}; every gate ran")
+for configured in ("", "0", "-1", "invalid"):
+    os.environ["RIPWIRE_BIN_OVERRIDE_JOBS"] = configured
+    try:
+        exec(executor, dict(cf=cf, os=os, sys=sys, run_one=run_one, toRun=range(12)))
+    except SystemExit as error:
+        assert error.code == "RIPWIRE_BIN_OVERRIDE_JOBS must be a positive integer", str(error)
+    else:
+        raise AssertionError(f"invalid nested worker setting accepted: {configured!r}")
+    print(f"  PASS  invalid nested worker setting rejected: {configured!r}")
+PYJOBS
+
 # ── STATIC: the declared budget table has the two W1-V4 entries and the honest default ──────────────────
 grep -qE '^DEFAULT_TIMEOUT_SEC = 300$' "$PARGATES" \
     && ok "static: DEFAULT_TIMEOUT_SEC is 300 (the flat cap everything NOT overridden still gets)" \

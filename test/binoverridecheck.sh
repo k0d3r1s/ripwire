@@ -197,9 +197,16 @@ def run_one( g ):
     return g, rc, out[-800:]
 
 # ── (4) run every non-exempt gate pointed at the sentinel, modest parallelism (this gate is itself one
-#    entry in test/pargates.py's own -j budget, competing with the rest of the suite for CPU) ────────────
+#    entry in test/pargates.py's own -j budget, competing with the rest of the suite for CPU).
+#    RIPWIRE_BIN_OVERRIDE_JOBS caps this nested pool independently; default conservatively to two.
 results = {}
-with cf.ThreadPoolExecutor( max_workers=6 ) as ex:
+try:
+    workers = int( os.environ.get( "RIPWIRE_BIN_OVERRIDE_JOBS", "2" ) )
+    if workers < 1:
+        raise ValueError
+except ValueError:
+    sys.exit( "RIPWIRE_BIN_OVERRIDE_JOBS must be a positive integer" )
+with cf.ThreadPoolExecutor( max_workers=workers ) as ex:
     for g, rc, out in ex.map( run_one, toRun ):
         results[g] = ( rc, out )
 
