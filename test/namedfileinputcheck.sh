@@ -60,7 +60,9 @@ echo "=== A-D: an unopenable USER-NAMED input refuses — flag + path, no verdic
 refuses_unopenable(){ # $1 = flag, $2 = expected exit code, $3 = the full "flag=value" token, $4.. = host verb
     local flag="$1" want="$2" token="$3"; shift 3
     local out rc
-    out="$( "$BIN" "$FIX" "$token" "$@" --no-cache 2>&1 1>/dev/null )"; rc=$?
+    # The File refusal is meaningful only while caching is enabled; --no-cache wins over --cache.
+    if [ "$flag" != --cache ]; then set -- "$@" --no-cache; fi
+    out="$( "$BIN" "$FIX" "$token" "$@" 2>&1 1>/dev/null )"; rc=$?
     if [ "$rc" -ne 0 ]; then ok "A $flag: exit $rc"; else no "A $flag: exit 0 — a file the caller NAMED was silently skipped"; fi
     if printf '%s' "$out" | grep -qF -- "$flag" && printf '%s' "$out" | grep -qF -- "$MISS"; then
         ok "B $flag: refusal names the flag and echoes the path"
@@ -76,6 +78,12 @@ refuses_unopenable(){ # $1 = flag, $2 = expected exit code, $3 = the full "flag=
 }
 refuses_unopenable --scip 1 "--scip=$MISS"
 refuses_unopenable --cache 1 "--cache=$MISS"
+if "$BIN" "$FIX" "--cache=$MISS" --no-cache >"$TMP/disabled.xml" 2>"$TMP/disabled.err" \
+    && [ ! -e "$MISS" ] && [ ! -s "$TMP/disabled.err" ]; then
+    ok "Disabled cache ignores an unusable explicit File path without creating it"
+else
+    no "--no-cache did not take precedence over the explicit File path"
+fi
 refuses_unopenable --from-trace 1 "--from-trace=$MISS"
 refuses_unopenable --batch 1 "--batch=$MISS"
 refuses_unopenable --arch 1 "--arch=$MISS"
