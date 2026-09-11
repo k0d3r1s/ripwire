@@ -239,15 +239,35 @@ use_rows two/h.h:helper >"$TMP/u2"
 # on this tree is 293 callers' worth of rows vs 1224 name-matched call sites.
 if [ -e "$ROOT/.git" ]; then
     SEL="src/notes.h:empty"
-    NCALLERS="$( "$BIN" "$ROOT" --callers="$SEL" --no-cache 2>/dev/null | grep -o 'count="[0-9]*"' | head -1 | tr -dc '0-9' )"
+    "$BIN" "$ROOT" --callers="$SEL" --limit=100000 --no-cache >"$TMP/live-callers.xml" 2>/dev/null
+    NCALLERS="$( grep -o 'count="[0-9]*"' "$TMP/live-callers.xml" | head -1 | tr -dc '0-9' )"
     # LB-G (r10 round): --uses grew a default 100-SITE display cap, and this arm compares a SET derived from
     # every site against --callers' un-windowed count=. It must therefore ask for the whole listing —
     # comparing a page against a total would red on the cap rather than on a narrowing disagreement.
-    NIN="$( "$BIN" "$ROOT" --uses="$SEL" --limit=100000 --no-cache 2>/dev/null | tr '<' '\n' | grep 'role="call"' | grep -o 'in_id="[^"]*"' | sort -u | wc -l | tr -d ' ' )"
+    "$BIN" "$ROOT" --uses="$SEL" --limit=100000 --no-cache >"$TMP/live-uses.xml" 2>/dev/null
     if [ -n "$NCALLERS" ] && [ "$NCALLERS" -gt 0 ]; then
-        [ "$NIN" = "$NCALLERS" ] \
-            && ok "§A6b: --uses=$SEL role=\"call\" rows have exactly the --callers=$SEL enclosing symbols ($NIN)" \
-            || no "§A6b: $NIN distinct enclosing symbols on call rows vs --callers count=$NCALLERS — the two narrowings disagree"
+        # Canonical in_id intentionally groups same-file overloads; --callers counts separate nodes.
+        # Compare the full sets in their shared file/name projection, not unequal units of cardinality.
+        python3 - "$TMP/live-callers.xml" "$TMP/live-uses.xml" <<'PYSETS' \
+            && ok "§A6b: narrowed callers and use sites agree on every file/name identity" \
+            || no "§A6b: narrowed caller and use-site identity sets differ"
+import copy, sys, xml.etree.ElementTree as E
+c, u = (E.parse(p).getroot() for p in sys.argv[1:])
+rows = c.findall('.//s')
+assert rows and len(rows) == int(c.get('count')), 'caller listing is incomplete'
+assert u.get('capped') == '0' and len(u.findall('.//u')) == int(u.get('count')), 'use-site listing is incomplete'
+def caller_set(rows):
+    return {(s.get('p').rsplit(':', 1)[0], s.get('n')) for s in rows}
+expected = caller_set(rows)
+actual = {(s.get('p').rsplit(':', 1)[0], s.get('in_id').split('::')[-1])
+          for s in u.findall('.//u') if s.get('role') == 'call'}
+assert actual == expected, sorted(actual ^ expected)
+# A real row-removal control must change the same extraction, including when an identity has overloads.
+missing = sorted(expected)[0]
+mutant = [copy.deepcopy(s) for s in rows if (s.get('p').rsplit(':', 1)[0], s.get('n')) != missing]
+assert len(mutant) < len(rows) and caller_set(mutant) != actual, 'row-removal control did not fire'
+print(f'  PASS  identity sets agree ({len(expected)} identities, {len(rows)} caller nodes); row-removal control fires')
+PYSETS
     else
         ok "§A6b: live-repo caller arm skipped (no callers resolved for $SEL in this checkout)"
     fi

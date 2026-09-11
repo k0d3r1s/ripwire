@@ -2,7 +2,7 @@
 # expandcallscheck.sh — §P10.1 gate: --expand's <calls> block used to
 # silently truncate. src/serialize.h's per-body callee-signature loop stops at `shown < 16 && used <
 # budgetBytes` and emitted a bare `<calls>` with no total and no capped= — for a large-fanout symbol
-# (`ingest`, 39 callees) the block showed as few as 1, and an agent reading it concluded the symbol calls
+# (`runParsePool`, 18 callees) the block showed as few as 1, and an agent reading it concluded the symbol calls
 # one function. FIX: `<calls total="N">` is now ALWAYS emitted (total = outOff[id+1]-outOff[id], the same
 # deduped-per-source count `--callees=SYM` reports for an unambiguous symbol — graph.h:37), and when the
 # 16-cap or the byte budget actually cuts the list, `shown="S" capped="1"` is added (pageview.h THE
@@ -26,25 +26,25 @@ echo "expandcallscheck: BIN=$BIN"
 
 TMP="$( mktemp -d )"; trap 'rm -rf "$TMP"' EXIT
 
-# ── #1: a large-fanout symbol (ingest) — <calls> carries total=, and total= equals --callees=ingest's count=
-EXP_XML="$( "$BIN" . --top-k=0 --expand=ingest --no-cache 2>/dev/null )"
+# ── #1: a large-fanout symbol (runParsePool) — <calls> carries total=, and total= equals --callees=runParsePool's count=
+EXP_XML="$( "$BIN" . --top-k=0 --expand=runParsePool --no-cache 2>/dev/null )"
 CALLS_TAG="$( printf '%s' "$EXP_XML" | grep -oE '<calls[^>]*>' | head -1 )"
-CALLEES_COUNT="$( "$BIN" . --callees=ingest --no-cache 2>/dev/null | grep -oE 'count="[0-9]+"' | head -1 | grep -oE '[0-9]+' )"
+CALLEES_COUNT="$( "$BIN" . --callees=runParsePool --no-cache 2>/dev/null | grep -oE 'count="[0-9]+"' | head -1 | grep -oE '[0-9]+' )"
 EXP_TOTAL="$( printf '%s' "$CALLS_TAG" | grep -oE 'total="[0-9]+"' | grep -oE '[0-9]+' )"
 
-[ -n "$CALLS_TAG" ] && ok "--expand=ingest emits a <calls> block ($CALLS_TAG)" || no "--expand=ingest emitted NO <calls> block"
+[ -n "$CALLS_TAG" ] && ok "--expand=runParsePool emits a <calls> block ($CALLS_TAG)" || no "--expand=runParsePool emitted NO <calls> block"
 [ -n "$EXP_TOTAL" ] && ok "<calls> carries total= ($EXP_TOTAL)" || no "<calls> has no total= attribute (the P10.1 bug)"
 if [ -n "$EXP_TOTAL" ] && [ -n "$CALLEES_COUNT" ] && [ "$EXP_TOTAL" = "$CALLEES_COUNT" ]; then
-    ok "<calls total=\"$EXP_TOTAL\"> agrees with --callees=ingest's count=\"$CALLEES_COUNT\""
+    ok "<calls total=\"$EXP_TOTAL\"> agrees with --callees=runParsePool's count=\"$CALLEES_COUNT\""
 else
-    no "<calls total=\"$EXP_TOTAL\"> disagrees with --callees=ingest's count=\"$CALLEES_COUNT\""
+    no "<calls total=\"$EXP_TOTAL\"> disagrees with --callees=runParsePool's count=\"$CALLEES_COUNT\""
 fi
 
-# ── #2: the block IS cut for ingest (39 callees, 16-cap/byte-budget) — capped="1" and shown= present, shown < total
+# ── #2: the block IS cut for runParsePool (18 callees, 16-cap/byte-budget) — capped="1" and shown= present, shown < total
 if printf '%s' "$CALLS_TAG" | grep -q 'capped="1"'; then
-    ok "--expand=ingest's <calls> discloses capped=\"1\""
+    ok "--expand=runParsePool's <calls> discloses capped=\"1\""
 else
-    no "--expand=ingest's <calls> is missing capped=\"1\" (block is provably cut: $CALLS_TAG)"
+    no "--expand=runParsePool's <calls> is missing capped=\"1\" (block is provably cut: $CALLS_TAG)"
 fi
 EXP_SHOWN="$( printf '%s' "$CALLS_TAG" | grep -oE 'shown="[0-9]+"' | grep -oE '[0-9]+' )"
 if [ -n "$EXP_SHOWN" ] && [ -n "$EXP_TOTAL" ] && [ "$EXP_SHOWN" -lt "$EXP_TOTAL" ] 2>/dev/null; then
@@ -75,18 +75,18 @@ fi
 
 # ── #4: G4 — xmllint clean on the (now attribute-richer) <calls> block ─────────────────────────────────
 if printf '%s' "$EXP_XML" | xmllint --noout - 2>/dev/null; then
-    ok "G4: --expand=ingest output is well-formed XML"
+    ok "G4: --expand=runParsePool output is well-formed XML"
 else
-    no "G4: --expand=ingest output FAILS xmllint"
+    no "G4: --expand=runParsePool output FAILS xmllint"
 fi
 
 # ── #5: det-gate — byte-identical across two runs ───────────────────────────────────────────────────────
-"$BIN" . --top-k=0 --expand=ingest --no-cache >"$TMP/a.xml" 2>/dev/null
-"$BIN" . --top-k=0 --expand=ingest --no-cache >"$TMP/b.xml" 2>/dev/null
+"$BIN" . --top-k=0 --expand=runParsePool --no-cache >"$TMP/a.xml" 2>/dev/null
+"$BIN" . --top-k=0 --expand=runParsePool --no-cache >"$TMP/b.xml" 2>/dev/null
 if cmp -s "$TMP/a.xml" "$TMP/b.xml"; then
-    ok "det-gate: --expand=ingest byte-identical across two runs"
+    ok "det-gate: --expand=runParsePool byte-identical across two runs"
 else
-    no "det-gate: --expand=ingest output DIFFERS across two runs"
+    no "det-gate: --expand=runParsePool output DIFFERS across two runs"
 fi
 
 if [ "$fail" = 0 ]; then echo "expandcallscheck: ALL PASS"; else echo "expandcallscheck: FAILURES ABOVE"; fi
