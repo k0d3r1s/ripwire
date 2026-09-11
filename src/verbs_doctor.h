@@ -767,7 +767,8 @@ inline DoctorIndexCache doctorCacheBackendRow( const rw::Config& cfg, const std:
     const std::uint32_t database = doctorRedisDatabase( policy->redis.endpoint );
     // Scope compares the actual namespace/project key prefix; db is separate and endpoints never enter the fingerprint.
     DoctorIndexCache out{ "kind=\"redis\" transport=\"" + std::string( doctorRedisTransport( policy->redis.endpoint ) )
-                         + "\" db=\"" + std::to_string( database ) + "\" scope=\"" + redisKeyHash( prefix ).substr( 0, 16 ) + "\"", true };
+                         + "\" db=\"" + std::to_string( database ) + "\" scope=\"" + redisKeyHash( prefix ).substr( 0, 16 )
+                         + "\" prefix=\"" + prefix.substr( 0, prefix.size() - 1 ) + "\"", true };
     unsigned failures = redisCacheFailureClasses.load( std::memory_order_relaxed );
     const char* hint = doctorRedisProbe( cache, prefix, failures );
     return doctorRedisFinalizeHealth( std::move( out ), hint, failures );

@@ -133,7 +133,8 @@ int main()
         assert row.attrib["kind"] == "redis"
         assert row.attrib["db"] == "2"
         assert re.fullmatch("[0-9a-f]{16}", row.attrib["scope"]), row.attrib
-        assert set(row.attrib) <= {"n", "ok", "kind", "transport", "db", "scope", "hint", "failures", "volatile"}
+        assert re.fullmatch("rw:v1:[0-9a-f]{64}:[0-9a-f]{64}", row.attrib["prefix"]), row.attrib
+        assert set(row.attrib) <= {"n", "ok", "kind", "transport", "db", "scope", "prefix", "hint", "failures", "volatile"}
         if hint is not None: assert row.attrib["hint"] == hint, row.attrib
         if "hint" in row.attrib: assert re.fullmatch("[a-z_]+", row.attrib["hint"]), row.attrib
         assert document.find("c[@n='index-cache']").attrib["source"] == "redis"
@@ -158,6 +159,7 @@ int main()
         prefix += hashlib.sha256(sentinels[3].encode()).hexdigest().encode() + b":"
         assert key.startswith(prefix) and re.fullmatch(rb"doctor:[0-9a-f]{32}", key[len(prefix):]), key
         assert healthy["scope"] == hashlib.sha256(prefix).hexdigest()[:16], healthy
+        assert healthy["prefix"].encode() + b":" == prefix, healthy
         assert commands[1][3:] == [b"NX", b"EX", b"5"], commands
         assert all(c[1] == key for c in commands[2:]), commands
         assert commands[4] == [b"EXPIRE", key, b"5"] and commands[5] == [b"DEL", key]
