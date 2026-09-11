@@ -229,7 +229,7 @@ inline std::string msCachePath( const std::string& repoHex, const std::string& e
 // a repeated realpath/hash-config cost per tree.
 inline SymTreeIndex indexCommittish( const std::string& root, const std::string& committish,
                                      const std::vector<std::string>& excludes, std::size_t maxFileBytes,
-                                     const std::string& repoHex, const std::string& exclHex )
+                                     const std::string& repoHex, const std::string& exclHex, const CacheContext& cache = {} )
 {
     if( committish.empty() )
     {
@@ -241,8 +241,10 @@ inline SymTreeIndex indexCommittish( const std::string& root, const std::string&
         return {};
     }
     quality::TmpTreeGuard guard{ tmpRoot };
-    const std::string cachePath = msCachePath( repoHex, exclHex, committish );
-    IngestResult ing = ingest( tmpRoot.c_str(), excludes, std::string_view( cachePath ), maxFileBytes, /*captureValueUses=*/false );
+    const std::string cachePath = quality::fileCacheEnabled( cache ) ? msCachePath( repoHex, exclHex, committish ) : std::string{};
+    std::lock_guard<std::mutex> ingestLock( quality::headSnapshotIngestMutex() );
+    IngestResult ing = ingest( tmpRoot.c_str(), excludes, quality::archivedTreeCache( cache, committish, excludes, maxFileBytes, false, cachePath ),
+                               maxFileBytes, /*captureValueUses=*/false );
     if( ing.symbols.empty() && ing.files.empty() )
     {
         return {};
@@ -339,9 +341,9 @@ struct ScoutResult
 class TreeIndexMemo
 {
 public:
-    TreeIndexMemo( const std::string& root, const std::vector<std::string>& excludes, std::size_t maxFileBytes )
+    TreeIndexMemo( const std::string& root, const std::vector<std::string>& excludes, std::size_t maxFileBytes, const CacheContext& cache = {} )
         : root_( root ), excludes_( excludes ), maxFileBytes_( maxFileBytes ),
-          repoHex_( quality::headSnapRepoHex( root ) ), exclHex_( msExclHex( excludes ) ) {}
+          repoHex_( quality::headSnapRepoHex( root ) ), exclHex_( msExclHex( excludes ) ), context_( cache ) {}
 
     // Register one future get(sha) BEFORE the diff loop runs — see the class comment above.
     void reserve( const std::string& sha ) { ++pending_[ sha ]; }
@@ -351,7 +353,7 @@ public:
         const auto it = cache_.find( sha );
         SymTreeIndex result = ( it != cache_.end() )
             ? it->second
-            : cache_.try_emplace( sha, indexCommittish( root_, sha, excludes_, maxFileBytes_, repoHex_, exclHex_ ) ).first->second;
+            : cache_.try_emplace( sha, indexCommittish( root_, sha, excludes_, maxFileBytes_, repoHex_, exclHex_, context_ ) ).first->second;
 
         // Release: once every reserved use of `sha` has been served, drop the (potentially large,
         // whole-repo) SymTreeIndex from cache_ so it is freed instead of held for the rest of the run.
@@ -368,6 +370,7 @@ private:
     std::size_t                      maxFileBytes_;
     std::string                      repoHex_;
     std::string                      exclHex_;
+    CacheContext                     context_;
     gtl::btree_map<std::string, SymTreeIndex> cache_;
     gtl::btree_map<std::string, std::size_t>  pending_;   // remaining reserved get() calls per sha
 };
@@ -505,7 +508,7 @@ inline Arm computeWorkingTreeArm( const std::string& root, const std::string& he
 // `root` itself, not a temp copy) — reused directly for the implicit working-tree arm, no re-ingest.
 inline ScoutResult computeMergeScout( const std::string& root, std::string_view refsCsv,
                                       const IngestResult& workingIng,
-                                      const std::vector<std::string>& excludes, std::size_t maxFileBytes )
+                                      const std::vector<std::string>& excludes, std::size_t maxFileBytes, const CacheContext& cache = {} )
 {
     ScoutResult result;
 
@@ -543,7 +546,7 @@ inline ScoutResult computeMergeScout( const std::string& root, std::string_view 
 
     HeadChangedByBase headChangedByBase = planHeadConflictLane( baseShas, result.headSha );
 
-    TreeIndexMemo memo( root, excludes, maxFileBytes );
+    TreeIndexMemo memo( root, excludes, maxFileBytes, cache );
     for( std::size_t i = 0; i < refs.size(); ++i )
     {
         if( baseShas[i].empty() )

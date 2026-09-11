@@ -1,4 +1,6 @@
 #include "redis_client.h"
+#include "infra/emit.h"
+#include "infra/Diagnostics.h"
 
 #include <algorithm>
 #include <array>
@@ -34,6 +36,23 @@ extern char** environ;
 
 namespace rw
 {
+
+std::atomic<bool> redisCacheWarningIssued{ false };
+std::atomic<unsigned> redisCacheFailureClasses{ 0 };
+
+void redisIngestDegraded( RedisFailure failure )
+{
+    redisCacheFailureClasses.fetch_or( 1u << static_cast<unsigned>( failure ), std::memory_order_relaxed );
+    if( !redisCacheWarningIssued.exchange( true, std::memory_order_relaxed ) )
+    {
+#if !defined( NDEBUG )
+        DEGRADED_PATH_ALERT( "Redis cache unavailable or invalid — affected files use source; no local cache fallback" );
+#else
+        emitTo( stderr, "ripwire: Redis cache unavailable or invalid — affected files use source; no local cache fallback\n" );
+#endif
+    }
+}
+
 namespace
 {
 
@@ -43,7 +62,7 @@ constexpr std::size_t kMaximumReplyNodes = 16384;
 constexpr std::size_t kMaximumReplyDepth = 4;
 constexpr std::size_t kMaximumAggregateBytes = 128u * 1024u * 1024u;
 constexpr std::size_t kMaximumPipelineCommands = 256;
-constexpr std::size_t kMaximumRequestBytes = 8u * 1024u * 1024u;
+constexpr std::size_t kMaximumRequestBytes = 64u * 1024u * 1024u + 4096u;
 constexpr std::size_t kMaximumResolvedAddresses = 16;
 constexpr std::size_t kMaximumResolverHostBytes = 4096;
 
@@ -1713,6 +1732,85 @@ int runRedisResolverHelperIfRequested( const int argumentCount, char** arguments
 }
 
 RedisClient::RedisClient( RedisCacheConfig config ) : config_( std::move( config ) ) {}
+
+namespace
+{
+CacheProbeStatus probeFileCacheBlob( const CacheBlobAddress& address, std::string& bytes )
+{
+    if( address.fileProbe == nullptr ) { return CacheProbeStatus::Unavailable; }
+    const int hit = address.fileProbe( address.localPath, bytes );
+    return hit == 1 ? CacheProbeStatus::Hit : hit < 0 ? CacheProbeStatus::Corrupt : CacheProbeStatus::Miss;
+}
+
+// External components are always hashed separately; no user byte can introduce a key delimiter.
+std::string cacheBlobKey( const CacheContext& cache, const CacheBlobAddress& address )
+{
+    const char* family = nullptr;
+    switch( address.family )
+    {
+        case CacheBlobFamily::QualitySnapshot: family = "qsnap"; break;
+        case CacheBlobFamily::QualityBody: family = "qbody"; break;
+        case CacheBlobFamily::QualityChurn: family = "qchurn"; break;
+        case CacheBlobFamily::GitOracle: family = "qhist"; break;
+        case CacheBlobFamily::SpanTier: family = "stier"; break;
+        case CacheBlobFamily::DocumentExtraction: family = "docmd"; break;
+    }
+    if( family == nullptr || address.artifactArch != kArtifactArch || cache.project.empty() ) { return {}; }
+    const std::string key = "ripwire:" + redisKeyHash( cache.policy->redis.nameSpace ) + ":" + redisKeyHash( cache.project ) + ":" + family
+         + ":" + std::to_string( address.schemeVersion ) + ":" + std::to_string( address.artifactArch ) + ":" + redisKeyHash( address.identity );
+    return key.size() <= 512 ? key : std::string{};
+}
+}
+
+CacheProbeStatus probeCacheBlob( const CacheContext& cache, const CacheBlobAddress& address, std::string& bytes )
+{
+    bytes.clear();
+    const auto kind = cache.policy ? cache.policy->kind : CacheBackendKind::File;
+    if( kind == CacheBackendKind::Disabled ) { return CacheProbeStatus::Miss; }
+    if( kind == CacheBackendKind::File )
+    {
+        return probeFileCacheBlob( address, bytes );
+    }
+    const std::string key = cacheBlobKey( cache, address );
+    if( key.empty() ) { return CacheProbeStatus::Miss; }
+    const RedisClient client( cache.policy->redis );
+    const RedisResult result = client.command( { "GET", key } );
+    if( !result ) { redisIngestDegraded( result.failure ); return CacheProbeStatus::Unavailable; }
+    if( result.reply.type == RedisReplyType::Nil ) { return CacheProbeStatus::Miss; }
+    const std::string& envelope = result.reply.bytes;
+    if( result.reply.type != RedisReplyType::Bulk || envelope.size() < 68 || envelope.size() > kMaximumBulkBytes
+        || envelope.compare( 0, 4, "RWB1" ) != 0
+        || envelope.substr( 4, 64 ) != redisKeyHash( key + envelope.substr( 68 ) ) )
+    {
+        redisIngestDegraded();
+        return CacheProbeStatus::Corrupt;
+    }
+    bytes.assign( envelope, 68, std::string::npos );
+    const RedisResult refreshed = client.command( { "EXPIRE", key, std::to_string( cache.policy->redis.ttlSeconds ) } );
+    if( !refreshed ) { redisIngestDegraded( refreshed.failure ); }
+    return CacheProbeStatus::Hit;
+}
+
+bool storeCacheBlob( const CacheContext& cache, const CacheBlobAddress& address, const std::string& bytes )
+{
+    const auto kind = cache.policy ? cache.policy->kind : CacheBackendKind::File;
+    if( kind == CacheBackendKind::Disabled ) { return false; }
+    if( kind == CacheBackendKind::File )
+    {
+        return address.fileStore != nullptr && address.fileStore( address.localPath, bytes );
+    }
+    const std::string key = cacheBlobKey( cache, address );
+    if( key.empty() || bytes.size() > kMaximumBulkBytes - 68 ) { return false; }
+    const RedisClient client( cache.policy->redis );
+    const std::string envelope = "RWB1" + redisKeyHash( key + bytes ) + bytes;
+    const RedisResult result = client.command( { "SET", key, envelope, "EX", std::to_string( cache.policy->redis.ttlSeconds ) } );
+    if( !result || result.reply.type != RedisReplyType::Simple || result.reply.bytes != "OK" )
+    {
+        redisIngestDegraded( result ? RedisFailure::Protocol : result.failure );
+        return false;
+    }
+    return true;
+}
 
 RedisResult RedisClient::command( const std::vector<std::string_view>& arguments ) const
 {

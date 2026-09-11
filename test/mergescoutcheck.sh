@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Reporters intentionally record failures in `fail`; their boolean chains are not control-flow branches.
+# shellcheck disable=SC2015
 # mergescoutcheck.sh — gate for L1: --merge-scout=REF[,REF...], the
 # read-only cross-branch overlap oracle.
 #
@@ -242,11 +244,11 @@ echo "$BADOUT" | grep -q '<merge-scout' \
 
 # ── empty ref list refuses loudly ───────────────────────────────────────────────────────────────────
 EMPTYOUT="$( "$BIN" "$REPO" --merge-scout= --no-cache 2>&1 )"; EMPTYRC=$?
-[ "$EMPTYRC" -ne 0 ] && ok "empty --merge-scout= refuses loudly (rc=$EMPTYRC)" || no "empty --merge-scout= should refuse (rc=$EMPTYRC)"
+[ "$EMPTYRC" -ne 0 ] && ok "empty --merge-scout= refuses loudly (rc=$EMPTYRC)" || no "empty --merge-scout= should refuse (rc=$EMPTYRC): $EMPTYOUT"
 
 # ── reserved arm name as a ref token refuses loudly ─────────────────────────────────────────────────
 RESOUT="$( "$BIN" "$REPO" --merge-scout=working-tree --no-cache 2>&1 )"; RESRC=$?
-[ "$RESRC" -ne 0 ] && ok "'working-tree' as a REF token refuses loudly (rc=$RESRC)" || no "'working-tree' ref should refuse (rc=$RESRC)"
+[ "$RESRC" -ne 0 ] && ok "'working-tree' as a REF token refuses loudly (rc=$RESRC)" || no "'working-tree' ref should refuse (rc=$RESRC): $RESOUT"
 
 # ── non-git root refuses loudly (X9(a)): exit 1, a clear message, no XML ───────────────────────────────
 NG="$TMP/nongit"; mkdir -p "$NG"; echo 'int f(){return 0;}' >"$NG/a.cpp"
@@ -318,7 +320,9 @@ median_ms()
     local times=()
     for (( n_local = 0; n_local < PERFRUNS; ++n_local )); do
         # Private-root + shard-aware lookup: $clearDir/ripwire/<xx>/blob.
-        [ -n "$clearDir" ] && { f="$( find "$clearDir" -maxdepth 3 -type f -name 'ripwire-qms-*.bin' 2>/dev/null )"; [ -n "$f" ] && rm -f $f; }
+        if [ -n "$clearDir" ]; then
+            while IFS= read -r f; do rm -f -- "$f"; done < <( find "$clearDir" -maxdepth 3 -type f -name 'ripwire-qms-*.bin' 2>/dev/null )
+        fi
         local elapsed
         elapsed="$( run_once_ms "$@" )" || return 1
         [ -z "$elapsed" ] && return 1
@@ -376,7 +380,7 @@ measure_y1()
 {
     cold_ms="$( median_ms "$PERF_ISOTMP" "$BIN" "$PREPO" --merge-scout="$PERF_REFS" --no-cache )"
     COLDRC=$?
-    warm_ms="$( median_ms ""            "$BIN" "$PREPO" --merge-scout="$PERF_REFS" --no-cache )"
+    warm_ms="$( median_ms ""            "$BIN" "$PREPO" --merge-scout="$PERF_REFS" )"
     WARMRC=$?
 }
 
@@ -408,7 +412,7 @@ fi
 # correctness unchanged under caching: cold and warm outputs stay byte-identical (the cache must never
 # change the answer, only the time it takes to get there)
 COLDOUT="$( "$BIN" "$PREPO" --merge-scout="$PERF_REFS" --no-cache 2>/dev/null )"
-WARMOUT="$( "$BIN" "$PREPO" --merge-scout="$PERF_REFS" --no-cache 2>/dev/null )"
+WARMOUT="$( "$BIN" "$PREPO" --merge-scout="$PERF_REFS" 2>/dev/null )"
 [ "$COLDOUT" = "$WARMOUT" ] \
     && ok "Y1 perf: cached run output byte-identical to uncached (cache never changes the answer)" \
     || no "Y1 perf: cached run output DIFFERS from uncached"

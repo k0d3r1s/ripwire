@@ -961,10 +961,10 @@ namespace mcpedit
     // left nothing of that name in that file to ask about (a replace whose payload defines something else).
     // The empty case is why the caller emits a `post_check_unavailable` reason rather than a silent gap.
     inline std::string editCheckReceiptJson( const IngestResult& ing, const Graph& g, const std::string& root,
-                                             NodeId focus, const std::string& pathRel )
+                                             NodeId focus, const std::string& pathRel, const CacheContext& cache = {} )
     {
         const std::vector<NodeId> overloadNodes = editCheckOverloadSet( ing, g, focus );
-        const EditCheckContract   contract      = editCheckContractVsHead( ing, g, root, kDefaultMaxFileBytes, {}, focus, overloadNodes );
+        const EditCheckContract   contract      = editCheckContractVsHead( ing, g, root, kDefaultMaxFileBytes, {}, focus, overloadNodes, cache );
         const auto [ callerIds, callerIncompatible ] = editCheckCallers( ing, g, overloadNodes, ing.symbols[ focus ].name );
         std::size_t incompatibleCount = 0;
         for( NodeId c : callerIds )
@@ -1134,7 +1134,7 @@ namespace mcpedit
         }
         else
         {
-            out += editCheckReceiptJson( ing, g, root, focus, fileIdentity );
+            out += editCheckReceiptJson( ing, g, root, focus, fileIdentity, mcpOperationCache( root, ix.cachePolicy ) );
         }
         if( withTests )
         {

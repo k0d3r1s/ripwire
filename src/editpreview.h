@@ -315,7 +315,7 @@ inline std::string overwriteChildXml( const std::string& src, std::size_t a, std
 // preview's choice of definition identical to the post-apply verb's by construction.
 inline Outcome run( const IngestResult& ing, const Graph& g, const std::string& root, std::size_t maxFileBytes,
                     const std::vector<std::string>& excludes, bool captureValueUses, std::string_view selector,
-                    NodeId focus, const std::string& payload, const notes::NoteIndex* ni )
+                    NodeId focus, const std::string& payload, const notes::NoteIndex* ni, const CacheContext& cache = {} )
 {
     namespace fs = std::filesystem;
 
@@ -427,7 +427,7 @@ inline Outcome run( const IngestResult& ing, const Graph& g, const std::string& 
 
     Outcome oc;
     oc.ok  = true;
-    oc.xml = editCheckBundleText( merged, mg, root, maxFileBytes, excludes, groups[0].lowestNode, ni, true );
+    oc.xml = editCheckBundleText( merged, mg, root, maxFileBytes, excludes, groups[0].lowestNode, ni, true, cache );
     // E3 (terminality round A, 2026-09-05): the CURRENT span an apply would replace, as the bytes are on disk, so
     // the Read an agent makes before an edit "to see what I am about to overwrite" is already in the preview.
     // Appended as the last child of the preview's own root — the post-hoc document cannot carry it (after the

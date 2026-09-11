@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cache_backend.h"
+
 // quality.h — --quality-baseline / --quality-delta: the deterministic oracle for a code-quality CONVERGENCE
 // LOOP. Snapshot the current per-symbol cognitive complexity, the duplicate-clone groups, and the dead-symbol
 // set to a `.ripwire_quality_baseline` sidecar; then `--quality-delta` reports ONLY what got WORSE vs that
@@ -2249,33 +2251,7 @@ inline bool deserializeSnapshot( const std::string& blob, const std::string& hea
 // and the caller alerts. Binary-safe (no getline/text translation).
 inline int readQSnapBlob( const std::string& path, std::string& out )
 {
-    // L1 (Linux runtime probe): opening a DIRECTORY succeeds on Linux/glibc and fails on macOS, so a
-    // non-regular file at a cache-blob path is a platform-split hazard rather than a clean miss — it cost
-    // ingest.cpp's loadCache an abort (see isRegularFileAt there). A qsnap blob is always a REGULAR file
-    // (atomicWriteFile renames one into place); every other shape is a miss on every platform, which is
-    // exactly what this function's 0 already means, so it stays silent and the caller recomputes.
-    {
-        struct stat probe;
-        if( ::stat( path.c_str(), &probe ) != 0 || !S_ISREG( probe.st_mode ) )
-        {
-            return 0;
-        }
-    }
-
-    std::ifstream f( path, std::ios::binary | std::ios::ate );
-    if( !f )
-    {
-        return 0;
-    }
-    const std::streamsize sz = f.tellg();
-    if( sz <= 0 )
-    {
-        return 0;
-    }
-    out.resize( static_cast<std::size_t>( sz ) );
-    f.seekg( 0 );
-    if( !f.read( out.data(), sz ) ) { out.clear(); return 0; }
-    return 1;
+    return readCacheFileBlob( path, out );
 }
 
 // ─── Phase-M concurrency seam ───────────────────────────────────────────────────────────────────────
@@ -2310,25 +2286,50 @@ inline std::mutex& headSnapshotIngestMutex()
 // and degrade rules to drift, which is the clone kind --quality-delta gates on.
 inline bool atomicWriteFile( const std::string& path, const std::string& blob )
 {
-    static std::atomic<std::uint64_t> seq{ 0 };
-    const std::string tmp = path + ".tmp." + std::to_string( ::getpid() )
-                          + "." + std::to_string( seq.fetch_add( 1, std::memory_order_relaxed ) );
-    {
-        std::ofstream of( tmp, std::ios::binary | std::ios::trunc );
-        if( !of )
-        {
-            return false;
-        }
-        of.write( blob.data(), static_cast<std::streamsize>( blob.size() ) );
-        of.flush();
-        if( !of ) { std::error_code e; std::filesystem::remove( std::filesystem::path( tmp ), e ); return false; }
-    }
-    if( std::rename( tmp.c_str(), path.c_str() ) != 0 )
-    { std::error_code e; std::filesystem::remove( std::filesystem::path( tmp ), e ); return false; }
-    return true;
+    return atomicWriteCacheFile( path, blob );
 }
 
 // ─── shared plumbing for the two archived-tree consumers (HEAD snapshot / churn window-ref) ─────────────
+
+inline bool fileCacheEnabled( const CacheContext& cache )
+{
+    return !cache.policy || cache.policy->kind == CacheBackendKind::File;
+}
+
+inline CacheBlobAddress derivedBlobAddress( CacheBlobFamily family, std::uint32_t scheme, std::string identity, std::string localPath )
+{
+    return { family, scheme, kArtifactArch, std::move( identity ), std::move( localPath ), readQSnapBlob, atomicWriteFile };
+}
+
+// Archive trees inherit the source project's identity, never the random local materialization root.
+inline CacheContext archivedTreeCache( const CacheContext& source, const std::string& sha, const std::vector<std::string>& excludes,
+                                       std::size_t maxFileBytes, bool rich, const std::string& localPath )
+{
+    CacheContext cache = source;
+    cache.captureValueUses = rich;
+    cache.filePath = localPath;
+    if( !cache.policy )
+    {
+        auto policy = std::make_shared<CachePolicy>();
+        policy->kind = localPath.empty() ? CacheBackendKind::Disabled : CacheBackendKind::File;
+        cache.policy = std::move( policy );
+    }
+    if( cache.policy->kind == CacheBackendKind::Redis )
+    {
+        cache.project += "\narchive:" + sha + ":" + headSnapExclHex( excludes, maxFileBytes ) + ( rich ? ":rich" : ":lean" );
+        cache.filePath.clear();
+    }
+    return cache;
+}
+
+inline int probeSnapshotBlob( const CacheContext& cache, const CacheBlobAddress& address, const std::string& sha, Snapshot& out )
+{
+    std::string blob;
+    const CacheProbeStatus status = probeCacheBlob( cache, address, blob );
+    if( status == CacheProbeStatus::Corrupt ) { return -1; }
+    if( status != CacheProbeStatus::Hit ) { return 0; }
+    return deserializeSnapshot( blob, sha, out ) ? 1 : -1;
+}
 
 // probe one qsnap-format blob: 1 = valid hit (`out` filled), 0 = clean miss (absent/empty/unreadable),
 // -1 = present but corrupt/mismatched (caller decides whether to alert). Never throws.
@@ -2504,7 +2505,7 @@ inline Snapshot computeSnapshot( const IngestResult& ing, const Graph& g, std::s
 // {} keeps every existing call site (mcp.h, the CLI before it threads cfg.excludes) compiling and unchanged.
 inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, const std::string_view* cacheNever = nullptr,
                                                       std::size_t maxFileBytes = kDefaultMaxFileBytes,
-                                                      const std::vector<std::string>& excludes = {} )
+                                                      const std::vector<std::string>& excludes = {}, const CacheContext& cache = {} )
 {
     (void)cacheNever;
 
@@ -2518,10 +2519,12 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     // Cache keys, computed ONCE and shared by both the Snapshot cache (this step) and the ingest cache (step 3).
     const std::string headSha   = gitHeadSha( root );        // non-empty: gitRepoHasHistory passed above
     const bool        useCache  = !headSha.empty();
+    const bool        useFileCache = useCache && fileCacheEnabled( cache );
     const std::string repoHex   = useCache ? headSnapRepoHex( root )     : std::string{};
     const std::string exclHex   = useCache ? headSnapExclHex( excludes, maxFileBytes ) : std::string{};   // ingest-cache family
     const std::string qExclHex  = useCache ? qsnapExclHex( excludes, maxFileBytes )    : std::string{};   // Snapshot-cache family
-    const std::string qsnapPath = useCache ? qsnapCachePath( repoHex, qExclHex, headSha ) : std::string{};
+    const std::string qsnapPath = useFileCache ? qsnapCachePath( repoHex, qExclHex, headSha ) : std::string{};
+    const auto address = derivedBlobAddress( CacheBlobFamily::QualitySnapshot, kQSnapCacheScheme, qExclHex + ":" + headSha, qsnapPath );
 
     // 1b) SNAPSHOT cache probe — a warm hit returns the fully-computed HEAD Snapshot and skips git archive,
     //     ingest, buildGraph, AND clone detection entirely (the ~2.4 s the ingest cache alone could not save).
@@ -2530,7 +2533,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     if( useCache )
     {
         Snapshot cached;
-        const int hit = probeSnapshotBlob( qsnapPath, headSha, cached );
+        const int hit = probeSnapshotBlob( cache, address, headSha, cached );
         if( hit == 1 )
         {
             return { std::move( cached ), true }; // HIT
@@ -2547,7 +2550,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     // Phase-M: serialize the ingest-heavy region against a concurrent ingest (the qsnap prefetch worker vs a
     // request thread), since ingest() writes single-writer process-global query caches (§2b). Held from here
     // through the atomic write below; the warm cache-probe above stays OUTSIDE the lock (lock-free hit).
-    std::lock_guard<std::mutex> ingestLk( headSnapshotIngestMutex() );
+    std::unique_lock<std::mutex> ingestLk( headSnapshotIngestMutex() );
 
     // Re-probe under the lock: whoever else held it (the lazy path or the prefetch worker) may have JUST
     // written the qsnap for this exact sha — take that hit instead of redundantly recomputing (worker + lazy
@@ -2555,7 +2558,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     if( useCache )
     {
         Snapshot cached2;
-        if( probeSnapshotBlob( qsnapPath, headSha, cached2 ) == 1 )
+        if( probeSnapshotBlob( cache, address, headSha, cached2 ) == 1 )
         {
             return { std::move( cached2 ), true };                   // HIT (won by the thread we waited on)
         }
@@ -2563,7 +2566,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
 
     // 2) materialize HEAD into a private temp dir under the hardened cache ladder (per-user; not the repo).
     //    A unique suffix (pid) keeps concurrent runs from colliding. Cleaned up via RAII teardown.
-    const std::string tmpRoot = materializeCommitTree( root, "HEAD", "qhead" );
+    const std::string tmpRoot = materializeCommitTree( root, headSha, "qhead" );
     if( tmpRoot.empty() )
     {
         return { Snapshot {}, false };
@@ -2577,12 +2580,12 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     //    portable across the pid-suffixed tmpRoot. Any cache IO failure degrades inside ingest() to a cold
     //    parse — byte-identical output either way. The working-tree side's excludes are applied here too
     //    (A4-F5) so both trees see the same file set. (Keys were computed once in step 1.)
-    const std::string cachePath  = useCache ? headSnapCachePath( repoHex, exclHex, headSha ) : std::string{};
-    IngestResult headIng = ingest( tmpRoot.c_str(), excludes, useCache ? std::string_view( cachePath ) : std::string_view{}, maxFileBytes );
+    const std::string cachePath = useFileCache ? headSnapCachePath( repoHex, exclHex, headSha ) : std::string{};
+    IngestResult headIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, headSha, excludes, maxFileBytes, true, cachePath ), maxFileBytes );
 
     // Hygiene: cap each (repo, excludes) family to the 2 newest files (delete older sha's). Done AFTER the
     // ingest so the file we just wrote/used is the newest → always retained. Best-effort; never throws.
-    if( useCache )
+    if( useFileCache )
     {
         evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, cachePath, 2 );
     }
@@ -2592,6 +2595,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
 
     // root = tmpRoot so keys are root-relative and match the working-tree side key-for-key (S2).
     Snapshot snap = computeSnapshot( headIng, headG, tmpRoot );
+    ingestLk.unlock();   // publishing immutable bytes needs no ingest-global state
 
     // Persist the computed Snapshot so the NEXT --quality-delta on this HEAD skips everything above (clone
     // detection included). Best-effort: a failed write just means the next run recomputes — never a crash. The
@@ -2599,9 +2603,9 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
     if( useCache )
     {
         const std::string blob = serializeSnapshot( snap, headSha );
-        atomicWriteFile( qsnapPath, blob );                 // tmp+rename — never a torn read (§2b atomic publish)
-        evictOldQSnapCaches( cacheDirLadder(), repoHex, qExclHex, qsnapPath, 2 );
+        storeCacheBlob( cache, address, blob );
     }
+    if( useFileCache ) { evictOldQSnapCaches( cacheDirLadder(), repoHex, qExclHex, qsnapPath, 2 ); }
     return { std::move( snap ), true };
 }
 
@@ -2641,7 +2645,7 @@ struct RefTree
 // bodies against tree B, inflating the duplication kind from 5 findings to 66. The two sides are named
 // separately here so the collision cannot be reintroduced by a caller that forgets.
 inline bool loadRefTree( const std::string& repoRoot, const std::string& sha, const std::vector<std::string>& excludes,
-                         std::size_t maxFileBytes, const char* tag, TmpTreeGuard& guard, RefTree& out )
+                         std::size_t maxFileBytes, const char* tag, TmpTreeGuard& guard, RefTree& out, const CacheContext& cache = {} )
 {
     VERIFY( tag != nullptr && *tag != '\0' );
     const std::string tmpRoot = materializeCommitTree( repoRoot, sha, tag );
@@ -2652,7 +2656,7 @@ inline bool loadRefTree( const std::string& repoRoot, const std::string& sha, co
     guard.p = tmpRoot;                    // teardown is the CALLER's from here, success or not
 
     std::string cachePath;
-    if( sha == gitHeadSha( repoRoot ) )
+    if( fileCacheEnabled( cache ) && sha == gitHeadSha( repoRoot ) )
     {
         cachePath = headSnapCachePath( headSnapRepoHex( repoRoot ), headSnapExclHex( excludes, maxFileBytes ), sha );
     }
@@ -2661,8 +2665,7 @@ inline bool loadRefTree( const std::string& repoRoot, const std::string& sha, co
         // ingest() writes single-writer process-global query caches — serialize on the SAME mutex every other
         // materialized-tree reader in this file uses, rather than introducing a second lock order.
         std::lock_guard<std::mutex> ingestLk( headSnapshotIngestMutex() );
-        out.ing = ingest( tmpRoot.c_str(), excludes,
-                          cachePath.empty() ? std::string_view {} : std::string_view( cachePath ), maxFileBytes );
+        out.ing = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, sha, excludes, maxFileBytes, true, cachePath ), maxFileBytes );
     }
     if( out.ing.symbols.empty() && out.ing.files.empty() )
     {
@@ -2684,7 +2687,7 @@ inline bool loadRefTree( const std::string& repoRoot, const std::string& sha, co
 inline std::pair<gtl::btree_map<std::uint64_t, std::uint64_t>, bool>
 computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
                             const std::vector<std::string>& excludes = {},
-                            std::size_t maxFileBytes = kDefaultMaxFileBytes )
+                            std::size_t maxFileBytes = kDefaultMaxFileBytes, const CacheContext& cache = {} )
 {
     if( !gitRepoHasHistory( root ) )
     {
@@ -2699,13 +2702,14 @@ computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
     const std::string repoHex   = headSnapRepoHex( root );
     const std::string exclHex   = headSnapExclHex( excludes, maxFileBytes );   // ingest-cache family (shared with qheadsnap)
     const std::string qbExclHex = qbodyExclHex( excludes, maxFileBytes );
-    const std::string qbodyPath = qbodyCachePath( repoHex, qbExclHex, refSha );
+    const std::string qbodyPath = fileCacheEnabled( cache ) ? qbodyCachePath( repoHex, qbExclHex, refSha ) : std::string{};
+    const auto address = derivedBlobAddress( CacheBlobFamily::QualityBody, kQBodyCacheScheme, qbExclHex + ":" + refSha, qbodyPath );
 
     // warm probe (lock-free, same discipline as the qsnap probe): absent/empty → clean miss; corrupt → alert +
     // recompute. The blob validates against the REF sha, so a foreign/stale blob can never serve wrong facts.
     {
         Snapshot cached;
-        const int hit = probeSnapshotBlob( qbodyPath, refSha, cached );
+        const int hit = probeSnapshotBlob( cache, address, refSha, cached );
         if( hit == 1 )
         {
             return { std::move( cached.bodyHashBySym ), true };
@@ -2718,12 +2722,12 @@ computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
     }
 
     // Phase-M: ingest() writes single-writer process-global caches — serialize like computeHeadSnapshot (§2b).
-    std::lock_guard<std::mutex> ingestLk( headSnapshotIngestMutex() );
+    std::unique_lock<std::mutex> ingestLk( headSnapshotIngestMutex() );
 
     // re-probe under the lock: another thread may have just published this exact ref.
     {
         Snapshot cached2;
-        if( probeSnapshotBlob( qbodyPath, refSha, cached2 ) == 1 )
+        if( probeSnapshotBlob( cache, address, refSha, cached2 ) == 1 )
         {
             return { std::move( cached2.bodyHashBySym ), true };
         }
@@ -2738,17 +2742,18 @@ computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
 
     // the ref tree is immutable for its sha → reuse the qheadsnap INGEST cache family keyed by refSha (the
     // family's keep-2 cap holds exactly the HEAD blob + this ref blob between commits).
-    const std::string ingestCachePath = headSnapCachePath( repoHex, exclHex, refSha );
-    IngestResult refIng = ingest( tmpRoot.c_str(), excludes, std::string_view( ingestCachePath ), maxFileBytes );
-    evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, ingestCachePath, 2 );
+    const std::string ingestCachePath = fileCacheEnabled( cache ) ? headSnapCachePath( repoHex, exclHex, refSha ) : std::string{};
+    IngestResult refIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, refSha, excludes, maxFileBytes, true, ingestCachePath ), maxFileBytes );
+    if( fileCacheEnabled( cache ) ) { evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, ingestCachePath, 2 ); }
     if( refIng.symbols.empty() && refIng.files.empty() )
     { DEGRADED_PATH_ALERT( "quality: churn-window ref tree ingested empty — churn evidence unavailable" ); return { {}, false }; }
 
     Snapshot bodyOnly;
     bodyOnly.bodyHashBySym = bodyHashesBySym( refIng, tmpRoot );   // pathQualifiedKey on EVERY side of the churn join (baseline, this ref, working tree, per-node lookup) — a one-sided keying change makes every symbol read as rewritten   // root = tmpRoot → root-relative keys (S2)
 
-    atomicWriteFile( qbodyPath, serializeSnapshot( bodyOnly, refSha ) );
-    evictOldCacheFamily( cacheDirLadder(), "ripwire-qbody-" + repoHex + "-" + qbExclHex + "-", qbodyPath, 2 );
+    ingestLk.unlock();
+    storeCacheBlob( cache, address, serializeSnapshot( bodyOnly, refSha ) );
+    if( fileCacheEnabled( cache ) ) { evictOldCacheFamily( cacheDirLadder(), "ripwire-qbody-" + repoHex + "-" + qbExclHex + "-", qbodyPath, 2 ); }
     return { std::move( bodyOnly.bodyHashBySym ), true };
 }
 
@@ -2890,7 +2895,7 @@ inline bool deserializeRawCommitStream( const std::string& blob, const std::stri
 inline std::vector<std::vector<std::uint32_t>> gitCoChangeAndChurnCached(
     const std::string& root, const IngestResult& ing, const char* coSince, std::size_t maxFiles,
     unsigned churnMonths = 0, std::vector<std::uint32_t>* outChurn = nullptr,
-    std::uint32_t onlyRoot = UINT32_MAX )
+    std::uint32_t onlyRoot = UINT32_MAX, const CacheContext& cache = {} )
 {
     if( !hasEnclosingGitRepo( root ) )
     {
@@ -2913,17 +2918,18 @@ inline std::vector<std::vector<std::uint32_t>> gitCoChangeAndChurnCached(
     keyMat.push_back( '\x1f' ); keyMat += coSince;
     keyMat.push_back( '\x1f' ); keyMat += boundary;
     keyMat += "qchurn" + std::to_string( kQChurnCacheScheme );
-    const std::string cachePath = shaKeyedCachePath( "qchurn", repoHex, std::string{}, keyMat );
+    const std::string cachePath = fileCacheEnabled( cache ) ? shaKeyedCachePath( "qchurn", repoHex, std::string{}, keyMat ) : std::string{};
+    const auto address = derivedBlobAddress( CacheBlobFamily::QualityChurn, kQChurnCacheScheme, keyMat, cachePath );
 
     RawCommitStream raw;
     std::string      blob;
-    if( readQSnapBlob( cachePath, blob ) == 1 && deserializeRawCommitStream( blob, keyMat, raw ) )
+    if( probeCacheBlob( cache, address, blob ) == CacheProbeStatus::Hit && deserializeRawCommitStream( blob, keyMat, raw ) )
     {
         return resolveCommitStream( raw, ing, maxFiles, churnCutoff, outChurn, onlyRoot );   // warm hit — no walk
     }
 
     raw = gitLogNameOnlyRaw( root, coSince );                                      // cold — the 431 ms walk
-    atomicWriteFile( cachePath, serializeRawCommitStream( raw, keyMat ) );         // best-effort; a failed
+    storeCacheBlob( cache, address, serializeRawCommitStream( raw, keyMat ) );     // best-effort; a failed
                                                                                      // write just recomputes next time
     return resolveCommitStream( raw, ing, maxFiles, churnCutoff, outChurn, onlyRoot );
 }
@@ -5392,7 +5398,7 @@ inline std::vector<Regression> computeDelta( const IngestResult& ing, const Grap
                                              std::string_view root = {},
                                              const std::vector<std::string>& excludes = {},
                                              std::size_t maxFileBytes = kDefaultMaxFileBytes,
-                                             std::size_t* registerMacroExcludedOut = nullptr )   // P2.2: honest disclosure count, additive+optional — see isDeadCandidate
+                                             std::size_t* registerMacroExcludedOut = nullptr, const CacheContext& cache = {} )
 {
     std::vector<Regression> regs;
     if( registerMacroExcludedOut )
@@ -5842,7 +5848,7 @@ inline std::vector<Regression> computeDelta( const IngestResult& ing, const Grap
                                            []( std::uint32_t c ){ return c >= kShortHorizonMinCommits; } );
         if( anyChurn )
         {
-            const auto [ refBody, refOk ] = computeWindowRefBodyHashes( std::string( root ), kShortHorizonDays, excludes, maxFileBytes );
+            const auto [ refBody, refOk ] = computeWindowRefBodyHashes( std::string( root ), kShortHorizonDays, excludes, maxFileBytes, cache );
             if( refOk )
             {
                 const gtl::btree_map<std::uint64_t, std::uint64_t> nowBody = bodyHashesBySym( ing, root );

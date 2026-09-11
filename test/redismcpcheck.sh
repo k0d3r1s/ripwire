@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # RIPWIRE_TEST_DEPS: src/mcpindex.h,src/mcp.h,src/mcpserver.h,src/main.cpp,test/mcp_api_driver.cpp,test/qsnapprefetchcheck.sh
-# Foreground MCP Redis reuse, per-root identity, failure framing and prefetch suppression.
+# Foreground MCP Redis reuse, per-root identity, failure framing and Redis-aware prefetch.
 set -euo pipefail
 ROOT="$( cd "$( dirname "$0" )/.." && pwd )"
 BIN="${RIPWIRE_BIN:-$ROOT/build/ripwire}"
@@ -75,11 +75,20 @@ with tempfile.TemporaryDirectory(prefix="redismcp-") as temporary:
             assert "error" not in response, response
             assert not response.get("result", {}).get("isError"), response
             return response
-        def finish(process, private, stderr):
+        def finish(process, private, stderr, prefetch=False):
+            if prefetch:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    stderr.seek(0)
+                    if "ripwire-prefetch done" in stderr.read(): break
+                    time.sleep(0.02)
             process.stdin.close(); process.wait(timeout=15)
             assert process.returncode == 0, process.returncode
             stderr.seek(0); diagnostic = stderr.read()
-            assert "ripwire-prefetch spawn" not in diagnostic, diagnostic
+            if prefetch:
+                assert "ripwire-prefetch spawn" in diagnostic and "ripwire-prefetch done" in diagnostic, diagnostic
+            else:
+                assert "ripwire-prefetch spawn" not in diagnostic, diagnostic
             assert not re.search(r"runtime error:|Sanitizer", diagnostic), diagnostic
             files = [str(p.relative_to(private)) for p in private.rglob("*") if p.is_file() and p.relative_to(private) != pathlib.Path("stderr")]
             assert not files, ("unexpected persistent local files", files)
@@ -99,12 +108,12 @@ with tempfile.TemporaryDirectory(prefix="redismcp-") as temporary:
         assert not any(c[0] == b"SET" for c in warm_commands), "warm process replaced cached records"
         # Rootless stdio switches projects: identical source bytes must not alias distinct origins.
         request(p, other, 2); request(p, b, 3)
-        # A real HEAD move would trigger prefetch at the forced threshold in filesystem mode.
+        # A real HEAD move now warms both archived records and the immutable Redis snapshot.
         git(b, "commit", "--allow-empty", "-qm", "move HEAD")
         request(p, b, 4)
-        warm = finish(p, private, err)
-        assert re.findall(r"cache-stats reparsed=(\d+)", warm) == ["0", "3", "0"], warm
-        print("  PASS  independent checkouts reuse Redis with no SET, per-request projects isolate, no local prefetch/cache")
+        warm = finish(p, private, err, prefetch=True)
+        assert re.findall(r"cache-stats reparsed=(\d+)", warm) == ["0", "3", "0", "3"], warm
+        print("  PASS  independent checkouts reuse Redis; per-request projects isolate; prefetch completes without local cache files")
         offset = admin("command_log")["next_index"]
         p, private, err = start("workspace", a, str(a), str(other))
         request(p, None, 1)

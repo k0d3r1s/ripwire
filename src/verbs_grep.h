@@ -427,7 +427,7 @@ struct GrepScanPhases
     bool                      valid           = false;   // false ⇒ never computed (or degraded) — recompute inline
 };
 
-GrepScanPhases collectGrepScanPhases( const rw::Config& cfg, const rw::IngestResult& ing )
+GrepScanPhases collectGrepScanPhases( const rw::Config& cfg, const rw::IngestResult& ing, const rw::CacheContext& cache )
 {
     using namespace rw;
     const std::string pat( cfg.grep );
@@ -454,7 +454,7 @@ GrepScanPhases collectGrepScanPhases( const rw::Config& cfg, const rw::IngestRes
     {
         PROFILE_SCOPE_DESCRIBE( "grep/2: span tiers" );
         phases.found = grepApplySpanTiers( ing, std::move( phases.found ), ( cfg.grepIn == "any" ) ? GrepIn::Any : GrepIn::Code,
-                                           phases.tier, /*useMemo=*/!cfg.noCache );
+                                           phases.tier, /*useMemo=*/!cfg.noCache, &cache );
     }
     // §R-J: additive scan over CrawlSkips::unsupported — the "unsupported-ext, text-looking" population the
     // crawl already computed at ingest time (queries/*/tags.scm and its siblings). Reuses the SAME per-file
@@ -483,7 +483,7 @@ GrepScanPhases collectGrepScanPhases( const rw::Config& cfg, const rw::IngestRes
 // the pre-P4.1 control path verbatim. The result is consumed ONLY after the join, in a fixed order, so no
 // byte of the output can depend on which thread finished first — the determinism contract a concurrency
 // change is most likely to break, and the one test/grepfastcheck.sh arm (6) exists to pin.
-std::thread startGrepScanPrefetch( const rw::Config& cfg, const rw::IngestResult& ing, const char* winningVerbFlag, GrepScanPhases& out )
+std::thread startGrepScanPrefetch( const rw::Config& cfg, const rw::IngestResult& ing, const char* winningVerbFlag, GrepScanPhases& out, const rw::CacheContext& cache )
 {
     // Two narrowing conditions, both here so main() carries neither: grep must be the verb that will ANSWER
     // (the caller hands in §B11.4's own winner, never a re-derived guess), and a --regex that will be REFUSED
@@ -494,11 +494,11 @@ std::thread startGrepScanPrefetch( const rw::Config& cfg, const rw::IngestResult
     {
         return {};
     }
-    return std::thread( [ &out, &cfg, &ing ]()
+    return std::thread( [ &out, &cfg, &ing, cache ]()
                         {
                             try
                             {
-                                out = collectGrepScanPhases( cfg, ing );
+                                out = collectGrepScanPhases( cfg, ing, cache );
                             }
                             catch( ... )   // a throw crossing this thread boundary would be std::terminate
                             {
@@ -520,7 +520,7 @@ void joinGrepScanPrefetch( std::thread& worker )
 
 int emitGrepReport( const rw::Config& cfg, const rw::IngestResult& ing, const rw::Graph& g,
                     const std::vector<std::uint32_t>* amp, const std::vector<std::uint8_t>* tested,
-                    const GrepScanPhases* prefetched )
+                    const GrepScanPhases* prefetched, const rw::CacheContext& cache )
 {
     using namespace rw;
     const std::string          pat( cfg.grep );
@@ -558,7 +558,7 @@ int emitGrepReport( const rw::Config& cfg, const rw::IngestResult& ing, const rw
     const GrepScanPhases* phases = ( prefetched != nullptr && prefetched->valid ) ? prefetched : nullptr;
     if( phases == nullptr )
     {
-        localPhases = collectGrepScanPhases( cfg, ing );
+        localPhases = collectGrepScanPhases( cfg, ing, cache );
         phases      = &localPhases;
     }
     const GrepCollection&           found           = phases->found;
@@ -916,7 +916,7 @@ std::optional<int> runGrep( const MainDispatch& d )
     }
     // body: emitGrepReport() above. amp/tested are non-null only when a co-run (--metrics) computed
     // them at dispatch build time — grep itself never asks for the analysis (R1's no-new-analysis rule).
-    return emitGrepReport( d.cfg, d.ing, d.g, d.ampPtr, d.testedPtr, d.grepPhases );
+    return emitGrepReport( d.cfg, d.ing, d.g, d.ampPtr, d.testedPtr, d.grepPhases, d.cache );
 }
 
 }   // namespace — verbs_grep.h section of main.cpp

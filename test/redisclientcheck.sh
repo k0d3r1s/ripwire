@@ -219,7 +219,7 @@ int main( int argc, char** argv )
 }
 CPP
 
-if ! "${CXX:-c++}" -std=c++23 -pthread -DRIPWIRE_REDIS_TESTING=1 -Isrc "$TMP/redis_client_gate.cpp" src/redis_client.cpp -o "$TMP/redis_client_gate" >"$TMP/compile.out" 2>"$TMP/compile.err"; then
+if ! "${CXX:-c++}" -std=c++23 -pthread -DRIPWIRE_REDIS_TESTING=1 -Isrc -Isrc/infra -Ithird_party "$TMP/redis_client_gate.cpp" src/redis_client.cpp src/cache_backend.cpp src/infra/diagnostics.cpp -o "$TMP/redis_client_gate" >"$TMP/compile.out" 2>"$TMP/compile.err"; then
     sed -n '1,20p' "$TMP/compile.err"
     echo "FAILURES ABOVE"
     exit 1

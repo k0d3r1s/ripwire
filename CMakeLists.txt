@@ -648,6 +648,8 @@ if(RIPWIRE_TESTS)
 
   add_executable(ripwire_test_redis_protocol
     test/redis_protocol_unit.cpp
+    src/cache_backend.cpp
+    src/infra/diagnostics.cpp
     src/redis_client.cpp)
   target_include_directories(ripwire_test_redis_protocol PRIVATE src/infra third_party src)
   target_link_libraries(ripwire_test_redis_protocol PRIVATE doctest::doctest Threads::Threads)

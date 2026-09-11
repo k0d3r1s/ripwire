@@ -11,23 +11,8 @@ namespace
 // All Redis users in this process share the latch and a queryable failure-class bitset. Remote bytes
 // are untrusted framing, but authenticated namespace writers are trusted to produce correct facts:
 // SHA-256 detects corruption and cross-project substitution, not a writer deliberately forging facts.
-std::atomic<bool> redisCacheWarningIssued{ false };
-std::atomic<unsigned> redisCacheFailureClasses{ 0 };
 constexpr std::size_t kRedisIngestRecordLimit = 4u * 1024u * 1024u;
 constexpr std::size_t kRedisIngestBatchItems = 16;
-
-inline void redisIngestDegraded( RedisFailure failure = RedisFailure::Protocol )
-{
-    redisCacheFailureClasses.fetch_or( 1u << static_cast<unsigned>( failure ), std::memory_order_relaxed );
-    if( !redisCacheWarningIssued.exchange( true, std::memory_order_relaxed ) )
-    {
-#if !defined( NDEBUG )
-        DEGRADED_PATH_ALERT( "Redis cache unavailable or invalid — affected files use source; no local cache fallback" );
-#else
-        std::fprintf( stderr, "ripwire: Redis cache unavailable or invalid — affected files use source; no local cache fallback\n" );
-#endif
-    }
-}
 
 inline std::string redisIngestPrefix( const CacheContext& cache, bool rich )
 {

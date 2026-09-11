@@ -559,7 +559,8 @@ struct SpanTierBatch
 // is byte-identical either way (the map is a pure function of the file's bytes and its grammar); false is
 // the --no-cache posture, and the only difference it makes is how long the answer takes. See
 // ingest_astquery.h's own header for the four freshness conditions and the disclosed warm-path-only limit.
-SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool useMemo = true );
+SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool useMemo = true, const CacheContext* cache = nullptr,
+                               std::span<const CacheContext> fileCaches = {} );
 
 // ---- §P0.1: the shape of a user's tree-sitter query, so a capture-less one is never a silent zero ----
 // astQuery reports CAPTURES, so a query that binds none matches nothing it can report:

@@ -291,6 +291,11 @@ if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisingestcheck.sh"; then
 else
     no "Redis ingest gate (test/redisingestcheck.sh failed)"
 fi
+if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisqualitycachecheck.sh"; then
+    ok "Redis derived cache gate (test/redisqualitycachecheck.sh)"
+else
+    no "Redis derived cache gate (test/redisqualitycachecheck.sh failed)"
+fi
 if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redismcpcheck.sh"; then
     ok "Redis MCP foreground gate (test/redismcpcheck.sh)"
 else

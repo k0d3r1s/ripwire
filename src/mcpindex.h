@@ -593,6 +593,18 @@ inline std::string mcpCachePath( const std::string& root )
     return quality::resolveCacheBlobPath( quality::cacheDirLadder(), name );
 }
 
+inline CacheContext mcpOperationCache( const std::string& root, const std::shared_ptr<const CachePolicy>& policy )
+{
+    if( !policy ) { return {}; }  // library API default remains File
+    CacheContext cache;
+    std::string error;
+    if( cacheContextForRoot( policy, root, true, cache, error ) ) { return cache; }
+    auto disabled = std::make_shared<CachePolicy>();
+    cache.policy = std::move( disabled );
+    DEGRADED_PATH_ALERT( "MCP cache identity unavailable; recomputing without a local cache" );
+    return cache;
+}
+
 // Derive identity only after the concrete root is known (including each part of a workspace).
 // The ingest cache adapter creates operation-local clients; no socket or reply enters McpIndex.
 inline IngestResult mcpIngestRoot( const std::string& root, const std::shared_ptr<const CachePolicy>& policy,
@@ -1084,13 +1096,10 @@ inline std::uint64_t gitHeadMoveToken( const std::string& root )
 // Observe HEAD; on a move (and only above the size threshold) single-flight-spawn the DETACHED qsnap warmer.
 // Called from getIndex() on EVERY request (warm reuse and rebuild) — the per-call cost is the cheap stat-fold
 // above, gated first on the file count so a small repo does not even probe git.
-inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t fileCount )
+inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t fileCount, const std::shared_ptr<const CachePolicy>& policy = {} )
 {
-    // File policy (including the legacy null API default) may launch this filesystem warmer.
-    // Disabled must never populate either layer.
-    // Temporary Redis boundary: Task 6 must route BOTH HEAD ingest and derived snapshot storage.
-    const auto& policy = mcpIndexSlot().cachePolicy;
-    if( policy && policy->kind != CacheBackendKind::File )
+    // Both immutable layers use operation-local clients; Disabled never starts optional work.
+    if( policy && policy->kind == CacheBackendKind::Disabled )
     {
         return;
     }
@@ -1134,10 +1143,10 @@ inline void maybePrefetchHeadSnapshot( const std::string& root, std::size_t file
     // quality_delta uses with the SAME default args (so it warms the IDENTICAL qsnap key), then clears the
     // in-flight flag via an RAII guard on EVERY exit path. (3) discard-on-error: a throw (OOM at operator new)
     // is swallowed; the flag is always cleared so the mechanism never wedges.
-    std::thread( [ root, timingsOn ]()
+    std::thread( [ root, timingsOn, policy ]()
     {
         struct FlagGuard { ~FlagGuard(){ mcpPrefetchInFlight().store( false, std::memory_order_release ); } } guard;
-        try   { (void)rw::quality::computeHeadSnapshot( root ); }      // side effect: warm the sha-keyed qsnap (atomic publish)
+        try   { (void)rw::quality::computeHeadSnapshot( root, nullptr, kDefaultMaxFileBytes, {}, mcpOperationCache( root, policy ) ); }
         catch( ... ) { /* optional work — drop silently (§2b rule 3) */ }
         if( timingsOn ) { std::fprintf( stderr, "ripwire-prefetch done root=%s\n", root.c_str() ); std::fflush( stderr ); }
     } ).detach();
@@ -1183,7 +1192,7 @@ inline const McpIndex& getIndex( const std::string& root )
         const bool watcherClean = ix.watcher.healthy && !ix.watcher.drainHadEvent();
         if( !mcpStale( ix, /*skipDirSweep=*/watcherClean ) )
         {
-            maybePrefetchHeadSnapshot( root, ix.ing.files.size() );        // Phase-M: observe HEAD move on the warm path (a bare commit does not rebuild)
+            maybePrefetchHeadSnapshot( root, ix.ing.files.size(), ix.cachePolicy );
             return ix;                                                     // warm reuse (no rebuild, no popen)
         }
     }
@@ -1318,7 +1327,7 @@ inline const McpIndex& getIndex( const std::string& root )
     ix.lastReingestFiles = ix.ing.reparsedFiles;              // P1-15: latch what THIS pass cost
     ix.incrementalPasses += isIncrementalPass ? 1u : 0u;      // …and whether it refreshed an index we already held
     mcpRebuildCounter().fetch_add( 1, std::memory_order_relaxed );   // MEASURE-FIRST: a real (cache-miss) rebuild just happened
-    maybePrefetchHeadSnapshot( root, ix.ing.files.size() );          // Phase-M: seed the HEAD token on the first build; observe a move on later rebuilds
+    maybePrefetchHeadSnapshot( root, ix.ing.files.size(), ix.cachePolicy );
     return ix;
 }
 

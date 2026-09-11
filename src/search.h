@@ -2080,8 +2080,33 @@ struct GrepTierReport
 // FIXED CONSTANTS, never derived from the row cap, the page offset or the limit. A "stop once the page is
 // full" budget would be cheaper and would reintroduce exactly the bug §A1 was written for — every page a
 // window into a differently-filtered list.
+inline std::vector<CacheContext> grepTierFileCaches( const IngestResult& ing, std::span<const std::uint32_t> fileIds, const CacheContext* cache )
+{
+    if( cache == nullptr || !cache->policy || cache->policy->kind != CacheBackendKind::Redis || ing.fileRoot.empty() ) { return {}; }
+    std::vector<CacheContext> rootCaches;
+    for( const std::string& root : ing.rootPaths )
+    {
+        CacheContext rootCache;
+        std::string error;
+        if( !cacheContextForRoot( cache->policy, root, cache->captureValueUses, rootCache, error ) )
+        {
+            rootCache.policy = std::make_shared<CachePolicy>();
+            DEGRADED_PATH_ALERT( "grep cache project unavailable; span tiers use source without local fallback" );
+        }
+        rootCaches.push_back( std::move( rootCache ) );
+    }
+    std::vector<CacheContext> fileCaches;
+    fileCaches.reserve( fileIds.size() );
+    for( const std::uint32_t fileId : fileIds )
+    {
+        VERIFY( fileId < ing.fileRoot.size() && ing.fileRoot[fileId] < rootCaches.size() );
+        fileCaches.push_back( rootCaches[ing.fileRoot[fileId]] );
+    }
+    return fileCaches;
+}
+
 inline GrepCollection grepApplySpanTiers( const IngestResult& ing, GrepCollection collected, GrepIn mode, GrepTierReport& report,
-                                          bool useMemo = true )
+                                          bool useMemo = true, const CacheContext* cache = nullptr )
 {
     report = GrepTierReport{};
     if( mode == GrepIn::Any || collected.raw.empty() )
@@ -2123,7 +2148,8 @@ inline GrepCollection grepApplySpanTiers( const IngestResult& ing, GrepCollectio
         tierPaths.push_back( diskPath( ing, fileId ) );
     }
 
-    const SpanTierBatch batch = spanTiersOfFiles( std::span<const std::string>( tierPaths ), useMemo );
+    const auto fileCaches = grepTierFileCaches( ing, std::span<const std::uint32_t>( hitFileIds ).first( tierPaths.size() ), cache );
+    const SpanTierBatch batch = spanTiersOfFiles( std::span<const std::string>( tierPaths ), useMemo, cache, fileCaches );
     report.tieredFileCount    = std::uint32_t( tierPaths.size() );
 
     // fileId → index into the parsed batch; UINT32_MAX ⇒ past the budget, i.e. UNCLASSIFIED

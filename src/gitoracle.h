@@ -283,7 +283,8 @@ struct Reader
     }
 };
 
-inline bool saveOracleCache( const std::string& path, const HistoryIndex& idx )
+inline bool saveOracleCache( const std::string& path, const HistoryIndex& idx,
+                             const CacheContext& cache = {}, const CacheBlobAddress* address = nullptr )
 {
     // Sorted, so the blob is a pure function of the index rather than of HashMap iteration order. The map is
     // never re-serialized in a different order, which is what keeps a cache byte-comparable between runs.
@@ -315,6 +316,11 @@ inline bool saveOracleCache( const std::string& path, const HistoryIndex& idx )
     }
     qsnapPut<std::uint64_t>( body, fnv1a64( body ) );
 
+    if( !quality::fileCacheEnabled( cache ) )
+    {
+        return address != nullptr && storeCacheBlob( cache, *address, body );
+    }
+
     // Write-then-rename: a reader in another process must never see a half-written blob (the torn-read rule
     // the rest of the cache families follow).
     const std::string tmp = path + ".tmp";
@@ -335,23 +341,8 @@ inline bool saveOracleCache( const std::string& path, const HistoryIndex& idx )
     return true;
 }
 
-inline bool loadOracleCache( const std::string& path, HistoryIndex& idx )
+inline bool decodeOracleCache( const std::string& bytes, HistoryIndex& idx )
 {
-    std::string bytes;
-    {
-        std::FILE* fp = std::fopen( path.c_str(), "rb" );
-        if( !fp )
-        {
-            return false; // a plain miss, not a degrade
-        }
-        char        buf[ 65536 ];
-        std::size_t n = 0;
-        while( ( n = std::fread( buf, 1, sizeof( buf ), fp ) ) > 0 )
-        {
-            bytes.append( buf, n );
-        }
-        std::fclose( fp );
-    }
     if( bytes.size() < sizeof( std::uint64_t ) + 17 )
     {
         return false;
@@ -415,6 +406,23 @@ inline bool loadOracleCache( const std::string& path, HistoryIndex& idx )
     loaded.ok = true;
     idx       = std::move( loaded );
     return true;
+}
+
+inline bool loadOracleCache( const std::string& path, HistoryIndex& idx,
+                             const CacheContext& cache = {}, const CacheBlobAddress* address = nullptr )
+{
+    std::string bytes;
+    if( !quality::fileCacheEnabled( cache ) )
+    {
+        return address != nullptr && probeCacheBlob( cache, *address, bytes ) == CacheProbeStatus::Hit && decodeOracleCache( bytes, idx );
+    }
+    std::FILE* fp = std::fopen( path.c_str(), "rb" );
+    if( !fp ) { return false; }
+    char buf[ 65536 ];
+    std::size_t n = 0;
+    while( ( n = std::fread( buf, 1, sizeof( buf ), fp ) ) > 0 ) { bytes.append( buf, n ); }
+    std::fclose( fp );
+    return decodeOracleCache( bytes, idx );
 }
 
 // ── the probe ────────────────────────────────────────────────────────────────────────────────────────────
@@ -644,7 +652,7 @@ inline HistoryIndex runProbe( const std::string& root )
 
 // The memoized entry point. `root` must be the repo root; a non-git root (or one with no commits) comes back
 // ok=false + nonGitRoot=true so the caller can say so instead of silently answering "never" for everything.
-inline HistoryIndex probeNameHistory( const std::string& root )
+inline HistoryIndex probeNameHistory( const std::string& root, const CacheContext& cache = {} )
 {
     HistoryIndex idx;
     if( !quality::gitRepoHasHistory( root ) ) { idx.nonGitRoot = true; return idx; }
@@ -652,10 +660,11 @@ inline HistoryIndex probeNameHistory( const std::string& root )
     idx.headSha = quality::gitHeadSha( root );
     if( idx.headSha.empty() ) { idx.nonGitRoot = true; return idx; }
 
-    const std::string cachePath = oracleCachePath( root, idx.headSha );
+    const std::string cachePath = quality::fileCacheEnabled( cache ) ? oracleCachePath( root, idx.headSha ) : std::string{};
+    const auto address = quality::derivedBlobAddress( CacheBlobFamily::GitOracle, kOracleCacheScheme, oracleExclHex() + ":" + idx.headSha, cachePath );
     {
         HistoryIndex warm;
-        if( loadOracleCache( cachePath, warm ) )
+        if( loadOracleCache( cachePath, warm, cache, &address ) )
         {
             warm.headSha = idx.headSha;
             return warm;                                               // byte-identical to the cold answer, by test
@@ -666,7 +675,7 @@ inline HistoryIndex probeNameHistory( const std::string& root )
     fresh.headSha      = idx.headSha;
     if( fresh.ok )
     {
-        saveOracleCache( cachePath, fresh );
+        saveOracleCache( cachePath, fresh, cache, &address );
     }
     return fresh;
 }

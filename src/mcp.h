@@ -1407,7 +1407,8 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                     }
                     else
                     {
-                        resp = pagedResult( [ & ]( McpPageArgs pg ) { return textResult( grepHitsJson( path, pattern, pg, grepInMode ) ); } );
+                        resp = pagedResult( [ & ]( McpPageArgs pg )
+                        { return textResult( grepHitsJson( path, pattern, pg, grepInMode, mcpOperationCache( path, policy.cachePolicy ) ) ); } );
                     }
                 }
                 else if( name == "cochange" && !path.empty() && !file.empty() )
@@ -1643,7 +1644,7 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                 else if( name == "quality_delta" && !path.empty() )
                 {
                     std::string       qerr;
-                    const std::string j = qualityDeltaJson( path, qerr );
+                    const std::string j = qualityDeltaJson( path, qerr, mcpOperationCache( path, policy.cachePolicy ) );
                     resp = j.empty() ? errResultMsg( -32602, qerr.empty() ? std::string( "quality-delta unavailable" ) : qerr ) : textResult( j );
                 }
                 else if( name == "quality_baseline" && !path.empty() )
@@ -1697,7 +1698,7 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                     // §A6a: the verb now words its own refusal (symbol-not-found, or the ambiguity refusal —
                     // a symbol matching several definition SITES has several contracts, and this verb answers
                     // about one), so this stays the same single payload-or-refusal branch it always was.
-                    const EditCheckReply r = editCheckText( path, symbol, newBody );   // card A1: new_body ⇒ PREVIEW, never a write
+                    const EditCheckReply r = editCheckText( path, symbol, newBody, mcpOperationCache( path, policy.cachePolicy ) );
                     resp = r.payload.empty() ? errResultMsg( -32602, r.refusal ) : textResult( r.payload );
                 }
                 // lane/tc-sliceat: the ARISE def-use slice — sliceText owns the whole contract (resolution,
@@ -1841,7 +1842,8 @@ inline McpDispatchResult dispatchMcpLine( const std::string& line, int topK, boo
                             subs.reserve( take );
                             for( std::size_t i = 0; i < take; ++i )
                             {
-                                subs.push_back( runBatchSub( path, objs[i], topK, stable, redactPtr, legendCompactPosture ) );
+                                subs.push_back( runBatchSub( path, objs[i], topK, stable, redactPtr, legendCompactPosture,
+                                                              mcpOperationCache( path, policy.cachePolicy ) ) );
                             }
                             // M1: the posture reaches INSIDE the CDATA — the rule, its measurement and the one
                             // skipped verb live once, on applyCompactToBatchSubs (mcpverbs.h), because the CLI

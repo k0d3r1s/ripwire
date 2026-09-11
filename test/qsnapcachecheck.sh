@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Reporters intentionally record failures in `fail`; their boolean chains are not control-flow branches.
+# shellcheck disable=SC2015
 # qsnapcachecheck.sh — gate for A4-P1 (round 2): --quality-delta's computed git-HEAD *Snapshot* is cached, so a
 # warm run skips git archive + ingest + buildGraph + BOTH clone passes entirely (the ~2.4 s the ingest-only
 # cache could not save). Determinism contract: "faster must never change the answer" — cached and uncached
@@ -54,8 +56,7 @@ fi
 # Y4: shard-aware lookup — a blob may be flat under $CACHEDIR or under $CACHEDIR/<xx>/ (2-hex shard).
 qsnapfiles(){ find "$CACHEDIR" -maxdepth 2 -type f -name 'ripwire-qsnap-*.bin' 2>/dev/null; }
 nqsnap(){ qsnapfiles | wc -l | tr -d ' '; }
-# --no-cache disables only the WORKING-tree auto-cache, never the HEAD-side qsnap cache — so the qsnap path is
-# exercised here, which is exactly what this gate needs.
+# Cache-reuse arms use the File backend; --no-cache controls disable both immutable layers.
 run(){ env -u TMPDIR XDG_CACHE_HOME="$XDG" "$BIN" "$REPO" --quality-delta "$@"; }
 
 mkdir -p "$REPO/src" "$REPO/tests"
@@ -73,12 +74,12 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm init
 echo "qsnapcachecheck: BIN=$BIN"
 
 # ── (a) equivalence + reuse (unchanged HEAD == working tree, 0 regressions) ────────────────────────────────
-run --no-cache >"$TMP/a1" 2>/dev/null; rc1=$?
+run >"$TMP/a1" 2>/dev/null || no "cold quality-delta failed"
 QF="$( qsnapfiles | head -1 )"
 [ -n "$QF" ] && ok "run 1 creates a qsnap Snapshot cache file" || no "no ripwire-qsnap-*.bin after run 1"
 I1="$( [ -n "$QF" ] && inode_of "$QF" )"
 
-run --no-cache >"$TMP/a2" 2>/dev/null; rc2=$?
+run >"$TMP/a2" 2>/dev/null || no "warm quality-delta failed"
 diff -q "$TMP/a1" "$TMP/a2" >/dev/null \
     && ok "run 2 byte-identical to run 1 (cached == uncached output)" \
     || { no "cached output diverges from run 1"; diff "$TMP/a1" "$TMP/a2" | head -6; }
@@ -88,8 +89,8 @@ I2="$( [ -n "$QF" ] && inode_of "$QF" )"
     || no "run 2 rewrote the qsnap blob (inode $I1 -> $I2) — cache not reused"
 
 # ── (b) blob-carries-facts equivalence: delete the blob, recompute, must match the cached run byte-for-byte ─
-rm -f $( qsnapfiles )
-run --no-cache >"$TMP/b1" 2>/dev/null
+while IFS= read -r blob; do rm -f -- "$blob"; done < <( qsnapfiles )
+run >"$TMP/b1" 2>/dev/null
 diff -q "$TMP/a2" "$TMP/b1" >/dev/null \
     && ok "deleted-blob recompute == cached output (restored Snapshot ≡ fresh Snapshot)" \
     || { no "recompute after blob delete diverges from cached run"; diff "$TMP/a2" "$TMP/b1" | head -6; }
@@ -110,7 +111,7 @@ int mainThing( int y ) {
 }
 EOF
 git -C "$REPO" add -A; git -C "$REPO" commit -qm "grow mainThing" >/dev/null
-run --no-cache >"$TMP/c1" 2>/dev/null; rcc=$?
+run >"$TMP/c1" 2>/dev/null; rcc=$?
 { [ "$rcc" -eq 0 ] && grep -q 'regressions="0"' "$TMP/c1"; } \
     && ok "new HEAD commit: fresh qsnap Snapshot, 0 regressions (no stale reuse of old HEAD)" \
     || { no "stale qsnap Snapshot reused after a new commit (exit=$rcc)"; grep -oE 'regressions="[0-9]+"' "$TMP/c1"; }
@@ -129,9 +130,9 @@ int addedComplex( int a, int b, int c ) {
     return r;
 }
 EOF
-run --no-cache >"$TMP/c_warm" 2>/dev/null; rcw=$?     # HEAD Snapshot served from the qsnap cache
-rm -f $( qsnapfiles )
-run --no-cache >"$TMP/c_cold" 2>/dev/null; rccold=$?  # HEAD Snapshot recomputed from scratch
+run >"$TMP/c_warm" 2>/dev/null; rcw=$?     # HEAD Snapshot served from the qsnap cache
+while IFS= read -r blob; do rm -f -- "$blob"; done < <( qsnapfiles )
+run >"$TMP/c_cold" 2>/dev/null; rccold=$?  # HEAD Snapshot recomputed from scratch
 diff -q "$TMP/c_warm" "$TMP/c_cold" >/dev/null \
     && ok "introduced regression reported byte-identically cached vs uncached" \
     || { no "regression report differs cached vs uncached (exit warm=$rcw cold=$rccold)"; diff "$TMP/c_warm" "$TMP/c_cold" | head -8; }
@@ -143,7 +144,7 @@ grep -q 'kind="complexity"' "$TMP/c_warm" \
 # revert to the clean committed tree (working == HEAD) so the exclude scenario is the untouched-tree A4-F5 case.
 git -C "$REPO" checkout -q -- src/lib.cpp
 before="$( nqsnap )"
-run --exclude=tests --no-cache >"$TMP/d1" 2>/dev/null; rcd=$?
+run --exclude=tests >"$TMP/d1" 2>/dev/null; rcd=$?
 { [ "$rcd" -eq 0 ] && ! grep -q 'kind="dead-code"' "$TMP/d1"; } \
     && ok "--exclude=tests: exit 0, no phantom dead-code (A4-F5 correct, separate qsnap key)" \
     || { no "--exclude=tests wrong (exit=$rcd)"; grep -oE 'regressions="[0-9]+"|kind="[^"]+"' "$TMP/d1" | head; }
@@ -156,7 +157,7 @@ after="$( nqsnap )"
 mkdir -p "$TMP/coldxdg"
 env -u TMPDIR XDG_CACHE_HOME="$TMP/coldxdg" "$BIN" "$REPO" --quality-delta --no-cache >"$TMP/e_truth" 2>/dev/null
 for f in $( qsnapfiles ); do printf 'QSNP\xff\xff\xff\xffGARBAGE-not-a-valid-snapshot-blob\x00\x01\x02' > "$f"; done
-run --no-cache >"$TMP/e1" 2>"$TMP/e_err"; rce=$?
+run >"$TMP/e1" 2>"$TMP/e_err"; rce=$?
 diff -q "$TMP/e1" "$TMP/e_truth" >/dev/null \
     && ok "corrupt qsnap blob degrades to recompute — output byte-identical (degrade-don't-crash)" \
     || { no "corrupt qsnap blob changed the output (exit=$rce)"; diff "$TMP/e_truth" "$TMP/e1" | head -6; }
@@ -168,7 +169,7 @@ grep -qi 'Snapshot cache corrupt' "$TMP/e_err" \
 for i in 1 2 3 4 5; do
     echo "// churn $i" >> "$REPO/src/lib.cpp"
     git -C "$REPO" add -A; git -C "$REPO" commit -qm "churn $i" >/dev/null
-    run --no-cache >/dev/null 2>/dev/null
+    run >/dev/null 2>/dev/null
 done
 # count the no-exclude qsnap family only (the --exclude=tests run above seeded its own capped family).
 NOEXC="$( qsnapfiles | wc -l | tr -d ' ' )"

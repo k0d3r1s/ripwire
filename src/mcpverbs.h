@@ -879,7 +879,8 @@ inline std::string grepInModeFromArg( std::string_view typed, GrepIn& out )
     return mcprefuse::badValueRefusal( "in", typed );
 }
 
-inline std::string grepHitsJson( const std::string& root, const std::string& pattern, McpPageArgs page = {}, GrepIn grepInMode = GrepIn::Code )
+inline std::string grepHitsJson( const std::string& root, const std::string& pattern, McpPageArgs page = {}, GrepIn grepInMode = GrepIn::Code,
+                                 const CacheContext& cache = {} )
 {
     const McpIndex&            ix        = getIndex( root );
     const IngestResult&        ing       = ix.ing;
@@ -891,7 +892,7 @@ inline std::string grepHitsJson( const std::string& root, const std::string& pat
     // below under the CLI's own key names.
     GrepTierReport             tierReport;
     const GrepCollection       collected = grepApplySpanTiers( ing, grepCollect( ing, pattern, /*regex=*/false, /*noPrefilter=*/false ),
-                                                               grepInMode, tierReport );
+                                                               grepInMode, tierReport, true, &cache );
     const PageWindow           grepPage  = pageWindow( collected.raw.size(), effectiveRowCap( page.limit, kRowCap ), page.offset );
     const std::size_t          rowCount  = grepPage.end - grepPage.begin;
     const std::vector<GrepHit> hits      = grepEnrich( ing, std::span<const GrepRawHit>( collected.raw ).subspan( grepPage.begin, rowCount ), 0, 0 );
@@ -3093,7 +3094,7 @@ inline const char* mcpBaselineMarker( const rw::quality::BaselineSelection& sele
     return selection.marker;                              // genuinely absent — "git-HEAD"
 }
 
-inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
+inline QualityDeltaOutcome computeQualityDelta( const std::string& root, const CacheContext& cache = {} )
 {
     QualityDeltaOutcome oc;
 
@@ -3104,7 +3105,7 @@ inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
     IngestResult ing;
     {
         std::lock_guard<std::mutex> ingestLk( rw::quality::headSnapshotIngestMutex() );
-        ing = ingest( root.c_str(), {}, std::string_view{} );
+        ing = quality::fileCacheEnabled( cache ) ? ingest( root.c_str(), {}, std::string_view{} ) : ingest( root.c_str(), {}, cache );
     }
     const Graph  g   = buildGraph( ing, nullptr );
 
@@ -3120,7 +3121,7 @@ inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
     rw::quality::BaselineSelection baseSel = rw::quality::selectBaseline( root, sidecar, /*removeStaleFile=*/false );
     if( !baseSel.isSidecarHonored() )
     {
-        auto [ headSnap, headOk ] = rw::quality::computeHeadSnapshot( root );
+        auto [ headSnap, headOk ] = rw::quality::computeHeadSnapshot( root, nullptr, kDefaultMaxFileBytes, {}, cache );
         if( !headOk )
         {
             oc.ok = false;
@@ -3143,7 +3144,7 @@ inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
     auto       acks = rw::quality::readAckRecords( qualityAcksPath( root ) );
     const auto heal = rw::quality::healIdentity( baseSel.snapshot, acks, ing, g, root, root, /*wantContentIds=*/false );
 
-    oc.regs       = rw::quality::computeDelta( ing, g, baseSel.snapshot, root, {}, rw::kDefaultMaxFileBytes, &oc.registerMacroExcluded );
+    oc.regs       = rw::quality::computeDelta( ing, g, baseSel.snapshot, root, {}, rw::kDefaultMaxFileBytes, &oc.registerMacroExcluded, cache );
 
     // signal-to-noise round: honor the per-finding ack ratchet exactly like the CLI — the acks sidecar is
     // root-qualified (same SIDECAR LOCATION discipline as the baseline), suppression is reported via `acked`.
@@ -3180,9 +3181,9 @@ inline QualityDeltaOutcome computeQualityDelta( const std::string& root )
 // facet names, displaySym's root-relative spelling, and the CLI's own was/now omission rule for the
 // zero-magnitude kinds). `regressions_count` is gone rather than kept as an alias: two names for one number
 // is how the next consumer picks the wrong one. Gate: test/mcpclidiffcheck.sh diffs the two key sets.
-inline std::string qualityDeltaJson( const std::string& root, std::string& errOut )
+inline std::string qualityDeltaJson( const std::string& root, std::string& errOut, const CacheContext& cache = {} )
 {
-    const QualityDeltaOutcome oc = computeQualityDelta( root );
+    const QualityDeltaOutcome oc = computeQualityDelta( root, cache );
     if( !oc.ok ) { errOut = oc.errMsg; return {}; }
 
     // r26 ORIGIN SPLIT — the same three counts main.cpp derives, so both surfaces encode one contract.
@@ -3473,12 +3474,12 @@ struct EditCheckReply { std::string payload; std::string refusal; };
 // been written. Nothing writes; the field is optional and the verb stays readOnlyHint:true. The CLI form is
 // --edit-check=SYM --edit-payload=FILE --dry-run, and both surfaces route through editpreview::run, so the
 // two cannot answer differently.
-inline EditCheckReply editCheckText( const std::string& root, const std::string& symbol, const std::string& newBody = {} )
+inline EditCheckReply editCheckText( const std::string& root, const std::string& symbol, const std::string& newBody = {}, const CacheContext& cache = {} )
 {
     IngestResult ing;   // Phase-M: serialize the ingest vs the qsnap-prefetch worker (§2b), same as computeQualityDelta
     {
         std::lock_guard<std::mutex> ingestLk( rw::quality::headSnapshotIngestMutex() );
-        ing = ingest( root.c_str(), {}, std::string_view{} );
+        ing = quality::fileCacheEnabled( cache ) ? ingest( root.c_str(), {}, std::string_view{} ) : ingest( root.c_str(), {}, cache );
     }
     const Graph g = buildGraph( ing, nullptr );
 
@@ -3507,11 +3508,13 @@ inline EditCheckReply editCheckText( const std::string& root, const std::string&
             return EditCheckReply{ {}, "new_body " + std::string( mcpedit::kBinaryPayloadRefusal ) };
         }
         const rw::editpreview::Outcome preview =
-            rw::editpreview::run( ing, g, root, kDefaultMaxFileBytes, {}, true, symbol, groups[0].lowestNode, newBody, nullptr );
+            rw::editpreview::run( ing, g, root, kDefaultMaxFileBytes, {}, true, symbol, groups[0].lowestNode, newBody, nullptr,
+                                   cache );
         return preview.ok ? EditCheckReply{ preview.xml, {} } : EditCheckReply{ {}, preview.message };
     }
 
-    return EditCheckReply{ editCheckBundleText( ing, g, root, kDefaultMaxFileBytes, {}, groups[0].lowestNode ), {} };
+    return EditCheckReply{ editCheckBundleText( ing, g, root, kDefaultMaxFileBytes, {}, groups[0].lowestNode, nullptr, false,
+                                               cache ), {} };
 }
 
 // ─── `slice` verb (lane/tc-sliceat): the ARISE def-use slice over MCP, mirroring the CLI --slice ────────
@@ -4341,7 +4344,7 @@ struct BatchSub
 // tally into the body/doc-emitting verbs exactly as the standalone dispatch does. Never throws for a
 // resolvable-but-empty result — that becomes ok=false with an explanatory err, never a whole-batch failure.
 inline BatchSub runBatchSub( const std::string& root, const std::string& obj, int topK, bool stable, RedactCounts* redactPtr,
-                            bool compactLegend = false )
+                            bool compactLegend = false, const CacheContext& cache = {} )
 {
     using mcpdetail::findString;
 
@@ -4481,7 +4484,7 @@ inline BatchSub runBatchSub( const std::string& root, const std::string& obj, in
         {
             return bad( inRefusal );
         }
-        r.payload = grepHitsJson( root, pattern, pageParse.page, batchGrepIn );   // N8: the batch arm pages grep too
+        r.payload = grepHitsJson( root, pattern, pageParse.page, batchGrepIn, cache );
     }
     else if( r.verb == "find_symbol" || r.verb == "callees" )
     {
@@ -4649,7 +4652,7 @@ inline BatchSub runBatchSub( const std::string& root, const std::string& obj, in
             return bad( missingField( "edit_check" ) );
         }
         // No new_body: the batched form is the post-hoc question only (see kBatchServedVerbs).
-        const EditCheckReply er = editCheckText( root, symbol );
+        const EditCheckReply er = editCheckText( root, symbol, {}, cache );
         if( er.payload.empty() )
         {
             return bad( er.refusal );

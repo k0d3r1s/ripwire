@@ -1,5 +1,7 @@
 #pragma once
 
+#include <bit>
+
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -7,6 +9,9 @@
 
 namespace rw
 {
+
+inline constexpr std::uint8_t kArtifactArch =
+    ( std::endian::native == std::endian::little ? 0u : 1u ) | ( sizeof( void* ) << 1 );
 
 enum class CacheBackendKind : std::uint8_t { Disabled, File, Redis };
 
@@ -36,6 +41,27 @@ struct CacheContext
     std::string project;
     bool captureValueUses = true;
 };
+
+// Closed families: only immutable derived data belongs here. localPath is File-only routing.
+enum class CacheBlobFamily : std::uint8_t { QualitySnapshot, QualityBody, QualityChurn, GitOracle, SpanTier, DocumentExtraction };
+enum class CacheProbeStatus : std::uint8_t { Hit, Miss, Corrupt, Unavailable };
+
+int readCacheFileBlob( const std::string& path, std::string& bytes );
+bool atomicWriteCacheFile( const std::string& path, const std::string& bytes );
+
+struct CacheBlobAddress
+{
+    CacheBlobFamily family;
+    std::uint32_t schemeVersion;
+    std::uint32_t artifactArch = kArtifactArch;
+    std::string identity;
+    std::string localPath;
+    int ( *fileProbe )( const std::string&, std::string& ) = readCacheFileBlob;
+    bool ( *fileStore )( const std::string&, const std::string& ) = atomicWriteCacheFile;
+};
+
+CacheProbeStatus probeCacheBlob( const CacheContext& cache, const CacheBlobAddress& address, std::string& bytes );
+bool storeCacheBlob( const CacheContext& cache, const CacheBlobAddress& address, const std::string& bytes );
 
 struct CacheSelectionInput
 {

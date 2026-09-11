@@ -1313,19 +1313,8 @@ inline std::string spanTierMemoPath( const std::string& diskPath )
 
 // Read the memo for `diskPath` at the stat the caller just took. Returns false — leaving `out` untouched —
 // on ANY doubt whatsoever; there is deliberately no partial-trust path.
-inline bool spanTierMemoLoad( const std::string& diskPath, const StatInfo& now, SpanTierMap& out )
+inline bool decodeSpanTierMemo( std::istream& blobIn, const std::string& diskPath, const StatInfo& now, SpanTierMap& out )
 {
-    if( now.sizeBytes < 0 || now.mtimeNs < 0 || now.ctimeNs < 0 )
-    {
-        return false;   // unstatable ⇒ nothing to compare against ⇒ never trusted
-    }
-    const std::string blobPath = spanTierMemoPath( diskPath );
-    const StatInfo    blobStat = statSizeTimes( blobPath );
-    if( blobStat.mtimeNs < 0 || now.mtimeNs >= blobStat.mtimeNs )
-    {
-        return false;   // absent, or the racy rule: the file is not provably older than the blob
-    }
-    std::ifstream blobIn( blobPath, std::ios::binary );
     if( !blobIn )
     {
         return false;
@@ -1390,11 +1379,27 @@ inline bool spanTierMemoLoad( const std::string& diskPath, const StatInfo& now, 
     return true;
 }
 
+inline bool spanTierMemoLoad( const std::string& diskPath, const StatInfo& now, SpanTierMap& out, const std::string* remoteBytes = nullptr )
+{
+    if( now.sizeBytes < 0 || now.mtimeNs < 0 || now.ctimeNs < 0 ) { return false; }
+    if( remoteBytes != nullptr )
+    {
+        std::istringstream in( *remoteBytes );
+        return decodeSpanTierMemo( in, diskPath, now, out );
+    }
+    const std::string blobPath = spanTierMemoPath( diskPath );
+    const StatInfo blobStat = statSizeTimes( blobPath );
+    if( blobStat.mtimeNs < 0 || now.mtimeNs >= blobStat.mtimeNs ) { return false; }
+    std::ifstream in( blobPath, std::ios::binary );
+    return decodeSpanTierMemo( in, diskPath, now, out );
+}
+
 // Write the memo. Best-effort in every direction: a failure loses only the speed-up, never an answer.
 // Temp-then-rename so a torn write can never be observed as a complete blob (the same discipline
 // atomicWriteQSnap uses); the temp name carries pid + a process-unique counter, so the parallel tier
 // workers — which each own a distinct file slot — cannot collide even across concurrent ripwire runs.
-inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now, const SpanTierMap& map )
+inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now, const SpanTierMap& map,
+                               const CacheContext* cache = nullptr, const CacheBlobAddress* address = nullptr )
 {
     if( now.sizeBytes < 0 || now.mtimeNs < 0 || now.ctimeNs < 0 || !map.isParsed )
     {
@@ -1406,13 +1411,16 @@ inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now,
         return;
     }
     static std::atomic<std::uint64_t> tempSeq{ 0 };
-    const std::string                 blobPath = spanTierMemoPath( diskPath );
+    const std::string                 blobPath = address == nullptr ? spanTierMemoPath( diskPath ) : std::string{};
     char                              suffix[ 64 ];
     // 4 B literal + %d at 11 + 1 B + %llu at 20 = 36 B worst case into 64 — see test/fixedbufsweep.sh's census
     std::snprintf( suffix, sizeof( suffix ), ".tmp%d-%llu", int( ::getpid() ), static_cast<unsigned long long>( tempSeq.fetch_add( 1, std::memory_order_relaxed ) ) );
     const std::string tempPath = blobPath + suffix;
     {
-        std::ofstream out( tempPath, std::ios::binary | std::ios::trunc );
+        std::ofstream localOut;
+        std::ostringstream remoteOut;
+        if( address == nullptr ) { localOut.open( tempPath, std::ios::binary | std::ios::trunc ); }
+        std::ostream& out = address != nullptr ? static_cast<std::ostream&>( remoteOut ) : static_cast<std::ostream&>( localOut );
         if( !out )
         {
             return;
@@ -1434,6 +1442,11 @@ inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now,
             out.write( reinterpret_cast<const char*>( map.tier.data() ),      std::streamsize( spanCount ) );
         }
         out.flush();
+        if( address != nullptr )
+        {
+            if( cache != nullptr && out ) { storeCacheBlob( *cache, *address, remoteOut.str() ); }
+            return;
+        }
         if( !out )
         {
             std::error_code rmEc;
@@ -1465,20 +1478,59 @@ inline void spanTierMemoStore( const std::string& diskPath, const StatInfo& now,
 // The STORE is keyed to the stat taken BEFORE the read, and written after isParsed is set — so the blob is
 // exactly the map this answer used, and a file rewritten between the stat and the read stores a pair that no
 // longer matches it and is therefore rejected on the next load rather than trusted.
-inline bool spanTierMemoTryLoad( bool useMemo, const std::string& diskPath, const StatInfo& now, SpanTierMap& out )
+struct PortableSpanTierMemo
 {
+    std::string path;
+    StatInfo stat;
+    CacheBlobAddress address;
+};
+
+inline PortableSpanTierMemo portableSpanTierMemo( const std::string& diskPath, const std::string& source )
+{
+    const std::string identity = lowerExtensionOf( diskPath ) + ":" + redisKeyHash( source );
+    return { identity, { static_cast<long long>( source.size() ), 0, 0 },
+             quality::derivedBlobAddress( CacheBlobFamily::SpanTier, kSpanTierMemoVersion, quality::extractionIdentityTag() + ":" + identity, {} ) };
+}
+
+inline bool spanTierMemoTryLoad( bool useMemo, const std::string& diskPath, const StatInfo& now, SpanTierMap& out, const CacheContext* cache = nullptr )
+{
+    if( cache != nullptr && !quality::fileCacheEnabled( *cache ) )
+    {
+        if( !useMemo || now.sizeBytes < kSpanTierMemoMinBytes || cache->policy->kind == CacheBackendKind::Disabled ) { return false; }
+        std::string source;
+        if( !readFile( diskPath, source ) ) { return false; }
+        const auto memo = portableSpanTierMemo( diskPath, source );
+        std::string blob;
+        return probeCacheBlob( *cache, memo.address, blob ) == CacheProbeStatus::Hit && spanTierMemoLoad( memo.path, memo.stat, out, &blob );
+    }
     return useMemo && now.sizeBytes >= kSpanTierMemoMinBytes && spanTierMemoLoad( diskPath, now, out );
 }
 
-inline void spanTierMemoTryStore( bool useMemo, const std::string& diskPath, const StatInfo& now, const SpanTierMap& map )
+inline void spanTierMemoTryStore( bool useMemo, const std::string& diskPath, const StatInfo& now, const SpanTierMap& map,
+                                  const CacheContext* cache = nullptr, const std::string& source = {} )
 {
+    if( cache != nullptr && !quality::fileCacheEnabled( *cache ) )
+    {
+        if( !useMemo || now.sizeBytes < kSpanTierMemoMinBytes || cache->policy->kind == CacheBackendKind::Disabled ) { return; }
+        const auto memo = portableSpanTierMemo( diskPath, source );
+        spanTierMemoStore( memo.path, memo.stat, map, cache, &memo.address );
+        return;
+    }
     if( useMemo && now.sizeBytes >= kSpanTierMemoMinBytes )
     {
         spanTierMemoStore( diskPath, now, map );
     }
 }
 
-SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool useMemo )
+inline const CacheContext* spanTierFileCache( const CacheContext* shared, std::span<const CacheContext> perFile,
+                                             std::size_t fileCount, std::size_t fileIndex )
+{
+    VERIFY( perFile.empty() || perFile.size() == fileCount );
+    return perFile.empty() ? shared : &perFile[fileIndex];
+}
+
+SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool useMemo, const CacheContext* cache,
+                               std::span<const CacheContext> fileCaches )
 {
     SpanTierBatch batch;
     batch.perFile.resize( diskPaths.size() );
@@ -1551,7 +1603,8 @@ SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool use
                     continue;   // markdown and every unsupported extension: unclassifiable, and it stays that way
                 }
                 const StatInfo fileStat = statSizeTimes( path );
-                if( spanTierMemoTryLoad( useMemo, path, fileStat, batch.perFile[fileIndex] ) )
+                const CacheContext* fileCache = spanTierFileCache( cache, fileCaches, fileCount, fileIndex );
+                if( spanTierMemoTryLoad( useMemo, path, fileStat, batch.perFile[fileIndex], fileCache ) )
                 {
                     continue;   // isParsed was set by the loader; the slot is owned by this worker alone
                 }
@@ -1585,7 +1638,7 @@ SpanTierBatch spanTiersOfFiles( std::span<const std::string> diskPaths, bool use
                 batch.perFile[fileIndex].isParsed = true;   // slot owned by this worker alone
                 ts_tree_delete( tree );
                 bytesParsed.fetch_add( bytes.size(), std::memory_order_relaxed );
-                spanTierMemoTryStore( useMemo, path, fileStat, batch.perFile[fileIndex] );
+                spanTierMemoTryStore( useMemo, path, fileStat, batch.perFile[fileIndex], fileCache, bytes );
             }
         }
         catch( ... )   // a throw escaping a worker thread is std::terminate — degrade to unclassified instead

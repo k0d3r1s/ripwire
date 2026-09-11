@@ -836,9 +836,7 @@ constexpr std::uint32_t kParserVer    = 86;           // bump on any grammar/.sc
 // portable encoding on the hot (de)serialize path that fe47139/PERF.md P2 optimized; a future big-endian
 // target that actually needs a portable re-encode is a separate gated decision,
 // not pre-paid here — the guard already makes such a target CORRECT (self-heal), just not fast.
-constexpr std::uint8_t kArtifactArch =
-      static_cast<std::uint8_t>( ( __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) ? 1u : 0u )   // bit 0: endianness
-    | static_cast<std::uint8_t>( sizeof( void* ) << 1 );                                   // bits 1..: pointer width (bytes)
+// kArtifactArch is shared with immutable derived blobs in cache_backend.h.
 
 // The lean/rich cache FAMILY split (documented against reality per a reviewer note).
 // captureValueUses gets its OWN parserVer so a lean blob and a value-uses ("rich") blob can never cross-hit;

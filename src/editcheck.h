@@ -196,7 +196,7 @@ inline std::string editCheckAmbiguousMessage( std::string_view spec, std::span<c
 // another header, i.e. the same kind of seam rule the publicness fold inside deliberately refuses to rest on.
 inline EditCheckContract editCheckContractVsHead( const IngestResult& ing, const Graph& g, const std::string& root,
                                                   std::size_t maxFileBytes, const std::vector<std::string>& excludes,
-                                                  NodeId focus, std::span<const NodeId> overloadNodes )
+                                                  NodeId focus, std::span<const NodeId> overloadNodes, const CacheContext& cache = {} )
 {
     EditCheckContract res{};
     res.status  = "unchanged";
@@ -238,7 +238,7 @@ inline EditCheckContract editCheckContractVsHead( const IngestResult& ing, const
     }
 
     // HEAD baseline — the warm path MUST hit computeHeadSnapshot's own qsnap cache (the ≤100ms budget).
-    auto [ base, baselineOk ] = quality::computeHeadSnapshot( root, nullptr, maxFileBytes, excludes );
+    auto [ base, baselineOk ] = quality::computeHeadSnapshot( root, nullptr, maxFileBytes, excludes, cache );
     if( !baselineOk )
     {
         // 2026-09-06 stranger audit: a tarball, an export, any non-git tree used to answer "new-symbol" for a
@@ -547,7 +547,7 @@ editCheckCallers( const IngestResult& ing, const Graph& g, std::span<const NodeI
 // byte-for-byte (modulo the legend, at= and this flag's own attribute).
 inline std::string editCheckBundleText( const IngestResult& ing, const Graph& g, const std::string& root,
                                         std::size_t maxFileBytes, const std::vector<std::string>& excludes, NodeId focus,
-                                        const notes::NoteIndex* ni = nullptr, bool preview = false )
+                                        const notes::NoteIndex* ni = nullptr, bool preview = false, const CacheContext& cache = {} )
 {
     const Symbol& fsym = ing.symbols[ focus ];
     // R-E (2026-08-17 harvest): same single-root condition every other verb's root= uses (sarif.h) — the ONE
@@ -560,7 +560,7 @@ inline std::string editCheckBundleText( const IngestResult& ing, const Graph& g,
     };
 
     const std::vector<NodeId> overloadNodes = editCheckOverloadSet( ing, g, focus );
-    const EditCheckContract   contract      = editCheckContractVsHead( ing, g, root, maxFileBytes, excludes, focus, overloadNodes );
+    const EditCheckContract   contract      = editCheckContractVsHead( ing, g, root, maxFileBytes, excludes, focus, overloadNodes, cache );
     const auto [ callerIds, callerIncompatible ] = editCheckCallers( ing, g, overloadNodes, fsym.name );
 
     // the flagged-caller COUNT, needed BEFORE the headline is written: the verdict joins it with the was/now

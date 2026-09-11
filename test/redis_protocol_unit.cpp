@@ -185,7 +185,7 @@ TEST_CASE( "outbound batch ceilings fail before transport" )
     CHECK_FALSE( countResult );
     CHECK( countResult.failure == rw::RedisFailure::Config );
 
-    std::vector<std::vector<std::string>> tooLarge{ { "SET", "key", std::string( 8u * 1024u * 1024u, 'x' ) } };
+    std::vector<std::vector<std::string>> tooLarge{ { "SET", "key", std::string( 64u * 1024u * 1024u + 4096u, 'x' ) } };
     const rw::RedisResult sizeResult = client.pipeline( tooLarge );
     CHECK_FALSE( sizeResult );
     CHECK( sizeResult.failure == rw::RedisFailure::Config );
@@ -193,8 +193,8 @@ TEST_CASE( "outbound batch ceilings fail before transport" )
 
 TEST_CASE( "outbound encoder validates projected size before copying payloads" )
 {
-    constexpr std::size_t ceiling = 8u * 1024u * 1024u;
-    constexpr std::size_t oneArgumentFraming = 16;
+    constexpr std::size_t ceiling = 64u * 1024u * 1024u + 4096u;
+    constexpr std::size_t oneArgumentFraming = 17;
     const std::string exact( ceiling - oneArgumentFraming, 'x' );
     const std::string over( ceiling - oneArgumentFraming + 1, 'y' );
     std::size_t encodedSize = 0;

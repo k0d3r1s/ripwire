@@ -1175,7 +1175,7 @@ std::optional<int> runMergeScout( const MainDispatch& d )
             std::fprintf( stderr, "ripwire: --merge-scout needs REF[,REF...] (e.g. --merge-scout=branchA,branchB)\n" );
             return 1;
         }
-        const mergescout::ScoutResult result = mergescout::computeMergeScout( root, cfg.mergeScout, ing, cfg.excludes, cfg.maxFileBytes );
+        const mergescout::ScoutResult result = mergescout::computeMergeScout( root, cfg.mergeScout, ing, cfg.excludes, cfg.maxFileBytes, d.cache );
         if( !result.ok )
         {
             // X9(a): a non-git root gets its OWN message — there is no offending ref to name, and "unknown
@@ -1350,14 +1350,14 @@ std::optional<int> runPlanLanes( const MainDispatch& d )
 // including the same stderr note, which is exactly the clone this repo's own --quality-delta flags. The
 // caller OWNS the returned index and must outlive every view of it (both handlers keep it on the stack for
 // the whole compute-then-write sequence). `verbNote` names what degrades, so the message stays specific.
-rw::gitoracle::HistoryIndex buildHistoryIndex( const rw::Config& cfg, const std::string& root, const char* verbNote )
+rw::gitoracle::HistoryIndex buildHistoryIndex( const rw::Config& cfg, const std::string& root, const char* verbNote, const rw::CacheContext& cache )
 {
     if( !cfg.withHistory )
     {
         return {};
     }
 
-    rw::gitoracle::HistoryIndex idx = rw::gitoracle::probeNameHistory( root );
+    rw::gitoracle::HistoryIndex idx = rw::gitoracle::probeNameHistory( root, cache );
     if( idx.nonGitRoot )
     {
         std::fprintf( stderr, "ripwire: --with-history: %s has no git history — %s\n", root.c_str(), verbNote );
@@ -1627,7 +1627,7 @@ std::optional<int> runCrossRef( const MainDispatch& d )
         // --with-history: ONE git-history walk (memoized per repo+HEAD sha), giving --whereis the lane a tree
         // scan structurally cannot have — whether HEAD's history ever REMOVED this name. Owned here, in the
         // handler, so the index outlives both the compute and the write that hold non-owning views of it.
-        const gitoracle::HistoryIndex history = buildHistoryIndex( cfg, root, "the fate lane reports probed=\"0\"" );
+        const gitoracle::HistoryIndex history = buildHistoryIndex( cfg, root, "the fate lane reports probed=\"0\"", d.cache );
 
         // §A7: HEAD's rows are documented as the PARSED answer, so hand the tree scan what the index knows.
         const std::vector<crossref::IndexDefSite> indexDefs = whereisIndexDefSites( d.ing, whereisSel, root );
@@ -1671,7 +1671,7 @@ std::optional<int> runDocDrift( const MainDispatch& d )
     // rot). Owned here so both the compute and the write hold non-owning views; without the flag this is an
     // empty index and a nullptr, which is byte-for-byte the pre-flag behaviour.
     const gitoracle::HistoryIndex history =
-        buildHistoryIndex( d.cfg, d.root, "the mention lane falls back to why=\"undefined\"" );
+        buildHistoryIndex( d.cfg, d.root, "the mention lane falls back to why=\"undefined\"", d.cache );
 
     const docdrift::DriftResult result = docdrift::computeDocDrift( d.ing, d.root, d.cfg.excludes, d.cfg.docDriftFilter,
                                                                     d.cfg.withHistory ? &history : nullptr );

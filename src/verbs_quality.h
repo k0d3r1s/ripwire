@@ -67,7 +67,7 @@ struct RefPairDelta
 // (already reported on stderr), or nullopt when `out` is ready to compare. Splitting user error from
 // environment failure is the same line --dmm's handler draws: a revision that does not resolve is a typo the
 // caller can fix, everything else is the machine.
-std::optional<int> loadRefPairDelta( const std::string& root, std::string_view spec, const rw::Config& cfg, RefPairDelta& out )
+std::optional<int> loadRefPairDelta( const std::string& root, std::string_view spec, const rw::Config& cfg, RefPairDelta& out, const rw::CacheContext& cache )
 {
     using namespace rw;
 
@@ -109,12 +109,12 @@ std::optional<int> loadRefPairDelta( const std::string& root, std::string_view s
     // DISTINCT tags — see quality::loadRefTree's header. Sharing one would make the target's extraction
     // delete the base tree out from under the clone detector, which reads file bytes off disk.
     out.sameRef = ( ref.baseSha == ref.targetSha );
-    if( !quality::loadRefTree( root, ref.baseSha, cfg.excludes, cfg.maxFileBytes, "qdpair-base", out.baseGuard, out.baseTree ) )
+    if( !quality::loadRefTree( root, ref.baseSha, cfg.excludes, cfg.maxFileBytes, "qdpair-base", out.baseGuard, out.baseTree, cache ) )
     {
         std::fprintf( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at %s\n", ref.baseSha.c_str() );
         return 1;
     }
-    if( !out.sameRef && !quality::loadRefTree( root, ref.targetSha, cfg.excludes, cfg.maxFileBytes, "qdpair-target", out.targetGuard, out.targetTree ) )
+    if( !out.sameRef && !quality::loadRefTree( root, ref.targetSha, cfg.excludes, cfg.maxFileBytes, "qdpair-target", out.targetGuard, out.targetTree, cache ) )
     {
         std::fprintf( stderr, "ripwire: --quality-delta: could not materialize or parse the tree at %s\n", ref.targetSha.c_str() );
         return 1;
@@ -172,7 +172,7 @@ std::optional<int> resolveDeltaBasis( const MainDispatch& d, const std::string& 
     // ── the REF-PAIR floor: two COMMITTED trees, neither of them the working tree ─────────────────────────
     if( !cfg.qualityDeltaRange.empty() )
     {
-        if( const std::optional<int> refused = loadRefPairDelta( root, cfg.qualityDeltaRange, cfg, refs ) )
+        if( const std::optional<int> refused = loadRefPairDelta( root, cfg.qualityDeltaRange, cfg, refs, d.cache ) )
         {
             return refused;
         }
@@ -192,7 +192,7 @@ std::optional<int> resolveDeltaBasis( const MainDispatch& d, const std::string& 
         out.healing = quality::healIdentity( out.baseSel.snapshot, out.acks, refs.target().ing, refs.target().g,
                                              out.deltaRoot, root, cfg.qualityAck, refs.rangeSpan );
         out.regs    = quality::computeDelta( refs.target().ing, refs.target().g, out.baseSel.snapshot,
-                                             out.deltaRoot, cfg.excludes, cfg.maxFileBytes, &out.registerMacroExcluded );
+                                             out.deltaRoot, cfg.excludes, cfg.maxFileBytes, &out.registerMacroExcluded, d.cache );
         return std::nullopt;
     }
 
@@ -223,7 +223,7 @@ std::optional<int> resolveDeltaBasis( const MainDispatch& d, const std::string& 
     out.baseSel   = quality::selectBaseline( root, baselineFile, /*removeStaleFile=*/true );
     if( !out.baseSel.isSidecarHonored() )
     {
-        auto [ headSnap, ok ] = computeHeadSnapshot( root, nullptr, cfg.maxFileBytes, cfg.excludes );
+        auto [ headSnap, ok ] = computeHeadSnapshot( root, nullptr, cfg.maxFileBytes, cfg.excludes, d.cache );
         if( !ok )
         {
             // w1 MED: this used to say "no <file>" in BOTH cases — factually false when the file is a STALE
@@ -251,7 +251,7 @@ std::optional<int> resolveDeltaBasis( const MainDispatch& d, const std::string& 
     out.acks    = quality::readAckRecords( quality::acksPath( root ), out.acksBadLines );
     out.healing = quality::healIdentity( out.baseSel.snapshot, out.acks, d.ing, d.g,
                                          std::string( cfg.rootPath ), root, cfg.qualityAck );
-    out.regs = quality::computeDelta( d.ing, d.g, out.baseSel.snapshot, cfg.rootPath, cfg.excludes, cfg.maxFileBytes, &out.registerMacroExcluded );
+    out.regs = quality::computeDelta( d.ing, d.g, out.baseSel.snapshot, cfg.rootPath, cfg.excludes, cfg.maxFileBytes, &out.registerMacroExcluded, d.cache );
     return std::nullopt;
 }
 
@@ -882,7 +882,7 @@ DirtyPinVerdict inspectDirtyBaselinePin( const MainDispatch& d, const std::strin
     const std::string& root = d.root;
 
     DirtyPinVerdict verdict;
-    auto [ headSnap, ok ] = computeHeadSnapshot( root, nullptr, cfg.maxFileBytes, cfg.excludes );
+    auto [ headSnap, ok ] = computeHeadSnapshot( root, nullptr, cfg.maxFileBytes, cfg.excludes, d.cache );
     if( !ok )
     {
         return verdict;   // no HEAD tree to compare against — nothing can be absorbed, so nothing is claimed
@@ -890,7 +890,7 @@ DirtyPinVerdict inspectDirtyBaselinePin( const MainDispatch& d, const std::strin
     gtl::btree_map<std::string, quality::AckRecord> acks = quality::readAckRecords( acksFile );
     quality::healIdentity( headSnap, acks, d.ing, d.g, std::string( cfg.rootPath ), root, /*wantContentIds=*/false );
     std::vector<quality::Regression> regs =
-        quality::computeDelta( d.ing, d.g, headSnap, cfg.rootPath, cfg.excludes, cfg.maxFileBytes );
+        quality::computeDelta( d.ing, d.g, headSnap, cfg.rootPath, cfg.excludes, cfg.maxFileBytes, nullptr, d.cache );
     quality::applyAckRatchet( regs, acks );
 
     for( const quality::Regression& r : regs )
@@ -2034,7 +2034,7 @@ std::optional<int> runEditCheck( const MainDispatch& d )
             return 1;
         }
         const rw::editpreview::Outcome preview = rw::editpreview::run( ing, d.g, d.root, cfg.maxFileBytes, cfg.excludes,
-                                                                        d.valueUses, cfg.editCheckSym, focus, payload, d.notesPtr );
+                                                                        d.valueUses, cfg.editCheckSym, focus, payload, d.notesPtr, d.cache );
         if( !preview.ok )
         {
             std::fprintf( stderr, "ripwire: --edit-check --dry-run: %s\n", preview.message.c_str() );
@@ -2044,7 +2044,7 @@ std::optional<int> runEditCheck( const MainDispatch& d )
         return 0;
     }
 
-    const std::string xml = editCheckBundleText( ing, d.g, d.root, cfg.maxFileBytes, cfg.excludes, focus, d.notesPtr );
+    const std::string xml = editCheckBundleText( ing, d.g, d.root, cfg.maxFileBytes, cfg.excludes, focus, d.notesPtr, false, d.cache );
     std::fwrite( xml.data(), 1, xml.size(), stdout );
     return 0;
 }

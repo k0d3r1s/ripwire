@@ -303,7 +303,7 @@ IngestResult ingest( const char* rootDir, const std::vector<std::string>& exclud
     // ── doc post-pass (P1-B): every collected document file (notebook/html/csv/…) becomes a docText
     //    override + one whole-file Section node — parallel extract, deterministic ascending-fileId merge
     //    (ingest_docpass.h, with the markitdown-bridge byte cache).
-    runDocPostPass( result, raw.defs, backend != CacheBackendKind::Disabled, captureValueUses );
+    runDocPostPass( result, raw.defs, backend != CacheBackendKind::Disabled, captureValueUses, cacheContext );
 
     PROFILE_SCOPE_DESCRIBE( "ingest: build model (dedup + symbols/refs)" );
 

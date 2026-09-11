@@ -28,39 +28,45 @@ namespace rw
 // cacheEnabled=false (--no-cache) bypasses the sidecar entirely. tmpKey keeps concurrent workers'
 // unpublished temp files distinct; the publish itself is a whole-file rename, so a concurrent
 // reader sees every byte or none.
-inline std::string docTextViaBridgeCache( const std::string& path, const std::string& ext, bool cacheEnabled, std::uint32_t tmpKey )
+inline void storeDocBridgeBlob( const CacheContext& cache, const CacheBlobAddress& address, const std::string& text, std::uint32_t tmpKey )
 {
-    std::string text;
-    std::string bridgeBlobPath;
-    if( cacheEnabled && docparse::docKindOf( ext ) == docparse::DocKind::Markitdown )
+    if( !quality::fileCacheEnabled( cache ) )
     {
-        std::string docBytes;
-        if( docparse::detail::readWholeFile( path, docBytes ) )
-        {
-            char blobName[ 64 ];
-            std::snprintf( blobName, sizeof( blobName ), "ripwire-docmd-%016llx.bin",
-                           static_cast<unsigned long long>( fnv1a64( docBytes ) ) );
-            bridgeBlobPath = quality::resolveCacheBlobPath( quality::cacheDirLadder(), blobName );
-            docparse::detail::readWholeFile( bridgeBlobPath, text );   // miss ⇒ text stays empty
-        }
+        storeCacheBlob( cache, address, text );
+        return;
+    }
+    if( address.localPath.empty() ) { return; }
+    const std::string tmp = address.localPath + ".tmp" + std::to_string( tmpKey );
+    std::FILE* fp = std::fopen( tmp.c_str(), "wb" );
+    if( fp == nullptr ) { return; }
+    const bool wroteAll = std::fwrite( text.data(), 1, text.size(), fp ) == text.size();
+    std::fclose( fp );
+    if( !wroteAll || std::rename( tmp.c_str(), address.localPath.c_str() ) != 0 ) { std::remove( tmp.c_str() ); }
+}
+
+inline std::string docTextViaBridgeCache( const std::string& path, const std::string& ext, bool cacheEnabled, std::uint32_t tmpKey,
+                                         const CacheContext& cache = {} )
+{
+    if( !cacheEnabled || docparse::docKindOf( ext ) != docparse::DocKind::Markitdown ) { return docparse::parseDocFile( path, ext ); }
+    std::string docBytes;
+    if( !docparse::detail::readWholeFile( path, docBytes ) ) { return docparse::parseDocFile( path, ext ); }
+    CacheBlobAddress address{ CacheBlobFamily::DocumentExtraction, 1, kArtifactArch, ext + ":" + redisKeyHash( docBytes ), {} };
+    std::string text;
+    if( quality::fileCacheEnabled( cache ) )
+    {
+        char blobName[ 64 ];
+        std::snprintf( blobName, sizeof( blobName ), "ripwire-docmd-%016llx.bin", static_cast<unsigned long long>( fnv1a64( docBytes ) ) );
+        address.localPath = quality::resolveCacheBlobPath( quality::cacheDirLadder(), blobName );
+        docparse::detail::readWholeFile( address.localPath, text );
+    }
+    else
+    {
+        (void)probeCacheBlob( cache, address, text );
     }
     if( text.empty() )
     {
         text = docparse::parseDocFile( path, ext );
-        if( !text.empty() && !bridgeBlobPath.empty() )
-        {
-            const std::string tmp = bridgeBlobPath + ".tmp" + std::to_string( tmpKey );
-            std::FILE* fp = std::fopen( tmp.c_str(), "wb" );
-            if( fp != nullptr )
-            {
-                const bool wroteAll = std::fwrite( text.data(), 1, text.size(), fp ) == text.size();
-                std::fclose( fp );
-                if( !wroteAll || std::rename( tmp.c_str(), bridgeBlobPath.c_str() ) != 0 )
-                {
-                    std::remove( tmp.c_str() );
-                }
-            }
-        }
+        if( !text.empty() ) { storeDocBridgeBlob( cache, address, text, tmpKey ); }
     }
     return text;
 }
@@ -72,7 +78,7 @@ namespace
 //    record it as the docText override + add ONE whole-file Section node so the doc is rankable + recall-
 //    able. Runs OUTSIDE the parse cache (after saveCache, before id-assignment) and is a pure function of
 //    the bytes, so a WARM run reproduces it byte-for-byte — the determinism contract holds for docs too.
-inline void runDocPostPass( IngestResult& result, std::vector<RawDef>& rawDefs, bool cacheEnabled, bool captureValueUses )
+inline void runDocPostPass( IngestResult& result, std::vector<RawDef>& rawDefs, bool cacheEnabled, bool captureValueUses, const CacheContext& cache )
 {
     PROFILE_SCOPE_DESCRIBE( "ingest: doc post-pass (extract notebooks/html/csv)" );
 
@@ -133,7 +139,7 @@ inline void runDocPostPass( IngestResult& result, std::vector<RawDef>& rawDefs, 
                         const std::uint32_t fid = docIds[ di ];
                         const std::string   ext = lowerExtensionOf( result.files[ fid ] );
 
-                        std::string text = docTextViaBridgeCache( result.files[ fid ], ext, cacheEnabled, fid );
+                        std::string text = docTextViaBridgeCache( result.files[ fid ], ext, cacheEnabled, fid, cache );
                         if( !text.empty() )
                         {
                             if( captureValueUses )

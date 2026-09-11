@@ -3,6 +3,7 @@
 #include "cache_backend.h"
 
 #include <cstdint>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -12,6 +13,10 @@ namespace rw
 
 enum class RedisReplyType : std::uint8_t { Simple, Error, Integer, Bulk, Nil, Array };
 enum class RedisFailure : std::uint8_t { None, Config, Connect, Timeout, Protocol, Auth, ClusterRedirect, Server };
+
+extern std::atomic<bool> redisCacheWarningIssued;
+extern std::atomic<unsigned> redisCacheFailureClasses;
+void redisIngestDegraded( RedisFailure failure = RedisFailure::Protocol );
 
 struct RedisReply
 {

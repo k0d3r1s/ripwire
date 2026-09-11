@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Reporters intentionally record failures in `fail`; their boolean chains are not control-flow branches.
+# shellcheck disable=SC2015
 # headsnapcachecheck.sh — gate for A4-P1: --quality-delta's git-HEAD snapshot ingest is CACHED, keyed so it
 # can NEVER serve stale/mismatched facts, and the cache is portable across the per-run tmp root.
 #
@@ -55,8 +57,7 @@ fi
 snapfiles(){ find "$CACHEDIR" -maxdepth 2 -type f -name 'ripwire-qheadsnap-*.bin' 2>/dev/null; }
 nsnap(){ snapfiles | wc -l | tr -d ' '; }
 # run against $REPO with the private cache dir and a HEAD-snapshot cache enabled (auto path is internal to
-# computeHeadSnapshot; --no-cache only disables the WORKING-tree auto-cache, not the HEAD-snapshot cache — so
-# the HEAD cache is exercised even here, which is exactly what A4-P1 added).
+# computeHeadSnapshot. Cache-reuse arms select File; --no-cache controls disable both layers.
 run(){ env -u TMPDIR XDG_CACHE_HOME="$XDG" "$BIN" "$REPO" --quality-delta "$@"; }
 
 mkdir -p "$REPO/src" "$REPO/tests"
@@ -74,12 +75,12 @@ git -C "$REPO" add -A; git -C "$REPO" commit -qm init
 echo "headsnapcachecheck: BIN=$BIN"
 
 # ── (a) equivalence + reuse (unchanged HEAD == working tree, 0 regressions) ───────────────────────────────
-run --no-cache >"$TMP/a1" 2>/dev/null; rc1=$?
+run >"$TMP/a1" 2>/dev/null || no "cold quality-delta failed"
 SF="$( snapfiles | head -1 )"
 [ -n "$SF" ] && ok "run 1 creates a HEAD-snapshot cache file" || no "no ripwire-qheadsnap-*.bin after run 1"
 I1="$( [ -n "$SF" ] && inode_of "$SF" )"
 
-run --no-cache >"$TMP/a2" 2>/dev/null; rc2=$?
+run >"$TMP/a2" 2>/dev/null || no "warm quality-delta failed"
 diff -q "$TMP/a1" "$TMP/a2" >/dev/null \
     && ok "run 2 byte-identical to run 1 (cached == uncached output)" \
     || { no "cached output diverges from run 1"; diff "$TMP/a1" "$TMP/a2" | head -6; }
@@ -112,7 +113,7 @@ int mainThing( int y ) {
 }
 EOF
 git -C "$REPO" add -A; git -C "$REPO" commit -qm "grow mainThing" >/dev/null
-run --no-cache >"$TMP/b1" 2>/dev/null; rcb=$?
+run >"$TMP/b1" 2>/dev/null; rcb=$?
 { [ "$rcb" -eq 0 ] && grep -q 'regressions="0"' "$TMP/b1"; } \
     && ok "new HEAD commit: fresh snapshot, 0 regressions (no stale reuse of old HEAD)" \
     || { no "stale HEAD snapshot reused after a new commit (exit=$rcb)"; grep -oE 'regressions="[0-9]+"' "$TMP/b1"; }
@@ -122,7 +123,7 @@ run --no-cache >"$TMP/b1" 2>/dev/null; rcb=$?
 
 # ── (c) key separation on --exclude (A4-F5 stays correct) ─────────────────────────────────────────────────
 before="$( nsnap )"
-run --exclude=tests --no-cache >"$TMP/c1" 2>/dev/null; rcc=$?
+run --exclude=tests >"$TMP/c1" 2>/dev/null; rcc=$?
 { [ "$rcc" -eq 0 ] && ! grep -q 'kind="dead-code"' "$TMP/c1"; } \
     && ok "--exclude=tests: exit 0, no phantom dead-code (A4-F5 correct, separate key)" \
     || { no "--exclude=tests wrong (exit=$rcc)"; grep -oE 'regressions="[0-9]+"|kind="[^"]+"' "$TMP/c1" | head; }
@@ -135,7 +136,7 @@ after="$( nsnap )"
 mkdir -p "$TMP/coldxdg2"
 env -u TMPDIR XDG_CACHE_HOME="$TMP/coldxdg2" "$BIN" "$REPO" --quality-delta --no-cache >"$TMP/d_truth" 2>/dev/null
 for f in $( snapfiles ); do printf 'GARBAGE-not-a-valid-cache-blob-\x00\x01\x02' > "$f"; done
-run --no-cache >"$TMP/d1" 2>/dev/null; rcd=$?
+run >"$TMP/d1" 2>/dev/null; rcd=$?
 diff -q "$TMP/d1" "$TMP/d_truth" >/dev/null \
     && ok "corrupt cache degrades to cold parse — output byte-identical (degrade-don't-crash)" \
     || { no "corrupt cache changed the output (exit=$rcd)"; diff "$TMP/d_truth" "$TMP/d1" | head -6; }
@@ -144,7 +145,7 @@ diff -q "$TMP/d1" "$TMP/d_truth" >/dev/null \
 for i in 1 2 3 4 5; do
     echo "// churn $i" >> "$REPO/src/lib.cpp"
     git -C "$REPO" add -A; git -C "$REPO" commit -qm "churn $i" >/dev/null
-    run --no-cache >/dev/null 2>/dev/null
+    run >/dev/null 2>/dev/null
 done
 # no-exclude runs share one key group; count only those (exclude=tests group adds its own capped set).
 # Y4: shard-aware lookup

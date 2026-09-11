@@ -512,6 +512,7 @@ struct MainDispatch
     const GrepScanPhases*                 grepPhases = nullptr;   // §P4.1: prefetched grep scan (nullptr ⇒ compute inline)
     bool                                   valueUses  = false;     // card A1: the captureValueUses this run's ingest actually used, so the
                                                                     //   pre-apply preview re-parses its one spliced file the SAME way
+    rw::CacheContext                      cache;
 };
 
 }   // namespace — part 1: the shared preamble helpers + the verb-dispatch context
@@ -2907,6 +2908,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
 
     const std::shared_ptr<const CachePolicy> cachePolicy = resolveDispatchCachePolicy( cfg );
     if( !cachePolicy ) { return 1; }
+    mcpUseCachePolicy( cachePolicy );   // CLI batch/edit bridges use the same immutable operation policy.
 
     // L2: --json refuses LOUDLY for any verb it doesn't (yet) support — see jsonUnsupportedVerb's ALLOW-list
     // rationale. Checked before ANY dispatch — including the CLI edit bridge below, which used to run AHEAD of
@@ -3430,7 +3432,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
             }
 
             subs.push_back( runBatchSub( root, rw::batchObjectFromCliSpec( line ), cfg.topK, cfg.stable, rp,
-                                         cfg.legend == "compact" ) );
+                                         cfg.legend == "compact", mcpOperationCache( root, cachePolicy ) ) );
         }
 
         // M1 (terminality round A): --batch --legend=compact reached the batch envelope's own legend and
@@ -3711,7 +3713,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
     // §P4.1 — the grep scan runs ALONGSIDE the graph build; verbs_grep.h's startGrepScanPrefetch owns every
     // condition and the degrade path, and is handed §B11.4's own dispatch winner rather than a guess.
     GrepScanPhases    grepPhases;
-    std::thread       grepPhaseWorker = startGrepScanPrefetch( cfg, ing, verbPrec.winner, grepPhases );
+    std::thread       grepPhaseWorker = startGrepScanPrefetch( cfg, ing, verbPrec.winner, grepPhases, cacheContexts[0] );
     const Graph       g               = buildGraph( ing, scipPtr, !cfg.pinCensus.empty() );
     joinGrepScanPrefetch( grepPhaseWorker );
 
@@ -3791,7 +3793,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
                     std::vector<std::vector<std::uint32_t>> part =
                         quality::gitCoChangeAndChurnCached( ws[r].arg, ing, "18 months ago", 30,
                                              cfg.forTask.empty() ? 0u : 12u,
-                                             cfg.forTask.empty() ? nullptr : &rootChurn, r );
+                                             cfg.forTask.empty() ? nullptr : &rootChurn, r, cacheContexts[r] );
                     for( std::vector<std::uint32_t>& c : part )
                     {
                         commits.push_back( std::move( c ) );
@@ -3814,7 +3816,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
                 // Y2: memoized — see the multi-root branch above.
                 commits = quality::gitCoChangeAndChurnCached( root, ing, "18 months ago", 30,
                                                cfg.forTask.empty() ? 0u : 12u,
-                                               cfg.forTask.empty() ? nullptr : &forChurn );
+                                               cfg.forTask.empty() ? nullptr : &forChurn, UINT32_MAX, cacheContexts[0] );
             }
             if( !commits.empty() )
             {
@@ -3882,7 +3884,7 @@ static int dispatchMain( const rw::Config& cfg, char** argv )
     // Phase B7.2: bundle the shared post-graph state; each verb handler below reads what it needs.
     const MainDispatch dsp{ cfg, ing, g, root, multiRoot, ws, fanIn, fanInPtr, qmetrics,
                            ampPtr, cboPtr, testedPtr, lcom4Ptr, impurePtr, forChurn, redactCounts, redactPtr, notesPtr,
-                           grepPhases.valid ? &grepPhases : nullptr, needsValueUses };
+                           grepPhases.valid ? &grepPhases : nullptr, needsValueUses, cacheContexts[0] };
 
     if( std::optional<int> handled = runForLens( dsp ) )
     {

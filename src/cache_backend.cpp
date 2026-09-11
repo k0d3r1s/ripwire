@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
@@ -11,9 +12,44 @@
 #include <optional>
 #include <string>
 #include <system_error>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace rw
 {
+
+int readCacheFileBlob( const std::string& path, std::string& bytes )
+{
+    // Reject non-regular paths explicitly: opening directories differs between Linux and macOS.
+    struct stat probe;
+    if( ::stat( path.c_str(), &probe ) != 0 || !S_ISREG( probe.st_mode ) ) { return 0; }
+    std::ifstream file( path, std::ios::binary | std::ios::ate );
+    if( !file ) { return 0; }
+    const std::streamsize size = file.tellg();
+    if( size <= 0 ) { return 0; }
+    bytes.resize( static_cast<std::size_t>( size ) );
+    file.seekg( 0 );
+    if( !file.read( bytes.data(), size ) ) { bytes.clear(); return 0; }
+    return 1;
+}
+
+bool atomicWriteCacheFile( const std::string& path, const std::string& bytes )
+{
+    static std::atomic<std::uint64_t> sequence{ 0 };
+    const std::string temporary = path + ".tmp." + std::to_string( ::getpid() )
+                                + "." + std::to_string( sequence.fetch_add( 1, std::memory_order_relaxed ) );
+    {
+        std::ofstream file( temporary, std::ios::binary | std::ios::trunc );
+        if( !file ) { return false; }
+        file.write( bytes.data(), static_cast<std::streamsize>( bytes.size() ) );
+        file.flush();
+        if( !file ) { std::error_code error; std::filesystem::remove( temporary, error ); return false; }
+    }
+    if( std::rename( temporary.c_str(), path.c_str() ) != 0 )
+    { std::error_code error; std::filesystem::remove( temporary, error ); return false; }
+    return true;
+}
+
 namespace
 {
 
