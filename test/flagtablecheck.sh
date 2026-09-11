@@ -61,16 +61,27 @@ ok( "read the tables from source: %d exact-match rows, %d + %d prefix-match rows
 # The anchor is the braced Allman form (the always-braces style landed 2026-08-03): the `continue` sits on
 # its own line below, so the bare condition line is the stable, unique marker for where the table scan ends.
 start = next( k for k, l in enumerate( L ) if l.strip() == "if( isTableFlag )" )
-end   = next( k for k, l in enumerate( L ) if "unknown flag '%.*s'" in l )
+# The diagnostic text lives in a helper BEFORE parseArgs. Bound the census at its call AFTER the
+# table dispatch; a global search for that text silently makes this slice empty after extraction.
+end   = next( k for k, l in enumerate( L ) if k > start and 'else { refuseUnknownFlag( a );' in l )
+handPattern = re.compile( r'^\s*(?:else )?if\(\s*(?:a == "(--[^"]*)"|startsWith\( a, "(--[^"]*)" \))' )
 hand  = []
 for l in L[ start : end + 1 ]:
-    m = re.match( r'^\s*(?:else )?if\(\s*(?:a == "(--[^"]*)"|startsWith\( a, "(--[^"]*)" \))', l )
+    m = handPattern.match( l )
     if m: hand.append( ( m.group( 1 ) or m.group( 2 ), "exact" if m.group( 1 ) else "prefix" ) )
 # A SCRAPE tripwire, not a ledger: the exact count is asserted against kHandWrittenFlagArms two blocks
 # down, and that assertion is the one that catches a dropped arm. This floor only fires when the regex above
 # has stopped matching arms at all. §B5 (capture-audit-4) moved 23 arms into kViewFlags, taking the residue
 # from 40 to 17 — so a floor of 20 would have failed on a correct change; it is now 12.
 [ ok, no ][ len( hand ) < 12 ]( "read %d hand-written arms from parseArgs" % len( hand ) )
+
+# Remove a real arm from a COPY and repeat the identical match: a dropped arm must move the census.
+handLines = L[ start : end + 1 ]
+mutated = [ l for l in handLines if 'else if( a == "--quality-ack" )' not in l ]
+if len( mutated ) == len( handLines ) - 1 and sum( bool( handPattern.match( l ) ) for l in mutated ) == len( hand ) - 1:
+    ok( "control: removing the real --quality-ack arm reduces the hand-written census by one" )
+else:
+    no( "control: removing --quality-ack did not move the census — extraction is not live" )
 
 # ── the ledger the static_assert pins must match what is actually in the file ─────────────────────────
 def konst( n ):
