@@ -11513,6 +11513,20 @@ docs/SUBSTITUTION_METER.md.
 feature code, and records the negative under this heading. Lane E below 80% or with task pass under native
 ships E1's exactness fix (a correctness fix, not a band) and nothing else from E2–E4.
 
+### Lane R corpus maintenance — measured 2026-09-11
+
+The q5 byte baseline in `test/forrankordercheck.sh` is now **9,769 B**, replacing the historical
+9,362 B above without changing the 4% ceiling or any ordering, file-location, dialect, fixture, note,
+mutation, or determinism assertion. The full release run at `5207b74e` caught 9,769 B against
+1.04 × 9,362 B. This is a corpus change, not an emitter regression: the pre-Redis binary built from
+`d41a0315` and the current binary emit **byte-identical 9,769 B** on the current tree (SHA-256
+`8f41ef2fe21741c2f4accdf5a54b5c24ebf5d9b84d929a79acdf773f2fe31caa`, working-tree stamp included).
+The current binary emits 9,269 B on the pre-feature corpus. Both outputs have 23 of 40 ranked rows;
+their order changes across these corpora: the optimization-triage entries move and `pageRankDouble`
+moves from seventh to sixth. That enters the six-row one-hop head and adds its 14-callee block, while the existing rank
+order remains strictly increasing. The other nine repository baselines and all nine fixed-fixture
+baselines remain unchanged. The original registration above is retained as historical evidence.
+
 ## `--connect`'s equal-distance join — informativeness before id, and the join's own disclosure — PRE-REGISTERED 2026-09-06 (after the RED gate at `52756446`, before any implementation code and before any number)
 
 **The defect, as measured by the round that commissioned this lane.** Over an **869-item population of

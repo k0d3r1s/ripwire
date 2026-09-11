@@ -17,7 +17,7 @@
 #   (2) every ranked row carries its file: p= on each <d> (and the JSON row's "p") — the <f> wrapper is
 #       gone, so the row itself must say where it lives (the --expand=FILE:NAME chain key needs it).
 #   (3) byte growth ≤ 4% against the sizes fixed in docs/EVALS.md ("Terminality round A", lane R): the ten
-#       reference queries on this repo (full legend, sizes at 8eb669ff) and nine fixture bundles measured on
+#       reference queries on this repo (full legend, sizes at 8eb669ff, with q5 remeasured 2026-09-11) and nine fixture bundles measured on
 #       the pre-fix binary (d5ac29a7, git-less copies so no at= stamp). p= costs ~20 B/row, a wrapper saved
 #       ~25–40 B/file; the ten repo bundles are CEILING-BOUND (est_tokens ≈ 4000), so growth there shows up
 #       as rows, not bytes — the arm prints shown= beside the bytes for that reason.
@@ -106,11 +106,14 @@ mcp_for(){ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name
 # ── corpora: this repo + three git-less fixture copies (no at= stamp, so sizes are reproducible) ──────────
 for fx in fixture ffifix hostilefix; do cp -R "$ROOT/test/$fx" "$TMP/$fx"; done
 
-# the ten reference queries, sizes registered in docs/EVALS.md ("Terminality round A", lane R; 8eb669ff)
+# The ten reference queries, registered in docs/EVALS.md ("Terminality round A", lane R; 8eb669ff).
+# q5 remeasured 2026-09-11: both pre-Redis d41a0315 and current binaries emit identical
+# 9769 B on the current corpus. pageRankDouble now ranks sixth rather than seventh,
+# entering the six-row hop head and adding its 14-callee block. The emitter did not change.
 REPO_Q=( "rank graph teleport" "compact legend rewrite" "edit receipt post-check" "substitution meter hook"
          "pagerank power iteration" "tree-sitter ingest cache" "merge scout conflict" "quality delta acks"
          "MCP manifest tools list" "test gate affected tests" )
-REPO_BASE=( 9981 9961 9784 9968 9362 9949 9909 9745 9613 9806 )
+REPO_BASE=( 9981 9961 9784 9968 9769 9949 9909 9745 9613 9806 )
 
 # ── (1)+(2) rank order + p= on every row, four dialects ───────────────────────────────────────────────────
 order_fail=0
@@ -140,7 +143,7 @@ FX_Q=( "geometry area of a shape" "call a native function from python" "parse th
 
 # ── (3) byte growth ≤ 4% against the registered sizes ─────────────────────────────────────────────────────
 growth_fail=0
-echo "  ledger: the ten reference queries (this repo, full legend) — base bytes @8eb669ff → now, shown=/total="
+echo "  ledger: the ten reference queries (this repo, full legend) — base bytes @8eb669ff (q5 remeasured 2026-09-11) → now, shown=/total="
 i=0
 for q in "${REPO_Q[@]}"; do
     base="${REPO_BASE[$i]}"; i=$(( i + 1 ))
