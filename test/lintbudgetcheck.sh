@@ -25,8 +25,19 @@ no(){ printf '  FAIL  %s\n' "$*"; fail=1; }
 [ -x "$BIN" ] || { echo "no ripwire binary at $BIN — build first"; exit 2; }
 echo "lintbudgetcheck: BIN=$BIN  ROOT=$ROOT"
 
-# ── ground truth: the same engine, one query at a time (--match has always had its own full budget)
-truth(){ "$BIN" "$ROOT" --match="$1" 2>/dev/null | grep -oE 'hits="[0-9]+"' | head -1 | grep -oE '[0-9]+'; }
+# ── ground truth: the same engine, one query at a time, projected onto lint's visible-row identity.
+# Lint deliberately collapses identical rule/path:line/enclosing-name/text rows. Two identical casts
+# on one line are two AST captures but one displayed finding; raw --match hits is the wrong unit.
+truth(){
+    "$BIN" "$ROOT" --match="$1" --limit=100000 2>/dev/null >"$TMP/truth.xml"
+    python3 - "$TMP/truth.xml" <<'PY'
+import sys, xml.etree.ElementTree as E
+r = E.parse(sys.argv[1]).getroot()
+rows = r.findall('.//m')
+assert r.get('hits_capped') == '0' and len(rows) == int(r.get('hits')), 'ground-truth capture stream is incomplete'
+print(len({(m.get('p'), m.get('in'), ''.join(m.itertext())) for m in rows}))
+PY
+}
 GOTO_TRUTH="$( truth '(goto_statement) @c' )"
 DOWH_TRUTH="$( truth '(do_statement) @c' )"
 CAST_TRUTH="$( truth '(cast_expression) @c' )"
