@@ -69,6 +69,8 @@ int main()
     assert( healthy.ok && healthy.attrs.find( " hint=" ) == std::string::npos && healthy.attrs.find( " failures=" ) == std::string::npos );
     assert( std::string_view( doctorRedisTransport( "redis://192.0.2.1:6379/2" ) ) == "remote_tcp" );
     assert( std::string_view( doctorRedisTransport( "redis://127.1.2.3:6379/2" ) ) == "loopback_tcp" );
+    assert( std::string_view( doctorRedisTransport( "redis://[0:0:0:0:0:0:0:1]:6379/2" ) ) == "loopback_tcp" );
+    assert( std::string_view( doctorRedisTransport( "redis://[2001:db8::1]:6379/2" ) ) == "remote_tcp" );
     assert( doctorRedisDatabase( "redis://localhost/02" ) == 2 );
     rw::CacheContext cache;
     cache.policy = std::make_shared<rw::CachePolicy>();
@@ -78,7 +80,7 @@ int main()
 }
 '''
     health_binary = scratch / "health-test"
-    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++23", "-I" + str(root / "src"), "-x", "c++", "-",
+    subprocess.run([os.environ.get("CXX", "c++"), "-std=c++23", "-I" + str(root / "src"), "-x", "c++", "-", str(root / "src/cache_backend.cpp"),
                     "-o", str(health_binary)], input=health_source, text=True, check=True)
     subprocess.run([str(health_binary)], check=True)
     print("  PASS  earlier failure classes, transport metadata, and entropy failure without any mutation")
@@ -87,10 +89,13 @@ int main()
     bindir = scratch / "bin"; bindir.mkdir(); (bindir / "ripwire").symlink_to(binary)
     state = stub.State("doctor_secret_username", "doctor_secret_password", None)
     tcp = stub.ThreadingTCPServer(("127.0.0.1", 0), stub.RedisHandler); tcp.state = state
+    class IPv6Server(stub.ThreadingTCPServer):
+        address_family = socket.AF_INET6
+    tcp6 = IPv6Server(("::1", 0), stub.RedisHandler); tcp6.state = state
     # Unix path stays below the platform sockaddr_un limit, including Darwin's private temp prefix.
     unix_path = str(scratch / "doctor_secret_socket")
     unix = stub.ThreadingUnixServer(unix_path, stub.RedisHandler); unix.state = state
-    servers = [tcp, unix]
+    servers = [tcp, tcp6, unix]
     for server in servers: threading.Thread(target=server.serve_forever, daemon=True).start()
     env = {k: v for k, v in os.environ.items() if not k.startswith("RIPWIRE_REDIS_") and k != "RIPWIRE_CACHE_BACKEND"}
     env.update(RIPWIRE_REDIS_URL=f"redis://127.0.0.1:{tcp.server_address[1]}/2",
@@ -146,6 +151,10 @@ int main()
         assert all(c[1] == key for c in commands[2:]), commands
         assert commands[4] == [b"EXPIRE", key, b"5"] and commands[5] == [b"DEL", key]
         assert stub.state_live(state, 2, key) is None
+        for host in ("::1", "0:0:0:0:0:0:0:1", "0000:0000:0000:0000:0000:0000:0000:0001"):
+            ipv6, _ = run(overrides={"RIPWIRE_REDIS_URL": f"redis://[{host}]:{tcp6.server_address[1]}/2"})
+            assert ipv6["transport"] == "loopback_tcp" and ipv6["scope"] == healthy["scope"]
+        print("  PASS  compressed and expanded IPv6 loopback probe without remote opt-in")
         same, again = run()
         assert same["scope"] == healthy["scope"] and again[1][1] != key
         changed, _ = run(overrides={"RIPWIRE_REDIS_NAMESPACE": "different_namespace"})

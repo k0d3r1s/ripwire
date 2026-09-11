@@ -10,7 +10,6 @@
 // top-of-file #includes and preamble helpers. The RIPWIRE_MAIN_TU guard turns a second includer into
 #include "gitstamp.h"          // isShallow — the git row's shallow="1" (2026-09-06 stranger audit)
 #include "redis_client.h"
-#include <arpa/inet.h>
 #include <sys/random.h>
 #include <unistd.h>
 // a compile error instead of a silent per-TU-copy ODR trap.
@@ -687,12 +686,8 @@ inline const char* doctorRedisTransport( const std::string& endpoint )
     if( endpoint.starts_with( "redis+unix://" ) ) { return "unix"; }
     // The policy has already validated the URL. Classify its host without ever emitting it.
     const std::string_view rest = std::string_view( endpoint ).substr( 8 );
-    if( rest.starts_with( "[::1]" ) ) { return "loopback_tcp"; }
-    std::string host( rest.substr( 0, rest.find_first_of( ":/" ) ) );
-    std::ranges::transform( host, host.begin(), []( unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
-    in_addr address{};
-    const bool loopback = host == "localhost" || ( ::inet_pton( AF_INET, host.c_str(), &address ) == 1 && ( ntohl( address.s_addr ) >> 24 ) == 127 );
-    return loopback ? "loopback_tcp" : "remote_tcp";
+    const std::size_t hostEnd = rest.starts_with( '[' ) ? rest.find( ']' ) + 1 : rest.find_first_of( ":/" );
+    return rw::redisHostIsLoopback( std::string( rest.substr( 0, hostEnd ) ) ) ? "loopback_tcp" : "remote_tcp";
 }
 
 inline std::uint32_t doctorRedisDatabase( const std::string& endpoint )

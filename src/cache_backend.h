@@ -76,5 +76,6 @@ bool cacheContextForRoot( std::shared_ptr<const CachePolicy> policy, std::string
                           bool captureValueUses, CacheContext& out, std::string& error );
 std::string redisProjectIdentity( std::string_view root, std::string_view overrideValue, std::string& error );
 std::string redisKeyHash( std::string_view value );
+bool redisHostIsLoopback( std::string host );
 
 }

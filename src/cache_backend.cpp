@@ -1,6 +1,7 @@
 #include "cache_backend.h"
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <array>
 #include <atomic>
 #include <cctype>
@@ -122,39 +123,6 @@ bool parseDatabase( const std::string_view value ) noexcept
     return result.ec == std::errc() && result.ptr == value.data() + value.size();
 }
 
-bool isLoopbackHost( std::string host )
-{
-    std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
-    if( host == "localhost" || host == "[::1]" )
-    {
-        return true;
-    }
-    if( !host.starts_with( "127." ) )
-    {
-        return false;
-    }
-    unsigned partCount = 0;
-    std::size_t begin = 0;
-    while( begin <= host.size() )
-    {
-        const std::size_t end = host.find( '.', begin );
-        const std::string_view part( host.data() + begin, ( end == std::string::npos ? host.size() : end ) - begin );
-        unsigned value = 0;
-        const auto result = std::from_chars( part.data(), part.data() + part.size(), value );
-        if( part.empty() || result.ec != std::errc() || result.ptr != part.data() + part.size() || value > 255 )
-        {
-            return false;
-        }
-        ++partCount;
-        if( end == std::string::npos )
-        {
-            break;
-        }
-        begin = end + 1;
-    }
-    return partCount == 4;
-}
-
 bool validateTcpEndpoint( const std::string_view endpoint, const bool allowRemote, std::string& error )
 {
     const std::string_view rest = endpoint.substr( 8 );
@@ -222,7 +190,7 @@ bool validateTcpEndpoint( const std::string_view endpoint, const bool allowRemot
         error = "invalid RIPWIRE_REDIS_URL: port is empty";
         return false;
     }
-    if( !allowRemote && !isLoopbackHost( std::string( host ) ) )
+    if( !allowRemote && !redisHostIsLoopback( std::string( host ) ) )
     {
         error = "RIPWIRE_REDIS_URL selects plaintext TCP outside loopback; set RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1 only for a trusted private transport";
         return false;
@@ -543,6 +511,38 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
     return host + ( port.empty() ? std::string() : ":" + port ) + "/" + path;
 }
 
+}
+
+// One lexical host classification for policy validation and diagnostic labels. Transport still
+// checks every resolved address and the connected peer independently before sending credentials.
+bool redisHostIsLoopback( std::string host )
+{
+    std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+    if( host == "localhost" ) { return true; }
+    if( host.starts_with( '[' ) && host.ends_with( ']' ) )
+    {
+        const std::string literal = host.substr( 1, host.size() - 2 );
+        in6_addr address{};
+        return ::inet_pton( AF_INET6, literal.c_str(), &address ) == 1 && IN6_IS_ADDR_LOOPBACK( &address );
+    }
+    if( !host.starts_with( "127." ) ) { return false; }
+    unsigned partCount = 0;
+    std::size_t begin = 0;
+    while( begin <= host.size() )
+    {
+        const std::size_t end = host.find( '.', begin );
+        const std::string_view part( host.data() + begin, ( end == std::string::npos ? host.size() : end ) - begin );
+        unsigned value = 0;
+        const auto result = std::from_chars( part.data(), part.data() + part.size(), value );
+        if( part.empty() || result.ec != std::errc() || result.ptr != part.data() + part.size() || value > 255 )
+        {
+            return false;
+        }
+        ++partCount;
+        if( end == std::string::npos ) { break; }
+        begin = end + 1;
+    }
+    return partCount == 4;
 }
 
 std::string redisKeyHash( const std::string_view value )

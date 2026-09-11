@@ -121,18 +121,36 @@ unset_redis()
 }
 
 unset_redis
-[ "$( "$UNIT" policy 0 0 '' '' )" = 'file' ] && ok "default policy is filesystem" || no "default policy is not filesystem"
-[ "$( "$UNIT" policy 1 1 redis redis )" = 'disabled' ] && ok "--no-cache wins over explicit and environment Redis" || no "--no-cache precedence is wrong"
-[ "$( "$UNIT" policy 0 1 ./redis redis )" = $'file\n./redis' ] && ok "./redis remains a file path" || no "./redis did not resolve as a file"
+if [ "$( "$UNIT" policy 0 0 '' '' )" = 'file' ]; then ok "default policy is filesystem"; else no "default policy is not filesystem"; fi
+if [ "$( "$UNIT" policy 1 1 redis redis )" = 'disabled' ]; then ok "--no-cache wins over explicit and environment Redis"; else no "--no-cache precedence is wrong"; fi
+if [ "$( "$UNIT" policy 0 1 ./redis redis )" = $'file\n./redis' ]; then ok "./redis remains a file path"; else no "./redis did not resolve as a file"; fi
 
 export RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_NAMESPACE='unit-space' RIPWIRE_REDIS_PROJECT='unit-project'
-[ "$( "$UNIT" policy 0 1 redis '' )" = 'redis' ] && ok "explicit Redis activation resolves" || no "explicit Redis activation did not resolve"
-[ "$( "$UNIT" policy 0 0 '' redis )" = 'redis' ] && ok "environment Redis activation resolves" || no "environment Redis activation did not resolve"
-[ "$( "$UNIT" policy 0 1 "$TMP/explicit.bin" redis )" = $'file\n'"$TMP/explicit.bin" ] && ok "explicit file wins over environment Redis" || no "explicit file precedence is wrong"
+if [ "$( "$UNIT" policy 0 1 redis '' )" = 'redis' ]; then ok "explicit Redis activation resolves"; else no "explicit Redis activation did not resolve"; fi
+if [ "$( "$UNIT" policy 0 0 '' redis )" = 'redis' ]; then ok "environment Redis activation resolves"; else no "environment Redis activation did not resolve"; fi
+if [ "$( "$UNIT" policy 0 1 "$TMP/explicit.bin" redis )" = $'file\n'"$TMP/explicit.bin" ]; then ok "explicit file wins over environment Redis"; else no "explicit file precedence is wrong"; fi
+
+# Numerically equivalent loopback literals must not require the remote-plaintext opt-in.
+for host in localhost LOCALHOST 127.1.2.3 '[::1]' '[0:0:0:0:0:0:0:1]' '[0000:0000:0000:0000:0000:0000:0000:0001]'; do
+    if [ "$( RIPWIRE_REDIS_URL="redis://$host:6379/2" "$UNIT" policy 0 1 redis '' 2>"$TMP/loopback.err" )" = 'redis' ]; then
+        ok "numeric loopback accepted without remote opt-in: $host"
+    else
+        no "loopback required remote opt-in: $host"
+    fi
+done
+for host in '[::2]' '[2001:db8::1]' '[::]' '[not-an-ipv6-address]' cache.example.invalid; do
+    if RIPWIRE_REDIS_URL="redis://$host:6379/2" "$UNIT" policy 0 1 redis '' >"$TMP/remote.out" 2>"$TMP/remote.err"; then
+        no "non-loopback accepted without remote opt-in: $host"
+    elif [ ! -s "$TMP/remote.out" ] && ! grep -qF "$host" "$TMP/remote.err"; then
+        ok "non-loopback still refused with categorical diagnostics: $host"
+    else
+        no "non-loopback refusal leaked endpoint: $host"
+    fi
+done
 
 HASHES="$( "$UNIT" hash-vectors )"
 EXPECTED=$'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\n59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138\n9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318\nb35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a\nffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb\n6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e'
-[ "$HASHES" = "$EXPECTED" ] && ok "SHA-256 vectors cover padding and multi-block boundaries with full lowercase output" || no "SHA-256 vectors differ"
+if [ "$HASHES" = "$EXPECTED" ]; then ok "SHA-256 vectors cover padding and multi-block boundaries with full lowercase output"; else no "SHA-256 vectors differ"; fi
 
 mkdir -p "$TMP/repo-a/src"
 printf 'int x;\n' > "$TMP/repo-a/src/x.cpp"
@@ -151,9 +169,9 @@ else
     no "project identity contains checkout-specific state"
 fi
 git -C "$TMP/repo-b" remote set-url origin 'git@example.com:Owner/Repo.git'
-[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and SCP-style remotes normalize identically" || no "supported remote forms normalize differently"
+if [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ]; then ok "HTTPS and SCP-style remotes normalize identically"; else no "supported remote forms normalize differently"; fi
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@EXAMPLE.com/Owner/Repo.git'
-[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "HTTPS and ssh:// remotes normalize identically" || no "HTTPS and ssh:// remotes normalize differently"
+if [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ]; then ok "HTTPS and ssh:// remotes normalize identically"; else no "HTTPS and ssh:// remotes normalize differently"; fi
 
 cp -R "$TMP/repo-a" "$TMP/repo-case"
 git -C "$TMP/repo-case" config --rename-section remote.origin remote.saved
@@ -173,11 +191,11 @@ fi
 
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8443/Owner/Repo.git'
 PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
-printf '%s\n' "$PORT_ID" | grep -qF 'example.com:8443/Owner/Repo' && ok "non-default Git remote port is preserved" || no "non-default Git remote port was lost"
+if printf '%s\n' "$PORT_ID" | grep -qF 'example.com:8443/Owner/Repo'; then ok "non-default Git remote port is preserved"; else no "non-default Git remote port was lost"; fi
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:0443/Owner/Repo.git'
-[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "zero-padded HTTPS default port normalizes away" || no "zero-padded HTTPS default port changes identity"
+if [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ]; then ok "zero-padded HTTPS default port normalizes away"; else no "zero-padded HTTPS default port changes identity"; fi
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@Example.COM:0022/Owner/Repo.git'
-[ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ] && ok "zero-padded SSH default port normalizes away" || no "zero-padded SSH default port changes identity"
+if [ "$IDA" = "$( "$UNIT" identity "$TMP/repo-b/src" '' )" ]; then ok "zero-padded SSH default port normalizes away"; else no "zero-padded SSH default port changes identity"; fi
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:08443/Owner/Repo.git'
 PADDED_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
 if [ "$PADDED_PORT_ID" = "$PORT_ID" ] && printf '%s\n' "$PADDED_PORT_ID" | grep -qF 'example.com:8443/Owner/Repo' \
@@ -188,12 +206,12 @@ else
 fi
 git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM:8444/Owner/Repo.git'
 DIFFERENT_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
-[ "$DIFFERENT_PORT_ID" != "$PORT_ID" ] && ok "meaningful Git remote ports remain distinct" || no "distinct Git remote ports collided"
+if [ "$DIFFERENT_PORT_ID" != "$PORT_ID" ]; then ok "meaningful Git remote ports remain distinct"; else no "distinct Git remote ports collided"; fi
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]/Owner/Repo.git'
 IPV6_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
-printf '%s\n' "$IPV6_ID" | grep -qF '[2001:db8::1]/Owner/Repo' && ok "bracketed IPv6 Git host identity is preserved" || no "bracketed IPv6 Git host identity was lost"
+if printf '%s\n' "$IPV6_ID" | grep -qF '[2001:db8::1]/Owner/Repo'; then ok "bracketed IPv6 Git host identity is preserved"; else no "bracketed IPv6 Git host identity was lost"; fi
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]:0022/Owner/Repo.git'
-[ "$( "$UNIT" identity "$TMP/repo-b/src" '' )" = "$IPV6_ID" ] && ok "padded IPv6 SSH default port normalizes away" || no "padded IPv6 SSH default port changes identity"
+if [ "$( "$UNIT" identity "$TMP/repo-b/src" '' )" = "$IPV6_ID" ]; then ok "padded IPv6 SSH default port normalizes away"; else no "padded IPv6 SSH default port changes identity"; fi
 git -C "$TMP/repo-b" remote set-url origin 'ssh://git@[2001:DB8::1]:0222/Owner/Repo.git'
 IPV6_PORT_ID="$( "$UNIT" identity "$TMP/repo-b/src" '' )"
 if printf '%s\n' "$IPV6_PORT_ID" | grep -qF '[2001:db8::1]:222/Owner/Repo' && ! printf '%s\n' "$IPV6_PORT_ID" | grep -qF ':0222'; then
@@ -243,12 +261,15 @@ git -C "$TMP/repo-b" remote set-url origin 'https://Example.COM/Owner/Repo.git'
 
 unset RIPWIRE_REDIS_PROJECT
 CONTEXT_A="$( "$UNIT" context "$TMP/repo-a/src" )"
-printf '%s\n' "$CONTEXT_A" | grep -qx 'redis' && printf '%s\n' "$CONTEXT_A" | grep -qF "$IDA" \
-    && ok "Redis context derives the Git project without an override" || no "Redis context did not derive its Git project"
+if printf '%s\n' "$CONTEXT_A" | grep -qx 'redis' && printf '%s\n' "$CONTEXT_A" | grep -qF "$IDA"; then
+    ok "Redis context derives the Git project without an override"
+else
+    no "Redis context did not derive its Git project"
+fi
 
 mkdir "$TMP/non-git"
 if "$UNIT" identity "$TMP/non-git" '' >"$TMP/non-git.out" 2>"$TMP/non-git.err"; then no "non-Git root did not require project override"; else ok "non-Git root requires project override"; fi
-[ "$( "$UNIT" identity "$TMP/non-git" explicit-project )" = 'explicit-project' ] && ok "project override supports non-Git roots" || no "project override was not used"
+if [ "$( "$UNIT" identity "$TMP/non-git" explicit-project )" = 'explicit-project' ]; then ok "project override supports non-Git roots"; else no "project override was not used"; fi
 if "$UNIT" context "$TMP/non-git" >"$TMP/context.out" 2>"$TMP/context.err"; then no "Redis context accepted a non-Git root without an override"; else ok "Redis context requires Git identity or a project override"; fi
 
 expect_bad()
@@ -278,10 +299,16 @@ RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_TTL_DAYS=50000 expect
 RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_TIMEOUT_MS=0 expect_bad "zero timeout" "$UNIT" policy 0 1 redis ''
 RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_TIMEOUT_MS=999999999999 expect_bad "overflowing timeout" "$UNIT" policy 0 1 redis ''
 expect_bad "unknown backend" "$UNIT" policy 0 0 '' mystery
-[ "$( RIPWIRE_REDIS_URL='redis://192.0.2.1:6379' RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1 "$UNIT" policy 0 1 redis '' )" = 'redis' ] \
-    && ok "explicit opt-in permits remote plaintext configuration" || no "remote plaintext opt-in was ignored"
-[ "$( RIPWIRE_REDIS_URL='redis+unix:///tmp/redis.sock?db=2' "$UNIT" policy 0 1 redis '' )" = 'redis' ] \
-    && ok "redis+unix configuration is accepted" || no "redis+unix configuration was rejected"
+if [ "$( RIPWIRE_REDIS_URL='redis://192.0.2.1:6379' RIPWIRE_REDIS_ALLOW_PLAINTEXT_REMOTE=1 "$UNIT" policy 0 1 redis '' )" = 'redis' ]; then
+    ok "explicit opt-in permits remote plaintext configuration"
+else
+    no "remote plaintext opt-in was ignored"
+fi
+if [ "$( RIPWIRE_REDIS_URL='redis+unix:///tmp/redis.sock?db=2' "$UNIT" policy 0 1 redis '' )" = 'redis' ]; then
+    ok "redis+unix configuration is accepted"
+else
+    no "redis+unix configuration was rejected"
+fi
 if "$UNIT" invalid-nul >"$TMP/nul.out" 2>"$TMP/nul.err" && ! grep -q 'PASSWORD_SENTINEL_9f31' "$TMP/nul.out" "$TMP/nul.err"; then ok "embedded NUL is rejected without secret disclosure"; else no "embedded NUL validation failed"; fi
 for credential_arg in '--redis-password' '--redis-password=PASSWORD_SENTINEL_9f31' '--redis-username' '--redis-username=PASSWORD_SENTINEL_9f31'
 do
@@ -300,16 +327,19 @@ if "$BIN" --help=all 2>&1 | grep -Eq -- '--redis-(password|username)'; then no "
 
 unset_redis
 TMPDIR="$TMP/default-cache" "$BIN" "$TMP/fixture" --no-stable >/dev/null 2>"$TMP/default.err"
-find "$TMP/default-cache" -type f -size +0c | grep -q . && ok "default execution still creates a local cache" || no "default local cache was not created"
-RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --no-cache --no-stable >"$TMP/nocache.out" 2>"$TMP/nocache.err" \
-    && ok "--no-cache wins over invalid environment Redis" || no "--no-cache did not win over environment Redis"
+if find "$TMP/default-cache" -type f -size +0c | grep -q .; then ok "default execution still creates a local cache"; else no "default local cache was not created"; fi
+if RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --no-cache --no-stable >"$TMP/nocache.out" 2>"$TMP/nocache.err"; then
+    ok "--no-cache wins over invalid environment Redis"
+else
+    no "--no-cache did not win over environment Redis"
+fi
 RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --cache="$TMP/explicit.bin" --no-stable >/dev/null 2>"$TMP/file.err"
-[ -s "$TMP/explicit.bin" ] && ok "explicit file path wins over environment Redis" || no "explicit file path did not retain file behavior"
+if [ -s "$TMP/explicit.bin" ]; then ok "explicit file path wins over environment Redis"; else no "explicit file path did not retain file behavior"; fi
 
 export RIPWIRE_REDIS_URL='redis://127.0.0.1:6379/0' RIPWIRE_REDIS_NAMESPACE='unit-space' RIPWIRE_REDIS_PROJECT='unit-project'
 ( cd "$TMP/run" && "$BIN" "$TMP/fixture" --cache=redis --no-stable >redis.out 2>redis.err )
-[ ! -e "$TMP/run/redis" ] && ok "--cache=redis selects Redis without creating a same-named file" || no "--cache=redis created a file"
-RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --no-stable >/dev/null 2>"$TMP/envredis.err" && ok "RIPWIRE_CACHE_BACKEND=redis activates Redis" || no "environment Redis activation failed"
+if [ ! -e "$TMP/run/redis" ]; then ok "--cache=redis selects Redis without creating a same-named file"; else no "--cache=redis created a file"; fi
+if RIPWIRE_CACHE_BACKEND=redis "$BIN" "$TMP/fixture" --no-stable >/dev/null 2>"$TMP/envredis.err"; then ok "RIPWIRE_CACHE_BACKEND=redis activates Redis"; else no "environment Redis activation failed"; fi
 
 unset RIPWIRE_REDIS_PROJECT
 set +e
