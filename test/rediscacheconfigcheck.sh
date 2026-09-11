@@ -131,14 +131,16 @@ if [ "$( "$UNIT" policy 0 0 '' redis )" = 'redis' ]; then ok "environment Redis 
 if [ "$( "$UNIT" policy 0 1 "$TMP/explicit.bin" redis )" = $'file\n'"$TMP/explicit.bin" ]; then ok "explicit file wins over environment Redis"; else no "explicit file precedence is wrong"; fi
 
 # Numerically equivalent loopback literals must not require the remote-plaintext opt-in.
-for host in localhost LOCALHOST 127.1.2.3 '[::1]' '[0:0:0:0:0:0:0:1]' '[0000:0000:0000:0000:0000:0000:0000:0001]'; do
+for host in localhost LOCALHOST 127.1.2.3 '[::1]' '[0:0:0:0:0:0:0:1]' '[0000:0000:0000:0000:0000:0000:0000:0001]' \
+            '[::ffff:127.0.0.0]' '[::ffff:127.0.0.1]' '[::ffff:127.255.255.255]' '[0:0:0:0:0:ffff:7f01:0203]'; do
     if [ "$( RIPWIRE_REDIS_URL="redis://$host:6379/2" "$UNIT" policy 0 1 redis '' 2>"$TMP/loopback.err" )" = 'redis' ]; then
         ok "numeric loopback accepted without remote opt-in: $host"
     else
         no "loopback required remote opt-in: $host"
     fi
 done
-for host in '[::2]' '[2001:db8::1]' '[::]' '[not-an-ipv6-address]' cache.example.invalid; do
+for host in '[::2]' '[2001:db8::1]' '[::]' '[not-an-ipv6-address]' cache.example.invalid \
+            '[::ffff:126.255.255.255]' '[::ffff:128.0.0.0]' '[::ffff:192.0.2.1]' '[::127.0.0.1]'; do
     if RIPWIRE_REDIS_URL="redis://$host:6379/2" "$UNIT" policy 0 1 redis '' >"$TMP/remote.out" 2>"$TMP/remote.err"; then
         no "non-loopback accepted without remote opt-in: $host"
     elif [ ! -s "$TMP/remote.out" ] && ! grep -qF "$host" "$TMP/remote.err"; then

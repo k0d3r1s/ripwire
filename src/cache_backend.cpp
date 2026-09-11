@@ -7,6 +7,7 @@
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -513,8 +514,32 @@ std::optional<std::string> normalizeGitRemote( const std::string_view remote, st
 
 }
 
-// One lexical host classification for policy validation and diagnostic labels. Transport still
-// checks every resolved address and the connected peer independently before sending credentials.
+// The same numeric classification serves literal policy/doctor hosts, every resolved transport
+// address, and the connected peer. IPv4-mapped IPv6 must agree with IPv4 over the entire 127/8 range.
+bool redisAddressIsLoopback( const sockaddr* address ) noexcept
+{
+    if( address == nullptr ) { return false; }
+    if( address->sa_family == AF_INET )
+    {
+        const auto* ipv4 = reinterpret_cast<const sockaddr_in*>( address );
+        return ( ntohl( ipv4->sin_addr.s_addr ) & 0xff000000u ) == 0x7f000000u;
+    }
+    if( address->sa_family == AF_INET6 )
+    {
+        const auto* ipv6 = reinterpret_cast<const sockaddr_in6*>( address );
+        if( IN6_IS_ADDR_LOOPBACK( &ipv6->sin6_addr ) ) { return true; }
+        if( IN6_IS_ADDR_V4MAPPED( &ipv6->sin6_addr ) )
+        {
+            std::uint32_t ipv4 = 0;
+            std::memcpy( &ipv4, &ipv6->sin6_addr.s6_addr[12], sizeof( ipv4 ) );
+            return ( ntohl( ipv4 ) & 0xff000000u ) == 0x7f000000u;
+        }
+    }
+    return false;
+}
+
+// Host syntax and localhost recognition are shared by policy validation and diagnostic labels.
+// Transport independently checks resolution and peer identity before sending credentials.
 bool redisHostIsLoopback( std::string host )
 {
     std::ranges::transform( host, host.begin(), []( const unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
@@ -522,8 +547,10 @@ bool redisHostIsLoopback( std::string host )
     if( host.starts_with( '[' ) && host.ends_with( ']' ) )
     {
         const std::string literal = host.substr( 1, host.size() - 2 );
-        in6_addr address{};
-        return ::inet_pton( AF_INET6, literal.c_str(), &address ) == 1 && IN6_IS_ADDR_LOOPBACK( &address );
+        sockaddr_in6 address{};
+        address.sin6_family = AF_INET6;
+        return ::inet_pton( AF_INET6, literal.c_str(), &address.sin6_addr ) == 1
+            && redisAddressIsLoopback( reinterpret_cast<const sockaddr*>( &address ) );
     }
     if( !host.starts_with( "127." ) ) { return false; }
     unsigned partCount = 0;

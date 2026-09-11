@@ -368,30 +368,6 @@ bool parseEndpoint( const std::string_view value, Endpoint& output )
     return true;
 }
 
-bool isLoopbackAddress( const sockaddr* address ) noexcept
-{
-    if( address->sa_family == AF_INET )
-    {
-        const auto* ipv4 = reinterpret_cast<const sockaddr_in*>( address );
-        return ( ntohl( ipv4->sin_addr.s_addr ) & 0xff000000u ) == 0x7f000000u;
-    }
-    if( address->sa_family == AF_INET6 )
-    {
-        const auto* ipv6 = reinterpret_cast<const sockaddr_in6*>( address );
-        if( IN6_IS_ADDR_LOOPBACK( &ipv6->sin6_addr ) )
-        {
-            return true;
-        }
-        if( IN6_IS_ADDR_V4MAPPED( &ipv6->sin6_addr ) )
-        {
-            std::uint32_t ipv4 = 0;
-            std::memcpy( &ipv4, &ipv6->sin6_addr.s6_addr[12], sizeof( ipv4 ) );
-            return ( ntohl( ipv4 ) & 0xff000000u ) == 0x7f000000u;
-        }
-    }
-    return false;
-}
-
 bool injectInterruption( const InterruptibleCall call ) noexcept
 {
 #if defined( RIPWIRE_REDIS_TESTING )
@@ -1013,7 +989,7 @@ bool validateResolvedAddresses( const ResolverPacket& addresses, const bool allo
     {
         const ResolvedAddress& candidate = addresses.addresses[addressIndex];
         if( ( candidate.family != AF_INET && candidate.family != AF_INET6 ) || candidate.length == 0 || candidate.length > sizeof( sockaddr_storage )
-            || ( !allowRemote && !isLoopbackAddress( reinterpret_cast<const sockaddr*>( &candidate.address ) ) ) )
+            || ( !allowRemote && !redisAddressIsLoopback( reinterpret_cast<const sockaddr*>( &candidate.address ) ) ) )
         {
             return false;
         }
@@ -1048,7 +1024,7 @@ RedisFailure validateTcpPeer( const int descriptor, const bool allowRemote, cons
     {
         return errno == ETIMEDOUT ? RedisFailure::Timeout : RedisFailure::Connect;
     }
-    return !peerMismatch && ( allowRemote || isLoopbackAddress( reinterpret_cast<const sockaddr*>( &peer ) ) ) ? RedisFailure::None
+    return !peerMismatch && ( allowRemote || redisAddressIsLoopback( reinterpret_cast<const sockaddr*>( &peer ) ) ) ? RedisFailure::None
                                                                                                                 : RedisFailure::Connect;
 }
 

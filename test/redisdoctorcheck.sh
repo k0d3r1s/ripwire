@@ -71,6 +71,16 @@ int main()
     assert( std::string_view( doctorRedisTransport( "redis://127.1.2.3:6379/2" ) ) == "loopback_tcp" );
     assert( std::string_view( doctorRedisTransport( "redis://[0:0:0:0:0:0:0:1]:6379/2" ) ) == "loopback_tcp" );
     assert( std::string_view( doctorRedisTransport( "redis://[2001:db8::1]:6379/2" ) ) == "remote_tcp" );
+    for( const char* endpoint : { "redis://[::ffff:127.0.0.0]/2", "redis://[::ffff:127.0.0.1]/2",
+                                 "redis://[::ffff:127.255.255.255]/2", "redis://[0:0:0:0:0:ffff:7f01:0203]/2" } )
+    {
+        assert( std::string_view( doctorRedisTransport( endpoint ) ) == "loopback_tcp" );
+    }
+    for( const char* endpoint : { "redis://[::ffff:126.255.255.255]/2", "redis://[::ffff:128.0.0.0]/2",
+                                 "redis://[::ffff:192.0.2.1]/2", "redis://[::127.0.0.1]/2" } )
+    {
+        assert( std::string_view( doctorRedisTransport( endpoint ) ) == "remote_tcp" );
+    }
     assert( doctorRedisDatabase( "redis://localhost/02" ) == 2 );
     rw::CacheContext cache;
     cache.policy = std::make_shared<rw::CachePolicy>();
@@ -155,6 +165,9 @@ int main()
             ipv6, _ = run(overrides={"RIPWIRE_REDIS_URL": f"redis://[{host}]:{tcp6.server_address[1]}/2"})
             assert ipv6["transport"] == "loopback_tcp" and ipv6["scope"] == healthy["scope"]
         print("  PASS  compressed and expanded IPv6 loopback probe without remote opt-in")
+        mapped, _ = run(overrides={"RIPWIRE_REDIS_URL": f"redis://[::ffff:127.0.0.1]:{tcp.server_address[1]}/2"})
+        assert mapped["transport"] == "loopback_tcp" and mapped["scope"] == healthy["scope"]
+        print("  PASS  IPv4-mapped IPv6 loopback probe without remote opt-in")
         same, again = run()
         assert same["scope"] == healthy["scope"] and again[1][1] != key
         changed, _ = run(overrides={"RIPWIRE_REDIS_NAMESPACE": "different_namespace"})
