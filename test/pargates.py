@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -386,17 +387,26 @@ def run(g):
     with running_lock:
         running.add(g)          # the tree tripwire names whoever is in flight when it sees new dirt
     try:
-        p = subprocess.run(
+        p = subprocess.Popen(
             ["bash", os.path.join(testdir, g)],
-            cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=limit,
+            cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
         )
-        rc, out = p.returncode, p.stdout.decode("utf-8", "replace")
-    except subprocess.TimeoutExpired as e:
+        stdout, _ = p.communicate(timeout=limit)
+        rc, out = p.returncode, stdout.decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
         # the budget itself is part of the message -- a red names its own declared budget instead of
         # making the reader go look it up in GATE_BUDGET_SEC. Whatever the gate managed to print before
         # the budget expired is kept ahead of it: a gate killed at 300 s that had already announced a
         # failing arm used to report ONLY the word TIMEOUT.
-        partial = (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, (bytes, bytearray)) else (e.stdout or "")
+        # Each gate owns a fresh process group. Kill the whole group before releasing its worker slot:
+        # subprocess.run's timeout kills only bash, leaving Python workers and their children alive.
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            if p.poll() is None:
+                raise
+        stdout, _ = p.communicate()
+        partial = (stdout or b"").decode("utf-8", "replace")
         rc, out = 124, partial + f"\nTIMEOUT after {limit}s (declared budget={limit}s{scaled})"
     finally:
         with running_lock:

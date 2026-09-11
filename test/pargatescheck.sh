@@ -160,6 +160,26 @@ echo "$outB" | grep -q 'TIMEOUT' \
 [ "$rcB" -eq 0 ] && ok "functional: pargates.py exits 0 once the override covers the gate's real runtime" \
     || no "functional: pargates.py exited $rcB even though the overridden gate should have passed"
 
+# A timed-out shell must not leave grandchildren consuming a worker slot after the next gate starts.
+cat > "$CORPUSROOT/test/probechildgate.sh" <<'EOF'
+#!/usr/bin/env bash
+bash -c 'sleep 4; printf "child completed\n" > "$RIPWIRE_TEST_CHILD_MARKER"' &
+wait
+EOF
+COPYCHILD="$TMP/pargates_child.py"
+patchPargates "$COPYCHILD" '"probechildgate.sh": 6,'
+RIPWIRE_TEST_CHILD_MARKER="$TMP/child-control" python3 "$COPYCHILD" "$CORPUSROOT" "$FAKEBIN" -j 1 --only probechildgate >"$TMP/child-control.log" 2>&1
+rcChildControl=$?
+[ "$rcChildControl" -eq 0 ] && [ -s "$TMP/child-control" ] \
+    && ok "functional(timeout): control child really reaches its delayed write" \
+    || no "functional(timeout): control child did not reach its delayed write"
+RIPWIRE_TEST_CHILD_MARKER="$TMP/child-timeout" python3 "$COPYA" "$CORPUSROOT" "$FAKEBIN" -j 1 --only probechildgate >"$TMP/child-timeout.log" 2>&1
+rcChildTimeout=$?
+sleep 3
+[ "$rcChildTimeout" -ne 0 ] && [ ! -e "$TMP/child-timeout" ] \
+    && ok "functional(timeout): timed-out gate descendants never reach the same delayed write" \
+    || no "functional(timeout): a timed-out gate left its child running"
+
 # ── F2 (terminality round A, 2026-09-05): a failing gate's report must NAME the arm that failed ─────────
 # The summary used to print a failing gate's last 12 non-blank lines. This repo's gates announce a failure
 # where it happens (`  FAIL  arm (X) …`) and then keep running their remaining arms, so those last 12 lines
