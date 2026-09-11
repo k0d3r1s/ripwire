@@ -68,9 +68,9 @@ HOT_FILES = (
     "src/lexical.h",              # tokenizer
 
     # ── the ingest translation unit ──────────────────────────────────────────────────────────────
-    # One TU, seventeen files since the split. It is the overwhelming majority of both a cold and a
+    # One TU, with its sections listed explicitly below. It is the overwhelming majority of both a cold and a
     # warm run, so most of its sections are hot — that is a fact about where this tool spends its
-    # time, not a lapsed rule. The six that are NOT hot are in COLD_FILES, each with its number.
+    # time, not a lapsed rule. Sections outside the measured default hot path are in COLD_FILES with reasons.
     "src/ingest.cpp",             # the TU anchor: the ingest() driver and its phase calls. Its own body is small now — the phases live in the sections below
     "src/ingest.h",               # isSkippedCrawlDir / looksBinary / isNonTextExtension — inline predicates run for EVERY crawled path
     "src/ingest_crawl.h",         # the crawl and its git-ignore probe (~26% warm), plus readFile's fopen+read (~4% cold) — both per path
@@ -95,6 +95,9 @@ HOT_FILES = (
 # reviewed. Argue with these — that is what they are for.
 COLD_FILES = (
     # ── ingest sections that are not on the per-file / per-symbol default path ────────────────────
+    ( "src/ingest_cache_redis.h",
+      "opt-in Redis per-file cache transport and record envelopes; the default File backend never enters it. Not profiled as cold under Redis: "
+      "classify separately if measuring a Redis-enabled workload, where hashing and network work may be hot." ),
     ( "src/ingest_astquery.h",
       "the --match / --lint AST-query engine. It does not run at all on a plain `ripwire <dir>`, so a remark here cannot move the number every other verb pays." ),
     ( "src/ingest_prewarm.h",
@@ -113,6 +116,12 @@ COLD_FILES = (
       "Elixir-specific capture helpers: per node, but for one grammar with a small corpus share. Same argument as ingest_jsimports.h above." ),
 
     # ── the other translation units under src/ ────────────────────────────────────────────────────
+    ( "src/cache_backend.cpp",
+      "backend policy/configuration is one-shot; SHA-256 runs per record in opt-in Redis mode and for bridge-document content keys (the doc pass is excluded above). "
+      "This is a default-workload triage exclusion, not a measurement of Redis or document-heavy workloads; revisit with their profiles." ),
+    ( "src/redis_client.cpp",
+      "opt-in Redis socket/RESP transport and generic blob envelopes; absent from the default File-backend execution path. No Redis timing claim is made; "
+      "a Redis-enabled profile needs its own hot-set review." ),
     ( "src/main.cpp",
       "argument parsing and verb dispatch: one-shot per run. It is also the largest opt-record in the tree by an order of magnitude (1.5 GB even narrowed) precisely "
       "BECAUSE it is thousands of cold functions — volume here measures function count, not heat. Its verbs_*.h sections are cold for the same reason." ),
