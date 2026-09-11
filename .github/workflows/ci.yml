@@ -48,6 +48,42 @@ concurrency:
 # expose that week, defeating the entire point of testing the portable default.
 
 jobs:
+  redis-real:
+    name: Redis 7.4.5 compatibility (amd64, restricted ACL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      redis:
+        # Platform-specific linux/amd64 manifest, pinned independently of the moving tag.
+        image: redis:7.4.5-alpine@sha256:0302cccee2b2043e61b497c8f4075467c5f7ba27a9f38be7e092634f2734baed
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build plain binary and bounded protocol gate
+        run: |
+          cmake -S . -B build -DRIPWIRE_TESTS=ON
+          cmake --build build --target ripwire ripwire_test_redis_protocol -j2
+      - name: Deterministic Redis fixture and limits gates
+        run: |
+          bash test/redisclientcheck.sh
+          RIPWIRE_TEST_BUILD_DIR="$PWD/build" bash test/redisingestcheck.sh
+          RIPWIRE_REDIS_PROTOCOL_BUILD_DIR="$PWD/build" bash test/redisrealcheck.sh --fixture-only
+      - name: Real Redis with dedicated namespace ACL and partial ACL failure
+        env:
+          RIPWIRE_REDIS_TEST_URL: redis://127.0.0.1:6379/0
+        # --ci-acl alone creates ephemeral ACL identities on this disposable service. The helper
+        # grants only production commands and the random namespace, records exact keys, and cleans
+        # only those keys plus its own users. Normal regression never selects an external server.
+        run: bash test/redisrealcheck.sh --ci-acl
+
   # ─── style: one gating clang-format check, one advisory clang-format report, one advisory clang-tidy ───
   #
   # CLANG_VERSION is a PIN, not a floor. clang-format's output changes across major releases, so an

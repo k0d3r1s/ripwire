@@ -100,6 +100,18 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
         print("  PASS  parse and immediate/deferred extraction failures never publish; healthy hosts reparse then share")
         cold = run(a, 3)
         assert len(records()) == 3 and len(descriptors()) == 3, "Redis ingest records/descriptors were not stored"
+        assert all(command(b"TTL", key) == 86400 for key in keys()), "configured TTL is not one day"
+        defaults = {"RIPWIRE_REDIS_PROJECT": "default-ttl", "RIPWIRE_REDIS_TTL_DAYS": ""}
+        before_defaults = set(keys()); run(a, 3, extra=defaults)
+        default_keys = set(keys()) - before_defaults
+        assert len(default_keys) == 6
+        assert all(command(b"TTL", key) == 30 * 86400 for key in default_keys), "default TTL is not 30 days"
+        admin("advance_clock", seconds=123)
+        assert all(command(b"TTL", key) == 30 * 86400 - 123 for key in default_keys)
+        run(a, 0, extra=defaults)
+        assert all(command(b"TTL", key) == 30 * 86400 for key in default_keys), "hit did not refresh record and descriptor"
+        for key in default_keys: command(b"DEL", key)
+        print("  PASS  exact configured/default TTL and verified-hit refresh for records and descriptors")
         warm = run(b, 0)
         assert cold.stdout == warm.stdout, "cross-checkout output differs"
         c = fixture("ssh-checkout", "ssh://git@example.com/team/project.git")
@@ -175,7 +187,10 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
         run(expiry, 0, "--exclude=file1.cpp")
         admin("advance_clock", seconds=43201)
         live_expiry = expiry_keys & set(keys())
-        assert len(live_expiry) == 2, live_expiry
+        active_hash = hashlib.sha256(b"file2.cpp").hexdigest().encode()
+        assert len(live_expiry) == 2 and all(active_hash in key for key in live_expiry), live_expiry
+        assert sum(b":descriptor:" in key for key in live_expiry) == 1
+        assert all(command(b"TTL", key) == 43199 for key in live_expiry)
         run(expiry, 1)
         print("  PASS  deleted/excluded descriptors expire while active paths refresh")
         # Restore b after all old keys expired; remove nested fixtures from its crawl.
@@ -184,6 +199,7 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
         changed = run(b, 3)
         # Fault both sides of each atomic publication. A descriptor can exist only when its record
         # exists; every created key has TTL. The command offsets are MGET, SET record, SET descriptor.
+        orphans = set()
         for phase in ("fail_before", "fail_after"):
             for offset in (1, 2):
                 probe = fixture(f"fault-{phase}-{offset}", f"https://example.com/{phase}/{offset}.git")
@@ -196,7 +212,13 @@ with tempfile.TemporaryDirectory(prefix="redisingest-") as tmp:
                 descs = [k for k in added if b":descriptor:" in k]
                 assert not descs or recs, (phase, offset, added)
                 if offset == 1: assert not descs, (phase, added)
+                if recs and not descs: orphans.update(recs)
                 ttl()
+        assert orphans, "orphan expiry arm did not create an orphan"
+        admin("advance_clock", seconds=86401)
+        assert all(command(b"TTL", key) == -2 and command(b"GET", key) is None for key in orphans)
+        changed = run(b, 3)
+        print("  PASS  interrupted publication orphans expire at the configured TTL")
         print("  PASS  before/after record and descriptor faults never leave persistent keys or dangling descriptors")
         # Hold A's first SET while B completes. A then becomes descriptor last writer, but both
         # source variants must remain directly addressable and the overlapping record must verify.

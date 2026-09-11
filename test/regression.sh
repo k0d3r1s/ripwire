@@ -291,6 +291,11 @@ if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisingestcheck.sh"; then
 else
     no "Redis ingest gate (test/redisingestcheck.sh failed)"
 fi
+if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisrealcheck.sh" --fixture-only; then
+    ok "Redis real-server harness fixture gate (test/redisrealcheck.sh)"
+else
+    no "Redis real-server harness fixture gate (test/redisrealcheck.sh failed)"
+fi
 if RIPWIRE_BIN="$BIN" bash "$ROOT/test/redisqualitycachecheck.sh"; then
     ok "Redis derived cache gate (test/redisqualitycachecheck.sh)"
 else

@@ -162,6 +162,33 @@ TEST_CASE( "RESP2 aggregate accounting includes framing and containers" )
     CHECK( result.failure == rw::RedisFailure::Protocol );
 }
 
+TEST_CASE( "RESP2 accepts the maximum legal bulk and rejects one byte more" )
+{
+    constexpr std::size_t maximum = 64u * 1024u * 1024u;
+    std::string frame = "$67108864\r\n";
+    frame.reserve( maximum + 32 );
+    frame.append( maximum, 'x' );
+    frame += "\r\n";
+    {
+        const rw::RedisResult result = parse( frame );
+        REQUIRE( result );
+        REQUIRE( result.reply.type == rw::RedisReplyType::Bulk );
+        CHECK( result.reply.bytes.size() == maximum );
+        CHECK( result.reply.bytes.front() == 'x' );
+        CHECK( result.reply.bytes.back() == 'x' );
+    }
+    // A complete oversized frame distinguishes the ceiling from an ordinary truncated reply.
+    // Reuse the backing allocation so the gate never needs two large payloads at once.
+    frame[8] = '5';
+    frame.insert( frame.size() - 2, 1, 'x' );
+    checkProtocolFailure( frame );
+    // A complete small reply straddles the aggregate ceiling, including container allocation.
+    constexpr std::string_view small = "*1\r\n$3\r\nabc\r\n";
+    const std::size_t exact = small.size() + 2 * sizeof( rw::RedisReply );
+    CHECK( rw::RedisClientTestPeer::parseWithAggregateLimit( small, exact ) );
+    CHECK_FALSE( rw::RedisClientTestPeer::parseWithAggregateLimit( small, exact - 1 ) );
+}
+
 TEST_CASE( "RESP2 redirects have a dedicated deterministic failure" )
 {
     for( const std::string_view frame : { "-MOVED 1 127.0.0.1:6379\r\n", "-ASK 1 127.0.0.1:6379\r\n" } )
@@ -195,13 +222,15 @@ TEST_CASE( "outbound encoder validates projected size before copying payloads" )
 {
     constexpr std::size_t ceiling = 64u * 1024u * 1024u + 4096u;
     constexpr std::size_t oneArgumentFraming = 17;
-    const std::string exact( ceiling - oneArgumentFraming, 'x' );
-    const std::string over( ceiling - oneArgumentFraming + 1, 'y' );
+    const std::string backing( ceiling - oneArgumentFraming + 1, 'x' );
+    const std::string_view exact( backing.data(), backing.size() - 1 );
+    const std::string_view over( backing );
     std::size_t encodedSize = 0;
 
     CHECK( rw::RedisClientTestPeer::encodedBatchSize( { { exact } }, encodedSize ) );
     CHECK( encodedSize == ceiling );
     CHECK_FALSE( rw::RedisClientTestPeer::encodedBatchSize( { { over } }, encodedSize ) );
+    CHECK_FALSE( rw::RedisClientTestPeer::encodedBatchSize( { { exact }, { "PING" } }, encodedSize ) );
 
     const std::string hugeViewBacking( 64, 'z' );
     const std::string_view impossible( hugeViewBacking.data(), std::numeric_limits<std::size_t>::max() );

@@ -288,6 +288,12 @@ class RedisHandler(socketserver.BaseRequestHandler):
             mode = fault.get("mode", "drop")
             if mode == "drop":
                 return False
+            if mode == "non_reader":
+                # Complete AUTH/SELECT, then leave subsequent request bytes unread. This exercises
+                # a blocked production write rather than merely a handshake read timeout.
+                self.request.sendall(response)
+                time.sleep(float(fault.get("seconds", 1.0)))
+                return False
             if mode == "malformed":
                 response = b"!malformed\r\n"
             elif mode == "truncate":

@@ -433,6 +433,32 @@ write_rc=$?
 set -e
 if [ "$write_rc" -ne 0 ] && grep -q 'redis tcp: timeout' "$TMP/write-timeout.out"; then ok "single absolute deadline bounds request writes"; else no "write timeout was not classified"; fi
 
+# Unlike the handshake stall above, this arm lets AUTH/SELECT finish before the server stops
+# reading. Small drip gaps also stay below the configured timeout: only an absolute deadline wins.
+if python3 - "$CLIENT" "$TCP" "$ADMIN_PORT" <<'PY'
+import json, socket, struct, subprocess, sys, time
+client, endpoint, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+def admin(op, **args):
+    with socket.create_connection(("127.0.0.1", port), timeout=2) as sock:
+        sock.sendall(json.dumps(dict(op=op, **args)).encode() + b"\n")
+        stream = sock.makefile("rb")
+        return json.loads(stream.read(struct.unpack("!I", stream.read(4))[0]))
+for mode, offset, delay, command in (("slow_drip", 2, 0.04, "ping"), ("non_reader", 1, 1.0, "large")):
+    index = admin("command_log")["next_index"]
+    admin("fail_after", command_index=index + offset, mode=mode, seconds=delay)
+    started = time.monotonic()
+    result = subprocess.run([client, endpoint, "gate-user", "gate-password", "100", command],
+                            capture_output=True, timeout=2)
+    elapsed = time.monotonic() - started
+    assert result.returncode != 0 and b"redis tcp: timeout" in result.stdout, (mode, result.stdout)
+    assert 0.07 <= elapsed < 0.8, (mode, elapsed)
+    # The non-reader must have consumed exactly the two handshake commands, never the SET.
+    if mode == "non_reader":
+        assert admin("command_log")["next_index"] == index + 2
+print("  PASS  slow-drip reads and post-handshake non-reader writes obey one absolute deadline")
+PY
+then :; else no "absolute deadline transport controls failed"; fi
+
 set +e
 "$CLIENT" "$TCP" gate-user wrong-password 200 ping >"$TMP/auth.out" 2>&1
 auth_rc=$?
