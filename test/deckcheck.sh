@@ -88,11 +88,12 @@ echo "deckcheck: BIN=$BIN"
 # like a pass. Every real flag is lowercase-hyphenated, so widening this costs nothing and any
 # capitalized/underscored token now lands in front of a human as a FAIL.
 TOKEN_RE='--[A-Za-z][A-Za-z0-9_-]*'
-# The same shape with a LEFT-CONTEXT GUARD for prose: the char before `--` may not be `-`, `/`, `_` or
+# The same shape with a LEFT-CONTEXT GUARD for prose: the char before `--` may not be `-`, `/`, `#`, `_` or
 # alphanumeric. This kills two false-positive classes that would otherwise pressure someone into
 # adding an allowlist row for a flag that was never claimed: a URL path segment (`.../--madeupflag`)
-# and a `---foo` typo/em-dash-ish run. `(^|…)` keeps a flag at start-of-line matching.
-PROSE_RE='(^|[^-/_A-Za-z0-9])'"$TOKEN_RE"
+# or fragment (`docs/COMMANDS.md#--cachepath`), and a `---foo` typo/em-dash-ish run.
+# `(^|…)` keeps a flag at start-of-line matching.
+PROSE_RE='(^|[^-/#_A-Za-z0-9])'"$TOKEN_RE"
 
 # ── ground truth: every --flag token the shipped binary's own --help prints ─────────────────────────
 "$BIN" --help=all >"$TMP/help.txt" 2>&1
@@ -207,6 +208,14 @@ for f in "$ROOT"/present/*.js;              do addSource "$f" present; done
     exit 2; }
 
 fail=0
+# Exercise the real extractor: link destinations must not masquerade as CLI flags,
+# while bare, inline and heading prose must still expose fabricated flags.
+proseProbe="$( printf '%s\n' '[cache](docs/COMMANDS.md#--cachepath)' 'docs/--path-fragment' \
+    '--fabricated-flag' 'Use --fabricated-flag here' '# --fabricated-flag' | grep -noE -- "$PROSE_RE" )"
+if [ "$proseProbe" != $'3:--fabricated-flag\n4: --fabricated-flag\n5: --fabricated-flag' ]; then
+    echo "  FAIL  prose token guard swallowed a real flag or extracted a URL destination: $proseProbe"
+    fail=1
+fi
 badValueCount=0
 : >"$TMP/used_tokens.txt"
 for f in "${SOURCES[@]}"; do
@@ -260,10 +269,9 @@ echo "deckcheck: scanned ${#SOURCES[@]} file(s), ${usedCount} distinct --flag to
 # ── §P9 "amp= definition": --help must define amp= numerically and distinguish it from --impact's
 # reaches=, not just print the bare token — a stray-flag scan (the rest of this gate) can't catch a
 # documented-but-undefined attribute, so this is a narrow, separate content assertion.
-HELPTXT="$( "$BIN" --help=all 2>&1 )"
-printf '%s' "$HELPTXT" | grep -q 'amp = |direct callers|' \
+grep -q 'amp = |direct callers|' "$TMP/help.txt" \
     && ok_amp=1 || ok_amp=0
-printf '%s' "$HELPTXT" | grep -q 'NOT the same quantity as --impact'"'"'s reaches=' \
+grep -q 'NOT the same quantity as --impact'"'"'s reaches=' "$TMP/help.txt" \
     && ok_ampvsreaches=1 || ok_ampvsreaches=0
 if [ "$ok_amp" = 1 ] && [ "$ok_ampvsreaches" = 1 ]; then
     echo "  PASS  --help defines amp= numerically and distinguishes it from --impact's reaches="
