@@ -75,7 +75,7 @@ constexpr std::uint32_t kSha256Round[] =
 
 constexpr std::uint32_t rotateRight( const std::uint32_t value, const unsigned bits ) noexcept
 {
-    return ( value >> bits ) | ( value << ( 32u - bits ) );
+    return ( value >> bits ) | static_cast<std::uint32_t>( static_cast<std::uint64_t>( value ) << ( 32u - bits ) );
 }
 
 bool containsControl( const std::string_view value ) noexcept
@@ -595,7 +595,7 @@ std::string redisKeyHash( const std::string_view value )
         {
             const std::uint32_t s0 = rotateRight( words[i - 15], 7 ) ^ rotateRight( words[i - 15], 18 ) ^ ( words[i - 15] >> 3 );
             const std::uint32_t s1 = rotateRight( words[i - 2], 17 ) ^ rotateRight( words[i - 2], 19 ) ^ ( words[i - 2] >> 10 );
-            words[i] = words[i - 16] + s0 + words[i - 7] + s1;
+            words[i] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( words[i - 16] ) + s0 + words[i - 7] + s1 );
         }
         std::uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
         std::uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
@@ -603,14 +603,21 @@ std::string redisKeyHash( const std::string_view value )
         {
             const std::uint32_t sum1 = rotateRight( e, 6 ) ^ rotateRight( e, 11 ) ^ rotateRight( e, 25 );
             const std::uint32_t choice = ( e & f ) ^ ( ~e & g );
-            const std::uint32_t temporary1 = h + sum1 + choice + kSha256Round[i] + words[i];
+            const std::uint32_t temporary1 = static_cast<std::uint32_t>( static_cast<std::uint64_t>( h ) + sum1 + choice + kSha256Round[i] + words[i] );
             const std::uint32_t sum0 = rotateRight( a, 2 ) ^ rotateRight( a, 13 ) ^ rotateRight( a, 22 );
             const std::uint32_t majority = ( a & b ) ^ ( a & c ) ^ ( b & c );
-            const std::uint32_t temporary2 = sum0 + majority;
-            h = g; g = f; f = e; e = d + temporary1; d = c; c = b; b = a; a = temporary1 + temporary2;
+            const std::uint32_t temporary2 = static_cast<std::uint32_t>( static_cast<std::uint64_t>( sum0 ) + majority );
+            h = g; g = f; f = e; e = static_cast<std::uint32_t>( static_cast<std::uint64_t>( d ) + temporary1 ); d = c; c = b; b = a;
+            a = static_cast<std::uint32_t>( static_cast<std::uint64_t>( temporary1 ) + temporary2 );
         }
-        state[0] += a; state[1] += b; state[2] += c; state[3] += d;
-        state[4] += e; state[5] += f; state[6] += g; state[7] += h;
+        state[0] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[0] ) + a );
+        state[1] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[1] ) + b );
+        state[2] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[2] ) + c );
+        state[3] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[3] ) + d );
+        state[4] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[4] ) + e );
+        state[5] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[5] ) + f );
+        state[6] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[6] ) + g );
+        state[7] = static_cast<std::uint32_t>( static_cast<std::uint64_t>( state[7] ) + h );
     }
 
     constexpr char hex[] = "0123456789abcdef";
