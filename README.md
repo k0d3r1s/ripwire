@@ -1950,15 +1950,15 @@ The [generated cache reference](docs/COMMANDS.md#--cachepath) documents the flag
 ### What Redis stores
 
 All keys begin `rw:v1:<SHA256(namespace)>:<SHA256(project)>:`. Ingest adds
-`ingest:<cache-version>:<parser-version>:<artifact-arch>:<lean|rich>:`; other families add
-`<family>:<scheme-version>:<artifact-arch>:<SHA256(identity)>`. The table describes the values,
+`ingest:<cache-version>:<parser-version>:<artifact-arch>:<lean|rich>:`; derived blobs add
+`blob:<family>:<scheme-version>:<artifact-arch>:<SHA256(identity)>`. The table describes the values,
 not just the hashed key names. Hashes and binary serialization are **not encryption**. Treat this
 store as source-sensitive: paths, names and extracted document text can disclose proprietary data.
 
 | Family | Logical identity within the project | Exact value content and sensitivity |
 | --- | --- | --- |
 | Ingest `descriptor:<SHA256(relative-path)>` | Extraction versions, architecture, lean/rich family and relative path | Current source SHA-256 as 64 hex characters; a disposable pointer, not source text |
-| Ingest `record:<SHA256(relative-path)>:<SHA256(source)>` | The descriptor scope plus exact source bytes | `RWI1` envelope, SHA-256 integrity/source hashes, checksum and per-file facts: relative paths, symbol/reference/import/binding/route names, locations and byte coordinates, metrics, parse health and lexical hashes. No complete source file; identifiers and other extracted strings remain plaintext in the binary record |
+| Ingest `record:<SHA256(relative-path)>:<SHA256(source)>` | The descriptor scope plus exact source bytes | `RWI1` envelope, SHA-256 integrity/source hashes, checksum and per-file facts: plaintext relative paths and symbol/scope/reference/import/binding/route names, size/mtime/ctime stat metadata, locations and byte coordinates, metrics, parse health and lexical hashes. No complete source file; identifiers and other extracted strings remain plaintext in the binary record |
 | `qsnap` | HEAD SHA and quality extraction/exclude configuration | Snapshot header/checksum; hashed symbol identities with complexity, LOC, nesting, parameter, definition and masking counts; body hashes and clone/dead/public-API identity sets. No source bodies |
 | `qbody` | Window-reference SHA and body extraction/exclude configuration | Snapshot encoding with the body-hash map populated; path-qualified symbol hashes and raw-body hashes, not body text |
 | `qchurn` | HEAD SHA, history window and boundary SHA | Serialized raw commit stream: commit epochs and plaintext changed paths, counts and checksum. Commit hashes identify the cache; author names/emails and patch text are not stored in this family |
@@ -1966,6 +1966,12 @@ store as source-sensitive: paths, names and extracted document text can disclose
 | `stier` | Extraction identity, extension and source SHA-256 | Span-tier memo: size, portable extension/hash identity, zeroed local timestamps, span counts, start/end byte coordinates and tier bytes. No source text or absolute local path |
 | `docmd` | File extension and document-byte SHA-256 | **Full extracted document text** from the optional `markitdown` bridge; an empty/failed extraction is not cached. Notebook/HTML/CSV extraction does not use this family |
 | `doctor:<random-hex>` | One diagnostic invocation | A random canary value; removed after probing, with a five-second TTL if cleanup fails |
+
+The following family remains separate from Redis analysis caches:
+
+| Local-only family | Local identity and paths | Contents and retention |
+| --- | --- | --- |
+| Hook telemetry and session markers — **never Redis** | `substitution.jsonl`, `routing.jsonl`, `routing-pending/`, `meter.conf` in the hook home (default `~/.ripwire`); `ripwire-meter.*.seq`, `ripwire-toolroute.*.count`, `ripwire-nudge.*` under `${TMPDIR:-/tmp}` | Tool-call telemetry, routing observations/configuration and per-session counters/markers. Existing plaintext details, privacy, opt-outs and retention remain governed by [the substitution meter](docs/SUBSTITUTION_METER.md#where-the-log-lives); Redis TTLs and cleanup do not apply |
 
 Derived blobs use an `RWB1` envelope with a SHA-256 integrity hash. The client caps each Redis bulk
 value at **64 MiB including its envelope**; ingest records have a tighter **4 MiB** limit and are
@@ -1979,7 +1985,9 @@ Normal writes and cache hits refresh a **30-day sliding TTL**. `RIPWIRE_REDIS_TT
 to a positive number of days; a continuously used entry can therefore live indefinitely.
 `RIPWIRE_REDIS_TIMEOUT_MS` defaults to 1000 per operation. Size Redis for the number and size of
 files, retained content versions, projects and lean/rich families, plus Git-derived blobs and
-extracted documents; a second identical checkout can reuse keys, while changed versions add keys.
+extracted documents. Within each compatible ingest family, allow roughly one descriptor per relative
+path and one retained record per path/content version, plus the derived blobs. A second identical
+checkout can reuse keys, while changed versions add keys until expiry or eviction.
 There is no fixed bytes-per-repository estimate. Observe actual Redis memory usage, set a
 `maxmemory` budget with headroom for the host, and use an eviction policy such as `allkeys-lru` or
 `allkeys-lfu`. Eviction is an ordinary cold miss.
