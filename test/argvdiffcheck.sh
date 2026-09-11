@@ -27,11 +27,11 @@ TMP="$( mktemp -d )"
 # path, so a $TMPDIR with whitespace would silently re-split them into different arguments. Refuse instead.
 case "$TMP" in *[[:space:]]*) echo "argvdiffcheck: refusing — TMPDIR contains whitespace ($TMP), the argv matrix is word-split"; exit 2 ;; esac
 # The scratch destination every PATH-valued vector is pointed at (see the value-typing block below), and
-# the one file the mutation CONTROL creates in the tree on purpose. The trap owns BOTH, so a killed run
+# the one file the mutation CONTROL creates in a private Git tree. The trap owns BOTH, so a killed run
 # cannot leave behind the very stray the last arm exists to catch.
 ARGVOUT="$TMP/argvout"
 CACHEOUT="$TMP/cacheout"
-CTRL="$ROOT/argvdiffcheck_mutation_control"
+CTRL="$TMP/control-repo/argvdiffcheck_mutation_control"
 trap 'rm -rf "$TMP"; rm -f "$CTRL"' EXIT
 cd "$ROOT"
 fail=0
@@ -461,18 +461,23 @@ else no "harness MUTATED the tree:"; printf '%s\n' "$STRAY" | sed 's/^/        /
 # has ever seen fail is indistinguishable from one that cannot fail. This arm is what caught --pin-census=1
 # writing a file named `1` into the repo root, and now that the value-typing block prevents that class it is
 # the ONLY thing standing between a future path-valued flag and the same stray — so it has to be exercised,
-# not merely present. Create one stray on purpose, run the SAME comparison, require it to be SEEN, then
-# remove it and require the tree to be clean again: a control that leaves its own litter behind is not one.
+# not merely present. Exercise the SAME status function and comparison in a private Git root: even a
+# transient control file in the shared checkout can race another gate's stamped output. Create a stray,
+# require it to be SEEN, then remove it and require the private tree to be clean again.
+CONTROL_ROOT="${CTRL%/*}"
+mkdir -p "$CONTROL_ROOT"
+git -C "$CONTROL_ROOT" init -q || { no "control: could not initialize private Git root"; exit 1; }
+( cd "$CONTROL_ROOT" && treestatus ) > "$TMP/status.control.before"
 : > "$CTRL"
-treestatus > "$TMP/status.ctrl"
-seen="$( comm -13 "$TMP/status.after" "$TMP/status.ctrl" 2>/dev/null )"
+( cd "$CONTROL_ROOT" && treestatus ) > "$TMP/status.ctrl"
+seen="$( comm -13 "$TMP/status.control.before" "$TMP/status.ctrl" 2>/dev/null )"
 rm -f "$CTRL"
-treestatus > "$TMP/status.restored"
+( cd "$CONTROL_ROOT" && treestatus ) > "$TMP/status.restored"
 case "$seen" in
     *"argvdiffcheck_mutation_control"*) ok "control: the tree-mutation arm does detect a deliberate stray file" ;;
     *) no "control: a deliberate stray file went UNDETECTED — the tree-mutation arm above proves nothing" ;;
 esac
-cmp -s "$TMP/status.after" "$TMP/status.restored" \
+cmp -s "$TMP/status.control.before" "$TMP/status.restored" \
     || no "control: the deliberate stray outlived its own removal — the control littered the tree"
 
 [ "$fail" = 0 ] && echo "ALL PASS" || echo "FAILURES ABOVE"
