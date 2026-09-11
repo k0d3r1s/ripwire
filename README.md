@@ -2049,8 +2049,10 @@ user data and is outside this cleanup.
 For **Redis cleanup**, first stop writers on both computers. Obtain `prefix` and `db` from the
 Redis `cache_backend` doctor row, then use a separate administrator ACL with `SCAN` and scoped
 `UNLINK` (or `DEL`) permission. The application ACL above intentionally lacks `SCAN` and `UNLINK`.
-The following Bash recipe requires `redis-cli` and `jq`, uses the loopback tunnel from the first
-recipe, and only collects candidates. Inject the administrator password into `REDISCLI_AUTH`
+The following Bash recipe requires **redis-cli 7+** for `--json` output and `jq`; the server
+baseline remains Redis 6.2+. Every cleanup command uses `-2` to retain RESP2 explicitly, without
+implicit RESP3/HELLO negotiation. The recipe uses the loopback tunnel from the first recipe and
+only collects candidates. Inject the administrator password into `REDISCLI_AUTH`
 from your secret manager before running it; do not reuse application credentials.
 
 ```bash
@@ -2063,8 +2065,8 @@ if [[ "$prefix" =~ ^rw:v1:[0-9a-f]{64}:[0-9a-f]{64}$ ]]; then
   cursor=0
   scan_failed=0
   for ((page=0; page<100; page++)); do
-    reply=$(redis-cli -h 127.0.0.1 -p 6379 -n "$redis_db" --user "$redis_admin" \
-      --json SCAN "$cursor" MATCH "$prefix:*" COUNT 100) || { scan_failed=1; break; }
+    reply=$(redis-cli -2 --json -h 127.0.0.1 -p 6379 -n "$redis_db" --user "$redis_admin" \
+      SCAN "$cursor" MATCH "$prefix:*" COUNT 100) || { scan_failed=1; break; }
     cursor=$(jq -er '.[0] | tostring | select(test("^[0-9]+$"))' <<<"$reply") || { scan_failed=1; break; }
     jq -r '.[1][]' <<<"$reply" >>"$candidate_dir/keys" || { scan_failed=1; break; }
     [[ "$cursor" == 0 ]] && break
@@ -2082,7 +2084,7 @@ fi
 100; a nonzero cursor or `scan_failed=1` means the scan is incomplete. Resolve any scan error before
 deletion. Review the count, sample and complete candidate
 list before any deletion. For each approved exact key, verify it begins with `"$prefix:"`, then
-call `redis-cli` with the same endpoint/database/admin options and `UNLINK 'exact-reviewed-key'`
+call `redis-cli -2 --json` with the same endpoint/database/admin options and `UNLINK 'exact-reviewed-key'`
 (or `DEL 'exact-reviewed-key'`). Never pass a pattern to deletion, use `KEYS`, or use `FLUSHDB`.
 SCAN can return duplicates, and running clients can recreate deleted keys; quiescing writers is
 part of this procedure. Resume clients only when the intended cleanup is complete.
