@@ -50,13 +50,27 @@ int main( int argc, char** argv )
 {
     const int helper = rw::runRedisResolverHelperIfRequested( argc, argv );
     if( helper >= 0 ) { return helper; }
-    if( argc != 2 ) { return 2; }
+    if( argc != 2 && argc != 4 ) { return 2; }
     auto policy = std::make_shared<rw::CachePolicy>();
     policy->kind = rw::CacheBackendKind::Redis;
     policy->redis.endpoint = argv[1];
     policy->redis.nameSpace = std::string( "api:{namespace}\r\n\0", 18 );
     policy->redis.ttlSeconds = 86400;
     rw::CacheContext cache{ policy, {}, std::string( "project:\0}\r\n", 12 ), true };
+    if( argc == 4 && std::string_view( argv[2] ) == "--refresh" )
+    {
+        rw::CacheBlobAddress address{ rw::CacheBlobFamily::QualityBody, 4243, rw::kArtifactArch, "refresh", {} };
+        require( rw::storeCacheBlob( cache, address, "verified-hit" ), "refresh fixture store" );
+        rw::redisCacheFailureClasses.store( 0 );
+        rw::redisCacheWarningIssued.store( false );
+        std::string bytes;
+        require( rw::probeCacheBlob( cache, address, bytes ) == rw::CacheProbeStatus::Hit && bytes == "verified-hit", "refresh failure discarded verified hit" );
+        const bool invalid = std::string_view( argv[3] ) == "invalid";
+        const unsigned expected = invalid ? 1u << static_cast<unsigned>( rw::RedisFailure::Protocol ) : 0u;
+        require( rw::redisCacheFailureClasses.load() == expected, "EXPIRE reply must classify invalid type/value as Protocol" );
+        require( rw::redisCacheWarningIssued.load() == invalid, "EXPIRE reply warning state" );
+        return 0;
+    }
     verifyFileBlobApi( argv[0], cache );
     for( unsigned familyId = 0; familyId < 6; ++familyId )
     {

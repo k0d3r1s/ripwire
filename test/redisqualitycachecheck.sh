@@ -12,7 +12,7 @@ trap 'rm -rf "$DRIVER_DIR"' EXIT
 "${CXX:-c++}" -std=c++23 -O1 -pthread -I"$ROOT/src" -I"$ROOT/src/infra" -I"$ROOT/third_party" \
     "$ROOT/test/redis_blob_unit.cpp" "$ROOT/src/cache_backend.cpp" "$ROOT/src/redis_client.cpp" "$ROOT/src/infra/diagnostics.cpp" -o "$DRIVER_DIR/blob-driver"
 python3 - "$ROOT" "$BIN" "$DRIVER_DIR/blob-driver" "$BUILD_DIR/ripwire_test_mcp_api" <<'PY'
-import base64, fcntl, json, os, pathlib, re, select, shutil, socket, struct, subprocess, sys, tempfile, time
+import base64, fcntl, hashlib, json, os, pathlib, re, select, shutil, socket, struct, subprocess, sys, tempfile, time
 
 root, binary = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve()
 with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
@@ -61,10 +61,12 @@ with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
                     assert kind == b"+", line
                     return value
                 return read()
-        def log():
+        def admin(**request):
             with socket.create_connection(("127.0.0.1", ports["admin_port"])) as sock:
-                sock.sendall(b'{"op":"command_log"}\n'); stream = sock.makefile("rb")
-                entries = json.loads(stream.read(struct.unpack("!I", stream.read(4))[0]))["commands"]
+                sock.sendall(json.dumps(request).encode() + b"\n"); stream = sock.makefile("rb")
+                return json.loads(stream.read(struct.unpack("!I", stream.read(4))[0]))
+        def log():
+            entries = admin(op="command_log")["commands"]
             result = []
             for entry in entries:
                 raw = base64.b64decode(entry["record"]); count = struct.unpack("!I", raw[:4])[0]; pos = 4; args = []
@@ -145,6 +147,28 @@ with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
                 assert not any(c[0] == b"SET" and b":record:" in c[1] for c in heal_log)
             print("  PASS ", name, "GET miss before SET; warm GET+EXPIRE/no SET; producer work cold/warm/corrupt:",
                   cold_work, warm_work, healed_work, "(archive/patch/name walk, bridge calls, or parsed bytes)")
+            valid = command(b"GET", key)
+            assert valid[:4] == b"RWB1" and valid[4:68] == hashlib.sha256(key + valid[68:]).hexdigest().encode()
+            foreign_key = key + b"-foreign"
+            foreign = b"RWB1" + hashlib.sha256(foreign_key + valid[68:]).hexdigest().encode() + valid[68:]
+            command(b"SET", foreign_key, foreign, b"EX", b"86400")
+            copied = command(b"GET", foreign_key)
+            command(b"DEL", foreign_key)
+            # docmd intentionally stores raw text, not a structured codec; empty text is its invalid/cache-miss case.
+            invalid_payload = b"" if name == "docmd" else valid[68:72]
+            invalid_codec = b"RWB1" + hashlib.sha256(key + invalid_payload).hexdigest().encode() + invalid_payload
+            cases = (("payload-digest", valid[:68] + bytes([valid[68] ^ 1]) + valid[69:], False),
+                     ("cross-key", copied, False), ("inner-codec" if name != "docmd" else "empty-text", invalid_codec, True))
+            for corruption, value, outer_valid in cases:
+                assert value[:4] == b"RWB1"
+                assert (value[4:68] == hashlib.sha256(key + value[68:]).hexdigest().encode()) == outer_valid
+                command(b"SET", key, value, b"EX", b"86400")
+                start = len(log()); repaired, work = phase(b, name, flags); repair_log = log()[start:]
+                writes = [i for i, c in enumerate(repair_log) if c[0] == b"SET" and c[1] == key]
+                assert repaired.stdout == warm.stdout and work > 0 and writes, (name, corruption, "did not recompute equivalently", work)
+                refreshed_before_repair = any(c[0] == b"EXPIRE" and c[1] == key for c in repair_log[:writes[0]])
+                assert refreshed_before_repair == outer_valid, (name, corruption, "outer validation boundary not exercised")
+            print("  PASS ", name, "intact envelope payload-digest rejection, cross-key binding, independent inner payload recomputation")
         exercise("qsnap", "--quality-delta")
         exercise("qbody", "--quality-delta")
         exercise("qhist", "--whereis=old_name", "--with-history")
@@ -153,6 +177,88 @@ with tempfile.TemporaryDirectory(prefix="redisquality-") as tmp:
         for key in family("docmd"): command(b"DEL", key)
         exercise("docmd")
         exercise("stier", "--grep=new_name")
+
+        # Same-process prefetch/lazy overlap: delay A's SET, hold B after materialization but before archive,
+        # then let A finish. Its cleanup must not remove the tree B owns while B holds the ingest mutex.
+        race_repo = scratch / "overlap-repo"; race_repo.mkdir()
+        (race_repo / "race.cpp").write_text("int overlap_value() { return 7; }\n")
+        for args in (("init", "-q"), ("config", "user.email", "gate@example.com"), ("config", "user.name", "Gate"),
+                     ("add", "."), ("commit", "-qm", "overlap fixture")): git(race_repo, *args, old=True)
+        race_bin = scratch / "race-bin"; race_bin.mkdir()
+        race_git = race_bin / "git"
+        race_git.write_text(f'#!{sys.executable}\nimport os,pathlib,sys,time\n'
+                            'if "archive" in sys.argv and "RIPWIRE_TEST_ARCHIVE_BARRIER" in os.environ:\n'
+                            ' p=pathlib.Path(os.environ["RIPWIRE_TEST_ARCHIVE_BARRIER"])\n'
+                            ' count=int((p/"count").read_text())+1 if (p/"count").exists() else 1\n'
+                            ' (p/"count").write_text(str(count))\n'
+                            ' if count==2:\n'
+                            '  (p/"ready").touch()\n'
+                            '  deadline=time.monotonic()+15\n'
+                            '  while not (p/"release").exists():\n'
+                            '   if time.monotonic()>deadline: sys.exit(3)\n'
+                            '   time.sleep(0.005)\n'
+                            f'os.execv({real_git!r},[{real_git!r},*sys.argv[1:]])\n')
+        race_git.chmod(0o755)
+        def wait_until(predicate, message):
+            deadline = time.monotonic() + 15
+            while not predicate():
+                assert time.monotonic() < deadline, message
+                time.sleep(0.005)
+        race_failures = []
+        for name, tag in (("qsnap", "qhead"), ("qbody", "qref")):
+            race_env = dict(env, RIPWIRE_REDIS_NAMESPACE="overlap-" + name, RIPWIRE_REDIS_PROJECT="overlap-project", RIPWIRE_REDIS_TIMEOUT_MS="15000")
+            start = len(log())
+            seed = subprocess.run([sys.argv[4], "--cache-tree-probe", str(race_repo), name], env=race_env, capture_output=True, timeout=20)
+            assert seed.returncode == 0 and seed.stdout, ("seed production tree probe failed", seed.stderr)
+            sequence = log()[start:]
+            publish_index = next(i for i, c in enumerate(sequence) if c[0] == b"SET" and b":" + name.encode() + b":" in c[1])
+            # Restore the exact cold key state used to discover A's command index, without timing guesses.
+            for key in {c[1] for c in sequence if c[0] == b"SET"}: command(b"DEL", key)
+            start = len(log()); held_index = start + publish_index
+            admin(op="hold", command_index=held_index, barrier="publish-" + name)
+            barrier = scratch / ("archive-barrier-" + name); barrier.mkdir()
+            overlap_env = dict(race_env, PATH=str(race_bin) + os.pathsep + race_env["PATH"], RIPWIRE_TEST_ARCHIVE_BARRIER=str(barrier))
+            process = subprocess.Popen([sys.argv[4], "--cache-tree-overlap", str(race_repo), name], env=overlap_env,
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                wait_until(lambda: len(log()) > held_index, "prefetch never reached held Redis publication")
+                assert log()[held_index][:2] == sequence[publish_index][:2], "held a different command than immutable publication"
+                process.stdin.write(b"lazy\n"); process.stdin.flush()
+                wait_until(lambda: (barrier / "ready").exists(), "lazy caller could not materialize while Redis publication was held")
+                trees = list((scratch / "tmp/ripwire").rglob(f"ripwire-{tag}-{process.pid}"))
+                assert len(trees) == 1 and trees[0].is_dir(), "lazy materialization did not create its local tree"
+                admin(op="release", barrier="publish-" + name)
+                assert select.select([process.stdout], [], [], 15)[0] and process.stdout.readline() == b"prefetch-done\n", "prefetch did not complete while lazy archive was held"
+                assert trees[0].is_dir(), (name, "prefetch guard deleted the overlapping lazy tree")
+                (barrier / "release").touch()
+                output, errors = process.communicate(timeout=20)
+                assert process.returncode == 0 and output == seed.stdout, (name, "overlapping tree output differs", errors)
+                assert not trees[0].exists(), "lazy invocation failed to clean its local tree"
+                print("  PASS ", name, "barrier-controlled same-process prefetch/lazy overlap preserves tree ownership and cleanup")
+            except AssertionError as error:
+                race_failures.append(str(error))
+                print("  FAIL ", error, flush=True)
+            finally:
+                admin(op="release", barrier="publish-" + name)
+                (barrier / "release").touch()
+                if process.poll() is None:
+                    try: process.communicate(timeout=20)
+                    except subprocess.TimeoutExpired: process.kill(); process.communicate()
+
+        refresh_failures = []
+        for reply, invalid in ((b":0\r\n", False), (b":1\r\n", False), (b"+OK\r\n", True),
+                               (b"$1\r\n1\r\n", True), (b":-1\r\n", True), (b":2\r\n", True)):
+            start = len(log())
+            admin(op="raw_reply", command_index=start + 2, value=base64.b64encode(reply).decode())
+            checked = subprocess.run([sys.argv[3], env["RIPWIRE_REDIS_URL"], "--refresh", "invalid" if invalid else "valid"],
+                                     env=env, capture_output=True, timeout=15)
+            assert [c[0] for c in log()[start:]] == [b"SET", b"GET", b"EXPIRE"]
+            if checked.returncode != 0:
+                refresh_failures.append((reply, checked.stderr))
+                continue
+            assert checked.stderr.count(b"Redis cache unavailable or invalid") == int(invalid), checked.stderr
+        assert not race_failures and not refresh_failures, (race_failures, refresh_failures)
+        print("  PASS  EXPIRE accepts only integer 0/1; malformed type/value warns as Protocol without discarding a verified hit")
         # A workspace must query each file's own project, even when both projects have identical bytes.
         other = scratch / "separate-project"
         subprocess.run(["git", "clone", "-q", str(a), str(other)], env=env, check=True)

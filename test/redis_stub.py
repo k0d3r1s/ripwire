@@ -206,6 +206,8 @@ def before_fault_response(fault):
         return bulk(None)
     if mode == "corrupt_payload":
         return bulk(base64.b64decode(fault["value"]))
+    if mode == "raw_reply":
+        return base64.b64decode(fault["value"])
     if mode == "server_error":
         return b"-ERR " + fault.get("message", "forced").encode() + b"\r\n"
     return b"-ERR forced before execution\r\n"
@@ -340,7 +342,7 @@ def admin_fault_control(state, operation, request):
         fault = {"mode": "delay", "seconds": request.get("seconds", 1.0)}
         state.schedule_fault("after", int(request["command_index"]), fault)
         return {"ok": True}
-    if operation in ("auth_error", "missing_record", "corrupt_payload", "server_error"):
+    if operation in ("auth_error", "missing_record", "corrupt_payload", "server_error", "raw_reply"):
         fault = {"mode": operation}
         if "message" in request:
             fault["message"] = request["message"]

@@ -1788,6 +1788,10 @@ CacheProbeStatus probeCacheBlob( const CacheContext& cache, const CacheBlobAddre
     bytes.assign( envelope, 68, std::string::npos );
     const RedisResult refreshed = client.command( { "EXPIRE", key, std::to_string( cache.policy->redis.ttlSeconds ) } );
     if( !refreshed ) { redisIngestDegraded( refreshed.failure ); }
+    else if( refreshed.reply.type != RedisReplyType::Integer || ( refreshed.reply.integer != 0 && refreshed.reply.integer != 1 ) )
+    {
+        redisIngestDegraded( RedisFailure::Protocol );
+    }
     return CacheProbeStatus::Hit;
 }
 

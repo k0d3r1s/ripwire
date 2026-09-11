@@ -45,6 +45,44 @@ int lockProbe( const std::string& root, const std::string& target, const std::st
     std::cout << "released" << std::endl;
     return 0;
 }
+
+std::string treeProbeValue( const std::string& root, const std::string& family, const rw::CacheContext& cache )
+{
+    if( family == "qsnap" )
+    {
+        const auto result = rw::quality::computeHeadSnapshot( root, nullptr, rw::kDefaultMaxFileBytes, {}, cache );
+        return result.second ? rw::quality::serializeSnapshot( result.first, "probe" ) : std::string{};
+    }
+    const auto result = rw::quality::computeWindowRefBodyHashes( root, 90, {}, rw::kDefaultMaxFileBytes, cache );
+    rw::quality::Snapshot body;
+    body.bodyHashBySym = result.first;
+    return result.second ? rw::quality::serializeSnapshot( body, "probe" ) : std::string{};
+}
+
+int treeProbe( const std::string& root, const std::string& family, bool overlap )
+{
+    const auto cache = redisProbeContext( root );
+    if( !overlap )
+    {
+        const std::string value = treeProbeValue( root, family, cache );
+        std::cout << value;
+        return value.empty() ? 2 : 0;
+    }
+    std::string first, second;
+    std::thread prefetch( [&] { first = treeProbeValue( root, family, cache ); } );
+    std::string release;
+    const bool startLazy = std::getline( std::cin, release ) && release == "lazy";
+    if( !startLazy ) { prefetch.join(); return 2; }
+    auto lazyCache = cache;
+    lazyCache.project += "-lazy"; // guaranteed cold while the first immutable publication is held
+    std::thread lazy( [&] { second = treeProbeValue( root, family, lazyCache ); } );
+    prefetch.join();
+    std::cout << "prefetch-done" << std::endl;
+    lazy.join();
+    if( first.empty() || first != second ) { return 2; }
+    std::cout << first;
+    return 0;
+}
 }
 
 // Default still exercises the source-compatible MCP API without CLI policy resolution.
@@ -54,5 +92,7 @@ int main( int argc, char** argv )
     if( helper >= 0 ) { return helper; }
     if( argc == 4 && std::string_view( argv[1] ) == "--cache-span-probe" ) { return spanProbe( argv[2], argv[3] ); }
     if( argc == 5 && std::string_view( argv[1] ) == "--cache-lock-probe" ) { return lockProbe( argv[2], argv[3], argv[4] ); }
+    if( argc == 4 && std::string_view( argv[1] ) == "--cache-tree-probe" ) { return treeProbe( argv[2], argv[3], false ); }
+    if( argc == 4 && std::string_view( argv[1] ) == "--cache-tree-overlap" ) { return treeProbe( argv[2], argv[3], true ); }
     return rw::runMcp( 200 );
 }

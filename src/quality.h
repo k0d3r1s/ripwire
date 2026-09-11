@@ -2549,7 +2549,7 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
 
     // Phase-M: serialize the ingest-heavy region against a concurrent ingest (the qsnap prefetch worker vs a
     // request thread), since ingest() writes single-writer process-global query caches (§2b). Held from here
-    // through the atomic write below; the warm cache-probe above stays OUTSIDE the lock (lock-free hit).
+    // through temp-tree teardown; immutable publication below and the warm probe above stay OUTSIDE the lock.
     std::unique_lock<std::mutex> ingestLk( headSnapshotIngestMutex() );
 
     // Re-probe under the lock: whoever else held it (the lazy path or the prefetch worker) may have JUST
@@ -2564,37 +2564,37 @@ inline std::pair<Snapshot, bool> computeHeadSnapshot( const std::string& root, c
         }
     }
 
-    // 2) materialize HEAD into a private temp dir under the hardened cache ladder (per-user; not the repo).
-    //    A unique suffix (pid) keeps concurrent runs from colliding. Cleaned up via RAII teardown.
-    const std::string tmpRoot = materializeCommitTree( root, headSha, "qhead" );
-    if( tmpRoot.empty() )
+    Snapshot snap;
     {
-        return { Snapshot {}, false };
+        // 2) materialize HEAD into a private temp dir under the hardened cache ladder (per-user; not the repo).
+        //    The pid+tag path is shared by same-process callers: destroy its guard BEFORE releasing ingestLk.
+        const std::string tmpRoot = materializeCommitTree( root, headSha, "qhead" );
+        if( tmpRoot.empty() ) { return { Snapshot {}, false }; }
+        TmpTreeGuard guard{ tmpRoot };
+
+        // 3) ingest + graph + snapshot the HEAD tree. The HEAD tree is immutable for a given HEAD sha, so we hand
+        //    the ingest an incremental content-hash cache keyed on (repo, HEAD sha, excludes) — a warm re-run is a
+        //    pure cache hit instead of a ~12.5 s cold parse (A4-P1). The blob self-validates (parserVer + checksum
+        //    + per-file content hash) and is stored root-relative, so it can NEVER serve stale/foreign facts and is
+        //    portable across the pid-suffixed tmpRoot. Any cache IO failure degrades inside ingest() to a cold
+        //    parse — byte-identical output either way. The working-tree side's excludes are applied here too
+        //    (A4-F5) so both trees see the same file set. (Keys were computed once in step 1.)
+        const std::string cachePath = useFileCache ? headSnapCachePath( repoHex, exclHex, headSha ) : std::string{};
+        IngestResult headIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, headSha, excludes, maxFileBytes, true, cachePath ), maxFileBytes );
+
+        // Hygiene: cap each (repo, excludes) family to the 2 newest files (delete older sha's). Done AFTER the
+        // ingest so the file we just wrote/used is the newest → always retained. Best-effort; never throws.
+        if( useFileCache )
+        {
+            evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, cachePath, 2 );
+        }
+        if( headIng.symbols.empty() && headIng.files.empty() )
+        { DEGRADED_PATH_ALERT( "quality: HEAD tree ingested empty — falling back to run --quality-baseline first" ); return { Snapshot{}, false }; }
+        const Graph headG = buildGraph( headIng, nullptr );
+
+        // root = tmpRoot so keys are root-relative and match the working-tree side key-for-key (S2).
+        snap = computeSnapshot( headIng, headG, tmpRoot );
     }
-    TmpTreeGuard guard{ tmpRoot };
-
-    // 3) ingest + graph + snapshot the HEAD tree. The HEAD tree is immutable for a given HEAD sha, so we hand
-    //    the ingest an incremental content-hash cache keyed on (repo, HEAD sha, excludes) — a warm re-run is a
-    //    pure cache hit instead of a ~12.5 s cold parse (A4-P1). The blob self-validates (parserVer + checksum
-    //    + per-file content hash) and is stored root-relative, so it can NEVER serve stale/foreign facts and is
-    //    portable across the pid-suffixed tmpRoot. Any cache IO failure degrades inside ingest() to a cold
-    //    parse — byte-identical output either way. The working-tree side's excludes are applied here too
-    //    (A4-F5) so both trees see the same file set. (Keys were computed once in step 1.)
-    const std::string cachePath = useFileCache ? headSnapCachePath( repoHex, exclHex, headSha ) : std::string{};
-    IngestResult headIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, headSha, excludes, maxFileBytes, true, cachePath ), maxFileBytes );
-
-    // Hygiene: cap each (repo, excludes) family to the 2 newest files (delete older sha's). Done AFTER the
-    // ingest so the file we just wrote/used is the newest → always retained. Best-effort; never throws.
-    if( useFileCache )
-    {
-        evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, cachePath, 2 );
-    }
-    if( headIng.symbols.empty() && headIng.files.empty() )
-    { DEGRADED_PATH_ALERT( "quality: HEAD tree ingested empty — falling back to run --quality-baseline first" ); return { Snapshot{}, false }; }
-    const Graph headG = buildGraph( headIng, nullptr );
-
-    // root = tmpRoot so keys are root-relative and match the working-tree side key-for-key (S2).
-    Snapshot snap = computeSnapshot( headIng, headG, tmpRoot );
     ingestLk.unlock();   // publishing immutable bytes needs no ingest-global state
 
     // Persist the computed Snapshot so the NEXT --quality-delta on this HEAD skips everything above (clone
@@ -2733,24 +2733,22 @@ computeWindowRefBodyHashes( const std::string& root, std::uint32_t days,
         }
     }
 
-    const std::string tmpRoot = materializeCommitTree( root, refSha, "qref" );
-    if( tmpRoot.empty() )
-    {
-        return { {}, false };
-    }
-    TmpTreeGuard guard{ tmpRoot };
-
-    // the ref tree is immutable for its sha → reuse the qheadsnap INGEST cache family keyed by refSha (the
-    // family's keep-2 cap holds exactly the HEAD blob + this ref blob between commits).
-    const std::string ingestCachePath = fileCacheEnabled( cache ) ? headSnapCachePath( repoHex, exclHex, refSha ) : std::string{};
-    IngestResult refIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, refSha, excludes, maxFileBytes, true, ingestCachePath ), maxFileBytes );
-    if( fileCacheEnabled( cache ) ) { evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, ingestCachePath, 2 ); }
-    if( refIng.symbols.empty() && refIng.files.empty() )
-    { DEGRADED_PATH_ALERT( "quality: churn-window ref tree ingested empty — churn evidence unavailable" ); return { {}, false }; }
-
     Snapshot bodyOnly;
-    bodyOnly.bodyHashBySym = bodyHashesBySym( refIng, tmpRoot );   // pathQualifiedKey on EVERY side of the churn join (baseline, this ref, working tree, per-node lookup) — a one-sided keying change makes every symbol read as rewritten   // root = tmpRoot → root-relative keys (S2)
+    {
+        const std::string tmpRoot = materializeCommitTree( root, refSha, "qref" );
+        if( tmpRoot.empty() ) { return { {}, false }; }
+        TmpTreeGuard guard{ tmpRoot }; // same-process pid+tag ownership ends before unlock/publication
 
+        // the ref tree is immutable for its sha → reuse the qheadsnap INGEST cache family keyed by refSha (the
+        // family's keep-2 cap holds exactly the HEAD blob + this ref blob between commits).
+        const std::string ingestCachePath = fileCacheEnabled( cache ) ? headSnapCachePath( repoHex, exclHex, refSha ) : std::string{};
+        IngestResult refIng = ingest( tmpRoot.c_str(), excludes, archivedTreeCache( cache, refSha, excludes, maxFileBytes, true, ingestCachePath ), maxFileBytes );
+        if( fileCacheEnabled( cache ) ) { evictOldHeadSnapCaches( cacheDirLadder(), repoHex, exclHex, ingestCachePath, 2 ); }
+        if( refIng.symbols.empty() && refIng.files.empty() )
+        { DEGRADED_PATH_ALERT( "quality: churn-window ref tree ingested empty — churn evidence unavailable" ); return { {}, false }; }
+
+        bodyOnly.bodyHashBySym = bodyHashesBySym( refIng, tmpRoot );   // pathQualifiedKey on EVERY side of the churn join (baseline, this ref, working tree, per-node lookup) — a one-sided keying change makes every symbol read as rewritten   // root = tmpRoot → root-relative keys (S2)
+    }
     ingestLk.unlock();
     storeCacheBlob( cache, address, serializeSnapshot( bodyOnly, refSha ) );
     if( fileCacheEnabled( cache ) ) { evictOldCacheFamily( cacheDirLadder(), "ripwire-qbody-" + repoHex + "-" + qbExclHex + "-", qbodyPath, 2 ); }
