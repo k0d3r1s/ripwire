@@ -435,7 +435,8 @@ helpText="$( "$BIN" --help=all 2>/dev/null )"
 smellWant=$'--cochange[=FILE]\n--situ[=F1,F2]'
 # presence guard first: the two entries must exist at all, or the extraction below searches an empty target
 while IFS= read -r spec; do
-    if printf '%s\n' "$helpText" | grep -qF "    $spec"; then :
+    # Consume the entire help stream: grep -q closes early and SIGPIPEs printf on large help output.
+    if printf '%s\n' "$helpText" | grep -F "    $spec" >/dev/null; then :
     else no "(I) --help has no entry '$spec' — the smell-name arm has no target (entry renamed? update smellWant)"; fi
 done < <( printf '%s\n' "$smellWant" )
 smellGot="$( smellEntries "$helpText" )"
